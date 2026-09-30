@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -146,7 +147,7 @@ public class CopilotSessionTest {
             CopilotSession session = client
                     .createSession(new SessionConfig().setOnPermissionRequest(PermissionHandler.APPROVE_ALL)).get();
 
-            List<SessionEvent> receivedEvents = new ArrayList<>();
+            List<SessionEvent> receivedEvents = new CopyOnWriteArrayList<>();
             CompletableFuture<Void> idleReceived = new CompletableFuture<>();
 
             session.on(evt -> {

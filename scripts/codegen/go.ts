@@ -4278,6 +4278,12 @@ function emitMethod(lines: string[], receiver: string, name: string, method: Rpc
         }
         lines.push(`\traw, err := ${clientRef}.Request(ctx, "${method.rpcMethod}", req)`);
     } else {
+        if (method.rpcMethod === "managedSettings.resolve") {
+            // A typed nil inside Request's any argument marshals as null, not omitted params.
+            lines.push(`\tif ${paramsRef} == nil {`);
+            lines.push(`\t\t${paramsRef} = &${paramsType}{}`);
+            lines.push(`\t}`);
+        }
         const arg = hasParams ? paramsRef : "nil";
         lines.push(`\traw, err := ${clientRef}.Request(ctx, "${method.rpcMethod}", ${arg})`);
     }

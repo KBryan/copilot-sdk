@@ -44,6 +44,10 @@ test-support = []
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints.clippy]
+# Threshold lives in clippy.toml; consumers run on 2 MiB Tokio worker stacks.
+large_futures = "warn"
+
 [dependencies]
 async-trait = "0.1"
 indexmap = { version = "2", features = ["serde"] }

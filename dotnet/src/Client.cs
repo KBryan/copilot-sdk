@@ -699,7 +699,7 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
 
         if (ctx.FfiHost is { } ffiHost)
         {
-            try { ffiHost.Dispose(); }
+            try { await Task.Run(ffiHost.Dispose).ConfigureAwait(false); }
             catch (Exception ex) { AddCleanupError(errors, ex, _logger); }
             _ffiHost = null;
         }

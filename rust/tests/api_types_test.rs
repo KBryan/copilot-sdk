@@ -79,6 +79,45 @@ fn host_start_round_trips_absent_and_legacy_child_pid() {
 }
 
 #[test]
+fn host_start_round_trips_optional_transport_results() {
+    for wire in [
+        serde_json::json!({"hostId": "host"}),
+        serde_json::json!({"hostId": "host", "environmentId": "environment"}),
+        serde_json::json!({
+            "hostId": "host", "environmentId": "environment",
+            "url": "ws://127.0.0.1:4321", "token": "secret"
+        }),
+    ] {
+        let host: github_copilot_sdk::rpc::HostStartResult =
+            serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(host.url.as_deref(), wire["url"].as_str());
+        assert_eq!(
+            host.environment_id.as_deref(),
+            wire["environmentId"].as_str()
+        );
+        assert_eq!(host.token.as_deref(), wire["token"].as_str());
+        assert_eq!(host.pid, None);
+        assert_eq!(serde_json::to_value(host).unwrap(), wire);
+    }
+}
+
+#[test]
+fn github_host_environment_requires_name_and_compute_id() {
+    use github_copilot_sdk::rpc::HostGitHubEnvironmentOptions;
+
+    for wire in [
+        serde_json::json!({}),
+        serde_json::json!({"name": "SDK host"}),
+        serde_json::json!({"computeId": "compute"}),
+    ] {
+        assert!(serde_json::from_value::<HostGitHubEnvironmentOptions>(wire).is_err());
+    }
+    let wire = serde_json::json!({"name": "SDK host", "computeId": "compute"});
+    let options: HostGitHubEnvironmentOptions = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(options).unwrap(), wire);
+}
+
+#[test]
 fn operation_status_refuses_unknown_phases_and_incomplete_terminal_results() {
     let original = serde_json::json!({
         "phase": "completed",

@@ -13,6 +13,7 @@ import (
 
 	copilot "github.com/github/copilot-sdk/go"
 	"github.com/github/copilot-sdk/go/internal/e2e/testharness"
+	"github.com/github/copilot-sdk/go/rpc"
 )
 
 const ahpToolPrompt = "Use the magic_number tool with seed 'hello' and tell me the result"
@@ -48,7 +49,10 @@ func driveAhp(t *testing.T, ahp *testharness.AhpTestClient, command map[string]a
 
 func connectAhpTest(t *testing.T, ahp *testharness.AhpTestClient, host *copilot.AhpHost, clientID string) (string, func()) {
 	t.Helper()
-	command := map[string]any{"op": "connect", "url": host.URL, "githubToken": "fake-token-for-e2e-tests"}
+	if host.URL == nil {
+		t.Fatal("local host did not return a URL")
+	}
+	command := map[string]any{"op": "connect", "url": *host.URL, "githubToken": "fake-token-for-e2e-tests"}
 	if host.Token != nil {
 		command["token"] = *host.Token
 	}
@@ -112,6 +116,7 @@ func (a *ahpApplication) createConfig(config *copilot.SessionConfig) {
 
 func (a *ahpApplication) options() *copilot.AhpHostOptions {
 	return &copilot.AhpHostOptions{
+		LocalServer: &rpc.HostLocalServerOptions{},
 		CreateSession: func(ctx context.Context, request copilot.AhpSessionCreateRequest) (*copilot.Session, error) {
 			a.creates.Add(1)
 			if ctx.Err() != nil || request.Config.WorkingDirectory != a.workDir {

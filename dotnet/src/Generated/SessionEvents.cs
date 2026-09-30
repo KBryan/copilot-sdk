@@ -69,6 +69,7 @@ namespace GitHub.Copilot;
 [JsonDerivedType(typeof(McpResourcesListChangedEvent), "mcp.resources.list_changed")]
 [JsonDerivedType(typeof(McpToolsListChangedEvent), "mcp.tools.list_changed")]
 [JsonDerivedType(typeof(ModelCallFailureEvent), "model.call_failure")]
+[JsonDerivedType(typeof(ModelCallFinalResultEvent), "model.call_final_result")]
 [JsonDerivedType(typeof(ModelCallFinishedEvent), "model.call_finished")]
 [JsonDerivedType(typeof(ModelCallStartEvent), "model.call_start")]
 [JsonDerivedType(typeof(PendingMessagesModifiedEvent), "pending_messages.modified")]
@@ -1056,6 +1057,19 @@ public sealed partial class ModelCallFailureEvent : SessionEvent
     /// <summary>The <c>model.call_failure</c> event payload.</summary>
     [JsonPropertyName("data")]
     public required ModelCallFailureData Data { get; set; }
+}
+
+/// <summary>Internal telemetry result for one logical model operation after all orchestrator-owned retries settle.</summary>
+/// <remarks>Represents the <c>model.call_final_result</c> event.</remarks>
+public sealed partial class ModelCallFinalResultEvent : SessionEvent
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public override string Type => "model.call_final_result";
+
+    /// <summary>The <c>model.call_final_result</c> event payload.</summary>
+    [JsonPropertyName("data")]
+    public required ModelCallFinalResultData Data { get; set; }
 }
 
 /// <summary>Final lifecycle outcome for one logical model dispatch. A logical dispatch may include internal reconnect or fallback work, so event count is not provider HTTP-request count.</summary>
@@ -4770,6 +4784,23 @@ public sealed partial class ModelCallFailureData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("transport")]
     public ModelCallFailureTransport? Transport { get; set; }
+}
+
+/// <summary>Internal telemetry result for one logical model operation after all orchestrator-owned retries settle.</summary>
+public sealed partial class ModelCallFinalResultData
+{
+    /// <summary>Whether the final attempt used a bring-your-own-key provider.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("isByok")]
+    public bool? IsByok { get; set; }
+
+    /// <summary>Model identifier used by the final attempt.</summary>
+    [JsonPropertyName("model")]
+    public required string Model { get; set; }
+
+    /// <summary>Bounded result of the final attempt.</summary>
+    [JsonPropertyName("result")]
+    public required ModelCallFinalResult Result { get; set; }
 }
 
 /// <summary>Final lifecycle outcome for one logical model dispatch. A logical dispatch may include internal reconnect or fallback work, so event count is not provider HTTP-request count.</summary>
@@ -16233,6 +16264,85 @@ public readonly struct ModelCallFailureSource : IEquatable<ModelCallFailureSourc
     }
 }
 
+/// <summary>Final bounded result of one logical model operation after its internal retry loop settles.</summary>
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct ModelCallFinalResult : IEquatable<ModelCallFinalResult>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="ModelCallFinalResult"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="ModelCallFinalResult"/>.</param>
+    [JsonConstructor]
+    public ModelCallFinalResult(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="ModelCallFinalResult"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>The final attempt succeeded.</summary>
+    public static ModelCallFinalResult Success { get; } = new("success");
+
+    /// <summary>The final attempt failed with HTTP 400.</summary>
+    public static ModelCallFinalResult Http400 { get; } = new("http_400");
+
+    /// <summary>The final attempt failed with HTTP 413.</summary>
+    public static ModelCallFinalResult Http413 { get; } = new("http_413");
+
+    /// <summary>The final attempt failed with HTTP 429.</summary>
+    public static ModelCallFinalResult Http429 { get; } = new("http_429");
+
+    /// <summary>The final attempt failed with another HTTP 4xx status.</summary>
+    public static ModelCallFinalResult Http4xx { get; } = new("http_4xx");
+
+    /// <summary>The final attempt failed with an HTTP 5xx status.</summary>
+    public static ModelCallFinalResult Http5xx { get; } = new("http_5xx");
+
+    /// <summary>The final attempt failed in the request transport.</summary>
+    public static ModelCallFinalResult TransportError { get; } = new("transport_error");
+
+    /// <summary>The final attempt failed without another bounded classification.</summary>
+    public static ModelCallFinalResult OtherError { get; } = new("other_error");
+
+    /// <summary>Returns a value indicating whether two <see cref="ModelCallFinalResult"/> instances are equivalent.</summary>
+    public static bool operator ==(ModelCallFinalResult left, ModelCallFinalResult right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="ModelCallFinalResult"/> instances are not equivalent.</summary>
+    public static bool operator !=(ModelCallFinalResult left, ModelCallFinalResult right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is ModelCallFinalResult other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(ModelCallFinalResult other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{ModelCallFinalResult}"/> for serializing <see cref="ModelCallFinalResult"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<ModelCallFinalResult>
+    {
+        /// <inheritdoc />
+        public override ModelCallFinalResult Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ModelCallFinalResult value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ModelCallFinalResult));
+        }
+    }
+}
+
 /// <summary>Final outcome of one logical model dispatch after response acceptance processing.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
@@ -20719,6 +20829,8 @@ public readonly struct ExtensionsLoadedExtensionStatus : IEquatable<ExtensionsLo
 [JsonSerializable(typeof(ModelCallFailureData))]
 [JsonSerializable(typeof(ModelCallFailureEvent))]
 [JsonSerializable(typeof(ModelCallFailureRequestFingerprint))]
+[JsonSerializable(typeof(ModelCallFinalResultData))]
+[JsonSerializable(typeof(ModelCallFinalResultEvent))]
 [JsonSerializable(typeof(ModelCallFinishedData))]
 [JsonSerializable(typeof(ModelCallFinishedEvent))]
 [JsonSerializable(typeof(ModelCallStartData))]

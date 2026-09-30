@@ -7,6 +7,7 @@ package com.github.copilot;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.github.copilot.generated.rpc.HostLocalServerOptions;
 import com.github.copilot.rpc.PermissionHandler;
 import com.github.copilot.rpc.ResumeSessionConfig;
 import com.github.copilot.rpc.SessionConfig;
@@ -93,27 +94,28 @@ class RuntimeHostIT {
         }
 
         AhpHostOptions options() {
-            return new AhpHostOptions().setCreateSession(request -> {
-                creates.incrementAndGet();
-                assertFalse(request.cancellation().toCompletableFuture().isDone());
-                assertEquals(context.getWorkDir().toString(), request.config().getWorkingDirectory());
-                return client.createSession(configure(request.config())).thenApply(value -> session = value);
-            }).setResumeSession(request -> {
-                resumes.incrementAndGet();
-                assertFalse(request.cancellation().toCompletableFuture().isDone());
-                assertEquals(false, request.config().getContinuePendingWork().orElseThrow());
-                assertEquals(context.getWorkDir().toString(), request.config().getWorkingDirectory());
-                return client.resumeSession(request.sessionId(), configure(request.config()))
-                        .thenApply(value -> session = value);
-            }).setOnSessionReleased(value -> {
-                releases.add(value);
-                released.complete(null);
-                return CompletableFuture.completedFuture(null);
-            }).setOnExit(info -> {
-                exits.incrementAndGet();
-                exited.complete(null);
-                return CompletableFuture.completedFuture(null);
-            });
+            return new AhpHostOptions().setLocalServer(new HostLocalServerOptions(null, null, null, null))
+                    .setCreateSession(request -> {
+                        creates.incrementAndGet();
+                        assertFalse(request.cancellation().toCompletableFuture().isDone());
+                        assertEquals(context.getWorkDir().toString(), request.config().getWorkingDirectory());
+                        return client.createSession(configure(request.config())).thenApply(value -> session = value);
+                    }).setResumeSession(request -> {
+                        resumes.incrementAndGet();
+                        assertFalse(request.cancellation().toCompletableFuture().isDone());
+                        assertEquals(false, request.config().getContinuePendingWork().orElseThrow());
+                        assertEquals(context.getWorkDir().toString(), request.config().getWorkingDirectory());
+                        return client.resumeSession(request.sessionId(), configure(request.config()))
+                                .thenApply(value -> session = value);
+                    }).setOnSessionReleased(value -> {
+                        releases.add(value);
+                        released.complete(null);
+                        return CompletableFuture.completedFuture(null);
+                    }).setOnExit(info -> {
+                        exits.incrementAndGet();
+                        exited.complete(null);
+                        return CompletableFuture.completedFuture(null);
+                    });
         }
 
         void assertCallbacks(String sessionId) throws Exception {
@@ -132,6 +134,7 @@ class RuntimeHostIT {
     }
 
     private static String connect(AhpTestClient ahp, AhpHost host, String clientId) throws Exception {
+        assertNotNull(host.getUrl());
         var command = new HashMap<String, Object>(
                 Map.of("op", "connect", "url", host.getUrl(), "githubToken", "fake-token-for-e2e-tests"));
         if (host.getToken() != null) {

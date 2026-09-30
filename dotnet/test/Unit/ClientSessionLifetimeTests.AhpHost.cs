@@ -4,6 +4,7 @@
 
 #if NET8_0_OR_GREATER
 using System.Collections.Concurrent;
+using System.Text.Json;
 using GitHub.Copilot.Rpc;
 using Microsoft.Extensions.Logging;
 using Xunit;
@@ -12,6 +13,129 @@ namespace GitHub.Copilot.Test.Unit;
 
 public sealed partial class ClientSessionLifetimeTests
 {
+    private static Dictionary<string, object?> CreateAhpHostResult(JsonElement parameters)
+    {
+        var result = new Dictionary<string, object?>
+        {
+            ["hostId"] = parameters.GetProperty("hostId").GetString()
+        };
+        if (parameters.TryGetProperty("localServer", out var local) && local.ValueKind == JsonValueKind.Object)
+        {
+            result["url"] = "ws://127.0.0.1:12345";
+            result["token"] = "test-token";
+        }
+        if (parameters.TryGetProperty("githubEnvironment", out var github) && github.ValueKind == JsonValueKind.Object)
+            result["environmentId"] = "environment-123";
+        return result;
+    }
+
+    [Fact]
+    public async Task Ahp_Requires_Explicit_Transport_Before_Connecting()
+    {
+        await using var server = await FakeCopilotServer.StartAsync();
+        await using var client = new CopilotClient(new() { Connection = RuntimeConnection.ForUri(server.Url) });
+        await Assert.ThrowsAsync<ArgumentNullException>(() => client.StartAhpHostAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.StartAhpHostAsync(new()));
+        Assert.Empty(server.Requests);
+    }
+
+    [Theory]
+    [InlineData("", "compute")]
+    [InlineData(" ", "compute")]
+    [InlineData("host", "")]
+    [InlineData("host", " ")]
+    public async Task Ahp_Forwards_Environment_Fields_For_Runtime_Validation(string name, string computeId)
+    {
+        await using var server = await FakeCopilotServer.StartAsync();
+        await using var client = new CopilotClient(new() { Connection = RuntimeConnection.ForUri(server.Url) });
+        await using var host = await client.StartAhpHostAsync(new()
+        {
+            GitHubEnvironment = new() { Name = name, ComputeId = computeId }
+        });
+        var request = Assert.Single(server.Requests, request => request.Method == "host.start").Params;
+        var environment = request.GetProperty("githubEnvironment");
+        Assert.Equal(name, environment.GetProperty("name").GetString());
+        Assert.Equal(computeId, environment.GetProperty("computeId").GetString());
+    }
+
+    [Fact]
+    public async Task Ahp_Snapshots_Transport_Settings_Before_Connecting()
+    {
+        await using var server = await FakeCopilotServer.StartAsync();
+        await using var client = new CopilotClient(new() { Connection = RuntimeConnection.ForUri(server.Url) });
+        var connecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishConnect = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.BeforeResponseAsync = async (request, cancellationToken) =>
+        {
+            if (request.Method == "connect")
+            {
+                connecting.TrySetResult();
+                await finishConnect.Task.WaitAsync(cancellationToken);
+            }
+        };
+        var local = new HostLocalServerOptions { Hostname = "127.0.0.1", Port = 0, Token = "original", RequireConnectionToken = true };
+        var github = new HostGitHubEnvironmentOptions { Name = "original", ComputeId = "compute" };
+        var pending = client.StartAhpHostAsync(new() { LocalServer = local, GitHubEnvironment = github });
+        await connecting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            local.Hostname = "localhost";
+            local.Port = 12345;
+            local.Token = "replacement";
+            local.RequireConnectionToken = false;
+            github.Name = "";
+            github.ComputeId = "";
+        }
+        finally
+        {
+            finishConnect.TrySetResult();
+        }
+        await using var host = await pending;
+        var request = Assert.Single(server.Requests, request => request.Method == "host.start").Params;
+        var localSettings = request.GetProperty("localServer");
+        Assert.Equal("127.0.0.1", localSettings.GetProperty("hostname").GetString());
+        Assert.Equal(0, localSettings.GetProperty("port").GetInt32());
+        Assert.Equal("original", localSettings.GetProperty("token").GetString());
+        Assert.True(localSettings.GetProperty("requireConnectionToken").GetBoolean());
+        var githubSettings = request.GetProperty("githubEnvironment");
+        Assert.Equal("original", githubSettings.GetProperty("name").GetString());
+        Assert.Equal("compute", githubSettings.GetProperty("computeId").GetString());
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Ahp_Forwards_Explicit_Transports_And_Optional_Readiness(bool local, bool github)
+    {
+        await using var server = await FakeCopilotServer.StartAsync();
+        await using var client = new CopilotClient(new() { Connection = RuntimeConnection.ForUri(server.Url) });
+        await using var host = await client.StartAhpHostAsync(new()
+        {
+            LocalServer = local ? new() { Hostname = "127.0.0.1", Port = 0, Token = "test-token", RequireConnectionToken = true } : null,
+            GitHubEnvironment = github ? new() { Name = "test host", ComputeId = "compute" } : null
+        });
+        var request = Assert.Single(server.Requests, request => request.Method == "host.start").Params;
+        Assert.Equal(local, request.TryGetProperty("localServer", out var localSettings) && localSettings.ValueKind == JsonValueKind.Object);
+        Assert.Equal(github, request.TryGetProperty("githubEnvironment", out var githubSettings) && githubSettings.ValueKind == JsonValueKind.Object);
+        foreach (var oldField in new[] { "hostname", "port", "token", "requireConnectionToken" })
+            Assert.False(request.TryGetProperty(oldField, out _));
+        if (local)
+        {
+            Assert.Equal("test-token", localSettings.GetProperty("token").GetString());
+            Assert.Equal(0, localSettings.GetProperty("port").GetInt32());
+        }
+        if (github)
+        {
+            Assert.Equal("test host", githubSettings.GetProperty("name").GetString());
+            Assert.Equal("compute", githubSettings.GetProperty("computeId").GetString());
+        }
+        Assert.Equal(local ? "ws://127.0.0.1:12345" : null, host.Url);
+        Assert.Equal(local ? "test-token" : null, host.Token);
+        Assert.Equal(github ? "environment-123" : null, host.EnvironmentId);
+        Assert.Null(host.Pid);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -24,6 +148,7 @@ public sealed partial class ClientSessionLifetimeTests
         var factory = new TaskCompletionSource<CopilotSession>();
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             CreateSession = request => { entered.TrySetResult(request.CancellationToken); return factory.Task; }
         });
         var pending = server.SendRequestAsync("host.materializeSession", new()
@@ -72,7 +197,7 @@ public sealed partial class ClientSessionLifetimeTests
                 disposed.TrySetResult(request.Params.GetProperty("hostId").GetString()!);
         };
         using var cancellation = new CancellationTokenSource();
-        var pending = client.StartAhpHostAsync(cancellationToken: cancellation.Token);
+        var pending = client.StartAhpHostAsync(new() { LocalServer = new() }, cancellation.Token);
         var hostId = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -90,6 +215,7 @@ public sealed partial class ClientSessionLifetimeTests
         var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             OnExit = report => { exits.Enqueue(report); exited.TrySetResult(); return Task.CompletedTask; }
         });
         Assert.Null(host.Pid);
@@ -118,6 +244,7 @@ public sealed partial class ClientSessionLifetimeTests
         var releaseCount = 0;
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             CreateSession = async request =>
             {
                 cancellation = request.CancellationToken;
@@ -185,6 +312,7 @@ public sealed partial class ClientSessionLifetimeTests
         AhpHost? host = null;
         host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             CreateSession = async request =>
             {
                 registration = request.CancellationToken.Register(() =>
@@ -234,6 +362,7 @@ public sealed partial class ClientSessionLifetimeTests
         await using var client = new CopilotClient(new() { Connection = RuntimeConnection.ForUri(server.Url) });
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             ResumeSession = request =>
             {
                 switch (setting)
@@ -266,6 +395,7 @@ public sealed partial class ClientSessionLifetimeTests
         var released = new TaskCompletionSource<CopilotSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             CreateSession = request => { entered.TrySetResult(request.CancellationToken); return factory.Task; },
             OnSessionReleased = session => { released.TrySetResult(session); return Task.CompletedTask; }
         });
@@ -296,6 +426,7 @@ public sealed partial class ClientSessionLifetimeTests
         var released = new TaskCompletionSource<CopilotSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         var host = await client.StartAhpHostAsync(new()
         {
+            LocalServer = new(),
             CreateSession = async request =>
             {
                 request.Config.WorkingDirectory = "/wrong";

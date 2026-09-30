@@ -8,6 +8,11 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use super::*;
+use crate::generated::api_types::{HostGitHubEnvironmentOptions, HostLocalServerOptions};
+
+fn local_options() -> AhpHostOptions {
+    AhpHostOptions::new().with_local_server(HostLocalServerOptions::default())
+}
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -95,11 +100,63 @@ fn start(
 fn callback_options() -> (AhpHostOptions, mpsc::UnboundedReceiver<AhpHostExit>) {
     let (tx, rx) = mpsc::unbounded_channel();
     (
-        AhpHostOptions::default().with_on_exit(move |exit| {
+        local_options().with_on_exit(move |exit| {
             let _ = tx.send(exit);
         }),
         rx,
     )
+}
+
+#[tokio::test]
+async fn requires_an_explicit_transport() {
+    let (client, _peer) = fixture();
+    let error = client
+        .start_ahp_host(AhpHostOptions::default())
+        .await
+        .unwrap_err();
+    assert!(matches!(error.kind(), ErrorKind::InvalidConfig));
+    assert!(
+        error
+            .to_string()
+            .contains("requires localServer or githubEnvironment")
+    );
+    assert!(client.inner.ahp_host_callbacks.lock().is_empty());
+}
+
+#[tokio::test]
+async fn github_and_combined_transports_preserve_optional_results() {
+    for local in [false, true] {
+        let (client, mut peer) = fixture();
+        let mut options =
+            AhpHostOptions::new().with_github_environment(HostGitHubEnvironmentOptions {
+                name: "SDK host".into(),
+                compute_id: "compute".into(),
+            });
+        if local {
+            options = options.with_local_server(Default::default());
+        }
+        let pending = start(&client, options);
+        let request = peer.request().await;
+        let mut expected = json!({
+            "hostId": request["params"]["hostId"],
+            "githubEnvironment": {"name": "SDK host", "computeId": "compute"}
+        });
+        let mut result = json!({
+            "hostId": request["params"]["hostId"],
+            "environmentId": "environment"
+        });
+        if local {
+            expected["localServer"] = json!({});
+            result["url"] = json!("ws://127.0.0.1:4321");
+        }
+        assert_eq!(request["params"], expected);
+        peer.respond(&request, result).await;
+        let host = pending.await.unwrap().unwrap();
+        assert_eq!(host.environment_id.as_deref(), Some("environment"));
+        assert_eq!(host.url.as_deref(), local.then_some("ws://127.0.0.1:4321"));
+        assert_eq!(host.token, None);
+        assert_eq!(host.pid, None);
+    }
 }
 
 #[tokio::test]
@@ -108,11 +165,12 @@ async fn forwards_only_generated_options_and_returns_runtime_fields() {
     let (options, _exits) = callback_options();
     let pending = start(
         &client,
-        options
-            .with_hostname("::1")
-            .with_port(0)
-            .with_token("explicit-token")
-            .with_require_connection_token(true),
+        options.with_local_server(HostLocalServerOptions {
+            hostname: Some("::1".into()),
+            port: Some(0),
+            token: Some("explicit-token".into()),
+            require_connection_token: Some(true),
+        }),
     );
     let request = peer.request().await;
     assert_eq!(request["method"], "host.start");
@@ -121,22 +179,25 @@ async fn forwards_only_generated_options_and_returns_runtime_fields() {
     assert_eq!(
         request["params"],
         json!({
-            "hostId": host_id, "hostname": "::1", "port": 0,
-            "token": "explicit-token", "requireConnectionToken": true
+            "hostId": host_id, "localServer": {
+                "hostname": "::1", "port": 0,
+                "token": "explicit-token", "requireConnectionToken": true
+            }
         })
     );
     peer.started(&request, Some("runtime-token")).await;
     let host = pending.await.unwrap().unwrap();
     assert_eq!(host.host_id, host_id);
     assert_eq!(host.pid, None);
-    assert_eq!(host.url, "http://127.0.0.1:4321");
+    assert_eq!(host.url.as_deref(), Some("http://127.0.0.1:4321"));
+    assert_eq!(host.environment_id, None);
     assert_eq!(host.token.as_deref(), Some("runtime-token"));
 }
 
 #[tokio::test]
 async fn preserves_optional_legacy_separate_host_pid() {
     let (client, mut peer) = fixture();
-    let pending = start(&client, AhpHostOptions::default());
+    let pending = start(&client, local_options());
     let request = peer.request().await;
     peer.respond(
         &request,
@@ -169,11 +230,12 @@ async fn listener_task_exit_has_no_process_exit_code() {
 }
 
 #[tokio::test]
-async fn default_options_are_omitted_and_token_can_be_absent() {
+async fn explicit_local_defaults_are_forwarded_and_token_can_be_absent() {
     let (client, mut peer) = fixture();
-    let pending = start(&client, AhpHostOptions::default());
+    let pending = start(&client, local_options());
     let request = peer.request().await;
-    assert_eq!(request["params"].as_object().unwrap().len(), 1);
+    assert_eq!(request["params"].as_object().unwrap().len(), 2);
+    assert_eq!(request["params"]["localServer"], json!({}));
     peer.started(&request, None).await;
     assert!(pending.await.unwrap().unwrap().token.is_none());
     assert!(client.inner.ahp_host_callbacks.lock().is_empty());
@@ -182,7 +244,7 @@ async fn default_options_are_omitted_and_token_can_be_absent() {
 #[tokio::test]
 async fn publication_forwards_existing_identity_to_the_owning_listener() {
     let (client, mut peer) = fixture();
-    let pending = start(&client, AhpHostOptions::default());
+    let pending = start(&client, local_options());
     let request = peer.request().await;
     peer.started(&request, None).await;
     let host = pending.await.unwrap().unwrap();
@@ -209,17 +271,21 @@ async fn listener_validation_is_left_to_the_runtime() {
     let (client, mut peer) = fixture();
     let pending = start(
         &client,
-        AhpHostOptions::default()
-            .with_hostname("")
-            .with_port(-1)
-            .with_token("")
-            .with_require_connection_token(false),
+        AhpHostOptions::default().with_local_server(HostLocalServerOptions {
+            hostname: Some("".into()),
+            port: Some(-1),
+            token: Some("".into()),
+            require_connection_token: Some(false),
+        }),
     );
     let request = peer.request().await;
-    assert_eq!(request["params"]["port"], -1);
-    assert_eq!(request["params"]["hostname"], "");
-    assert_eq!(request["params"]["token"], "");
-    assert_eq!(request["params"]["requireConnectionToken"], false);
+    assert_eq!(request["params"]["localServer"]["port"], -1);
+    assert_eq!(request["params"]["localServer"]["hostname"], "");
+    assert_eq!(request["params"]["localServer"]["token"], "");
+    assert_eq!(
+        request["params"]["localServer"]["requireConnectionToken"],
+        false
+    );
     peer.send(json!({
         "jsonrpc": "2.0", "id": request["id"],
         "error": {"code": -32602, "message": "invalid listener"}
@@ -331,7 +397,7 @@ async fn cancelled_start_disposes_after_late_success() {
 #[tokio::test]
 async fn cancelled_start_does_not_dispose_after_late_failure() {
     let (client, mut peer) = fixture();
-    let pending = start(&client, AhpHostOptions::new());
+    let pending = start(&client, local_options());
     let request = peer.request().await;
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
@@ -350,7 +416,7 @@ async fn cancelled_start_does_not_dispose_after_late_failure() {
 #[tokio::test]
 async fn start_future_dropped_on_plain_thread_still_disposes() {
     let (client, mut peer) = fixture();
-    let mut pending = Box::pin(client.start_ahp_host(AhpHostOptions::new()));
+    let mut pending = Box::pin(client.start_ahp_host(local_options()));
     assert!(futures_util::poll!(&mut pending).is_pending());
     let request = peer.request().await;
     std::thread::scope(|scope| scope.spawn(move || drop(pending)).join().unwrap());
@@ -365,7 +431,7 @@ async fn start_future_dropped_on_plain_thread_still_disposes() {
 async fn cancelled_start_does_not_keep_owner_alive_while_waiting_for_response() {
     let (client, mut peer) = fixture();
     let owner = Arc::downgrade(&client.inner);
-    let pending = start(&client, AhpHostOptions::new());
+    let pending = start(&client, local_options());
     peer.request().await;
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
@@ -553,7 +619,7 @@ async fn disconnect_notifies_all_callbacks_even_when_they_panic() {
         let tx = tx.clone();
         let pending = start(
             &client,
-            AhpHostOptions::new().with_on_exit(move |exit| {
+            local_options().with_on_exit(move |exit| {
                 tx.send(exit).unwrap();
                 panic!("test disconnect callback panic");
             }),
@@ -579,7 +645,7 @@ async fn callback_panic_does_not_break_other_callbacks_or_rpc() {
     let calls = Arc::new(AtomicUsize::new(0));
     let pending = start(
         &client,
-        AhpHostOptions::default().with_on_exit({
+        local_options().with_on_exit({
             let calls = calls.clone();
             move |_| {
                 calls.fetch_add(1, Ordering::SeqCst);

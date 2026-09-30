@@ -4,6 +4,8 @@ import type {
     HostExitedNotification,
     HostStartRequest,
     HostStartResult,
+    HostLocalServerOptions,
+    HostGitHubEnvironmentOptions,
 } from "../src/generated/rpc.js";
 
 const info = {
@@ -16,10 +18,8 @@ describe("AhpHost", () => {
     it("keeps generated listener options optional but nonnullable", () => {
         expectTypeOf<HostStartRequest>().toEqualTypeOf<{
             hostId: string;
-            hostname?: string;
-            port?: number;
-            token?: string;
-            requireConnectionToken?: boolean;
+            localServer?: HostLocalServerOptions;
+            githubEnvironment?: HostGitHubEnvironmentOptions;
             sessionFactory?: boolean;
             resumeFactory?: boolean;
         }>();
@@ -27,6 +27,8 @@ describe("AhpHost", () => {
         expectTypeOf<AhpHost["token"]>().toEqualTypeOf<string | undefined>();
         expectTypeOf<HostStartResult["pid"]>().toEqualTypeOf<number | undefined>();
         expectTypeOf<AhpHost["pid"]>().toEqualTypeOf<number | undefined>();
+        expectTypeOf<AhpHost["url"]>().toEqualTypeOf<string | undefined>();
+        expectTypeOf<AhpHost["environmentId"]>().toEqualTypeOf<string | undefined>();
         expectTypeOf<HostExitedNotification["exitCode"]>().toEqualTypeOf<
             number | null | undefined
         >();
@@ -48,6 +50,18 @@ describe("AhpHost", () => {
     it("preserves an optional legacy separate host process ID", () => {
         const host = new AhpHost({ ...info, pid: 1234 }, vi.fn(), vi.fn());
         expect(host.pid).toBe(1234);
+    });
+
+    it("supports GitHub-only hosts without a local URL, token, or process", () => {
+        const host = new AhpHost(
+            { hostId: "remote", environmentId: "environment-1" },
+            vi.fn(),
+            vi.fn()
+        );
+        expect(host.environmentId).toBe("environment-1");
+        expect(host.url).toBeUndefined();
+        expect(host.token).toBeUndefined();
+        expect(host.pid).toBeUndefined();
     });
 
     it("supports a listener without a connection token", () => {

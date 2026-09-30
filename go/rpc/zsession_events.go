@@ -106,6 +106,7 @@ const (
 	SessionEventTypeMCPResourcesListChanged     SessionEventType = "mcp.resources.list_changed"
 	SessionEventTypeMCPToolsListChanged         SessionEventType = "mcp.tools.list_changed"
 	SessionEventTypeModelCallFailure            SessionEventType = "model.call_failure"
+	SessionEventTypeModelCallFinalResult        SessionEventType = "model.call_final_result"
 	SessionEventTypeModelCallFinished           SessionEventType = "model.call_finished"
 	SessionEventTypeModelCallStart              SessionEventType = "model.call_start"
 	SessionEventTypePendingMessagesModified     SessionEventType = "pending_messages.modified"
@@ -1653,6 +1654,19 @@ type SkillInvokedRefData struct {
 
 func (*SkillInvokedRefData) sessionEventData()      {}
 func (*SkillInvokedRefData) Type() SessionEventType { return SessionEventTypeSkillInvokedRef }
+
+// Internal telemetry result for one logical model operation after all orchestrator-owned retries settle
+type ModelCallFinalResultData struct {
+	// Whether the final attempt used a bring-your-own-key provider
+	IsByok *bool `json:"isByok,omitempty"`
+	// Model identifier used by the final attempt
+	Model string `json:"model"`
+	// Bounded result of the final attempt
+	Result ModelCallFinalResult `json:"result"`
+}
+
+func (*ModelCallFinalResultData) sessionEventData()      {}
+func (*ModelCallFinalResultData) Type() SessionEventType { return SessionEventTypeModelCallFinalResult }
 
 // LLM API call usage metrics including tokens, costs, quotas, and billing information
 type AssistantUsageData struct {
@@ -6160,6 +6174,28 @@ const (
 	ModelCallFailureTransportHTTP ModelCallFailureTransport = "http"
 	// WebSocket transport.
 	ModelCallFailureTransportWebsocket ModelCallFailureTransport = "websocket"
+)
+
+// Final bounded result of one logical model operation after its internal retry loop settles
+type ModelCallFinalResult string
+
+const (
+	// The final attempt failed with HTTP 400.
+	ModelCallFinalResultHTTP400 ModelCallFinalResult = "http_400"
+	// The final attempt failed with HTTP 413.
+	ModelCallFinalResultHTTP413 ModelCallFinalResult = "http_413"
+	// The final attempt failed with HTTP 429.
+	ModelCallFinalResultHTTP429 ModelCallFinalResult = "http_429"
+	// The final attempt failed with another HTTP 4xx status.
+	ModelCallFinalResultHTTP4xx ModelCallFinalResult = "http_4xx"
+	// The final attempt failed with an HTTP 5xx status.
+	ModelCallFinalResultHTTP5xx ModelCallFinalResult = "http_5xx"
+	// The final attempt failed without another bounded classification.
+	ModelCallFinalResultOtherError ModelCallFinalResult = "other_error"
+	// The final attempt succeeded.
+	ModelCallFinalResultSuccess ModelCallFinalResult = "success"
+	// The final attempt failed in the request transport.
+	ModelCallFinalResultTransportError ModelCallFinalResult = "transport_error"
 )
 
 // Final outcome of one logical model dispatch after response acceptance processing

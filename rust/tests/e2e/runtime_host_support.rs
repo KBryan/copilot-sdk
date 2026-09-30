@@ -151,10 +151,14 @@ pub fn home(ctx: &E2eContext) -> PathBuf {
         .unwrap()
 }
 
+pub fn local_options() -> AhpHostOptions {
+    AhpHostOptions::new().with_local_server(Default::default())
+}
+
 pub fn exit_observer() -> (AhpHostOptions, Arc<Mutex<Vec<AhpHostExit>>>) {
     let exits = Arc::new(Mutex::new(Vec::new()));
     let seen = exits.clone();
-    let options = AhpHostOptions::default().with_on_exit(move |exit| {
+    let options = local_options().with_on_exit(move |exit| {
         seen.lock().unwrap().push(exit);
     });
     (options, exits)
@@ -184,7 +188,11 @@ pub struct Ahp {
 }
 
 pub async fn connect(host: &AhpHost) -> Ahp {
-    connect_url(&host.url, host.token.as_deref()).await
+    connect_url(
+        host.url.as_deref().expect("local listener URL"),
+        host.token.as_deref(),
+    )
+    .await
 }
 
 pub async fn connect_url(url: &str, token: Option<&str>) -> Ahp {
@@ -507,7 +515,10 @@ pub fn topology(host: &AhpHost, owner: &Client, catalog: &Path) {
             Err(error) => panic!("read runtime socket: {error}"),
         })
         .collect();
-    let port = reqwest::Url::parse(&host.url).unwrap().port().unwrap();
+    let port = reqwest::Url::parse(host.url.as_deref().expect("local listener URL"))
+        .unwrap()
+        .port()
+        .unwrap();
     assert!(
         ["tcp", "tcp6"].iter().any(|table| {
             std::fs::read_to_string(format!("/proc/{runtime}/net/{table}"))
@@ -572,7 +583,7 @@ pub async fn listener_closed(host: &AhpHost, ahp: &Ahp) {
         deadline(ahp.client.ping()).await.is_err(),
         "existing AHP client must disconnect"
     );
-    let url = reqwest::Url::parse(&host.url).unwrap();
+    let url = reqwest::Url::parse(host.url.as_deref().expect("local listener URL")).unwrap();
     let result = deadline(tokio::net::TcpStream::connect((
         url.host_str().unwrap().trim_matches(['[', ']']),
         url.port().unwrap(),

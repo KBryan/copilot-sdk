@@ -112,7 +112,10 @@ class Application:
         self.exit_event.set()
 
     def options(self) -> AhpHostOptions:
+        from copilot.rpc import HostLocalServerOptions
+
         return AhpHostOptions(
+            local_server=HostLocalServerOptions(),
             create_session=self.create,
             resume_session=self.resume,
             on_session_released=self.release,
@@ -122,6 +125,8 @@ class Application:
 
 @asynccontextmanager
 async def connect(ahp: AhpTestClient, host: AhpHost, client_id: str | None = None):
+    assert host.url is not None
+    assert host.environment_id is None
     command = {
         "op": "connect",
         "url": host.url,

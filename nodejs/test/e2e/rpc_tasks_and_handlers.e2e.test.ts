@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { approveAll } from "../../src/index.js";
 import { createSdkTestContext } from "./harness/sdkTestContext.js";
+import { waitForCondition } from "./harness/sdkTestHelper.js";
 
 describe("Session tasks RPC and pending handlers", async () => {
     const { copilotClient: client } = await createSdkTestContext();
@@ -91,6 +92,95 @@ describe("Session tasks RPC and pending handlers", async () => {
         expect((await session.rpc.tasks.list()).tasks).toEqual([]);
 
         await session.disconnect();
+    });
+
+    it("should start background agent and report task details", { timeout: 240_000 }, async () => {
+        const session = await client.createSession({ onPermissionRequest: approveAll });
+        const replies: string[] = [];
+        const unsubscribe = session.on((event) => {
+            if (event.type === "assistant.message") {
+                replies.push(event.data.content ?? "");
+            }
+        });
+        try {
+            expect(
+                (await session.sendAndWait({ prompt: "Reply with TASK_AGENT_READY exactly." }))
+                    ?.data.content
+            ).toContain("TASK_AGENT_READY");
+            const prompt = "Reply with TASK_AGENT_DONE exactly.";
+            const started = await session.rpc.tasks.startAgent({
+                agentType: "general-purpose",
+                prompt,
+                name: "sdk-background-agent",
+                description: "SDK background agent coverage",
+            });
+            expect(started.agentId).toBeTruthy();
+
+            await waitForCondition(
+                async () =>
+                    (await session.rpc.tasks.list()).tasks.some(
+                        (task) => task.id === started.agentId
+                    ),
+                { timeoutMessage: `Background agent ${started.agentId} never appeared` }
+            );
+            const task = (await session.rpc.tasks.list()).tasks.find(
+                (entry) => entry.id === started.agentId
+            );
+            expect(task).toMatchObject({
+                id: started.agentId,
+                agentType: "general-purpose",
+                prompt,
+                description: "SDK background agent coverage",
+                executionMode: "background",
+                canPromoteToBackground: false,
+            });
+            expect(Number.isNaN(Date.parse(task!.startedAt))).toBe(false);
+            expect(
+                (await session.rpc.tasks.promoteToBackground({ id: started.agentId })).promoted
+            ).toBe(false);
+
+            await waitForCondition(
+                () => replies.some((message) => message.includes("TASK_AGENT_DONE")),
+                {
+                    timeoutMs: 60_000,
+                    timeoutMessage: `Agent ${started.agentId} did not complete: ${JSON.stringify(replies)}`,
+                }
+            );
+            await waitForCondition(
+                async () => {
+                    const task = (await session.rpc.tasks.list()).tasks.find(
+                        (entry) => entry.id === started.agentId
+                    );
+                    return (
+                        !!task &&
+                        ["completed", "idle"].includes(task.status) &&
+                        (task.latestResponse ?? task.result ?? "").includes("TASK_AGENT_DONE")
+                    );
+                },
+                { timeoutMs: 60_000, timeoutMessage: `Agent ${started.agentId} never settled` }
+            );
+            const current = (await session.rpc.tasks.list()).tasks.find(
+                (entry) => entry.id === started.agentId
+            );
+            expect(current?.latestResponse ?? current?.result).toContain("TASK_AGENT_DONE");
+            if (current?.status === "idle") {
+                expect((await session.rpc.tasks.cancel({ id: started.agentId })).cancelled).toBe(
+                    true
+                );
+            }
+            const removed = await session.rpc.tasks.remove({ id: started.agentId });
+            expect(removed.removed || current === undefined).toBe(true);
+            await waitForCondition(
+                async () =>
+                    !(await session.rpc.tasks.list()).tasks.some(
+                        (entry) => entry.id === started.agentId
+                    ),
+                { timeoutMessage: `Completed agent ${started.agentId} remains listed` }
+            );
+        } finally {
+            unsubscribe();
+            await session.disconnect();
+        }
     });
 
     it("should return expected results for missing pending handler requestIds", async () => {

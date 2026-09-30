@@ -48,6 +48,7 @@ import { CopilotClient } from "@github/copilot-sdk";
 await using client = new CopilotClient();
 await client.start();
 const host = await client.startAhpHost({
+    localServer: {},
     onExit: (exit) => {
         if (exit.error) console.error(exit.error);
     },
@@ -76,7 +77,15 @@ Use `dispose()` to stop the listener. `reason: "exited"` reports hosting-task
 failure, not runtime process death, and `exitCode` is absent. Hosting no longer
 provides process isolation from the runtime.
 
-The runtime validates listener options and applies their defaults:
+Select at least one transport explicitly: `localServer: {}` enables the local
+listener, `githubEnvironment: { name: "My app", computeId: "stable-installation-id" }`
+registers a Mission Control environment and enables remote WPS connections, and
+both enables both transports. GitHub-only hosting opens no local listener;
+`host.url` and `host.token` are undefined, while `host.environmentId` identifies
+the environment. The application supplies a stable compute ID and configures
+transports only at startup. Dispose and recreate the host to change them.
+
+The runtime validates options inside `localServer` and applies their defaults:
 
 - `hostname` defaults to `127.0.0.1`. Set it explicitly to request a non-loopback
   listener, such as `hostname: "0.0.0.0"`, and restrict network access appropriately.
@@ -101,6 +110,7 @@ import { approveAll, CopilotClient, defineTool } from "@github/copilot-sdk";
 
 await using client = new CopilotClient();
 await using host = await client.startAhpHost({
+    localServer: {},
     createSession: ({ config, signal }) => {
         signal.throwIfAborted();
         return client.createSession({

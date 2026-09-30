@@ -178,6 +178,8 @@ type (
 	ModelCallFailureRequestFingerprint                             = rpc.ModelCallFailureRequestFingerprint
 	ModelCallFailureSource                                         = rpc.ModelCallFailureSource
 	ModelCallFailureTransport                                      = rpc.ModelCallFailureTransport
+	ModelCallFinalResult                                           = rpc.ModelCallFinalResult
+	ModelCallFinalResultData                                       = rpc.ModelCallFinalResultData
 	ModelCallFinishedData                                          = rpc.ModelCallFinishedData
 	ModelCallFinishedOutcome                                       = rpc.ModelCallFinishedOutcome
 	ModelCallStartData                                             = rpc.ModelCallStartData
@@ -671,6 +673,14 @@ const (
 	ModelCallFailureSourceTopLevel                                       = rpc.ModelCallFailureSourceTopLevel
 	ModelCallFailureTransportHTTP                                        = rpc.ModelCallFailureTransportHTTP
 	ModelCallFailureTransportWebsocket                                   = rpc.ModelCallFailureTransportWebsocket
+	ModelCallFinalResultHTTP400                                          = rpc.ModelCallFinalResultHTTP400
+	ModelCallFinalResultHTTP413                                          = rpc.ModelCallFinalResultHTTP413
+	ModelCallFinalResultHTTP429                                          = rpc.ModelCallFinalResultHTTP429
+	ModelCallFinalResultHTTP4xx                                          = rpc.ModelCallFinalResultHTTP4xx
+	ModelCallFinalResultHTTP5xx                                          = rpc.ModelCallFinalResultHTTP5xx
+	ModelCallFinalResultOtherError                                       = rpc.ModelCallFinalResultOtherError
+	ModelCallFinalResultSuccess                                          = rpc.ModelCallFinalResultSuccess
+	ModelCallFinalResultTransportError                                   = rpc.ModelCallFinalResultTransportError
 	ModelCallFinishedOutcomeCancelled                                    = rpc.ModelCallFinishedOutcomeCancelled
 	ModelCallFinishedOutcomeError                                        = rpc.ModelCallFinishedOutcomeError
 	ModelCallFinishedOutcomeRejected                                     = rpc.ModelCallFinishedOutcomeRejected
@@ -877,6 +887,7 @@ const (
 	SessionEventTypeMCPResourcesListChanged                              = rpc.SessionEventTypeMCPResourcesListChanged
 	SessionEventTypeMCPToolsListChanged                                  = rpc.SessionEventTypeMCPToolsListChanged
 	SessionEventTypeModelCallFailure                                     = rpc.SessionEventTypeModelCallFailure
+	SessionEventTypeModelCallFinalResult                                 = rpc.SessionEventTypeModelCallFinalResult
 	SessionEventTypeModelCallFinished                                    = rpc.SessionEventTypeModelCallFinished
 	SessionEventTypeModelCallStart                                       = rpc.SessionEventTypeModelCallStart
 	SessionEventTypePendingMessagesModified                              = rpc.SessionEventTypePendingMessagesModified

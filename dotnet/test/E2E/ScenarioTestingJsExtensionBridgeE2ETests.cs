@@ -82,57 +82,6 @@ public class ScenarioTestingJsExtensionBridgeE2ETests(E2ETestFixture fixture, IT
     }
 
     [Fact]
-    public async Task Should_Persist_Server_Extension_Enablement_For_Future_Sessions()
-    {
-        var fixture = await CreateExtensionFixtureAsync(ExtensionSource.User);
-        await using var client = CreateExtensionClient(fixture);
-        await using var activeSession = await Ctx.CreateSessionAsync(
-            client,
-            CreateSessionConfig(fixture.ProjectDirectory));
-
-        var active = await WaitForExtensionAsync(activeSession, fixture.ExtensionId);
-        Assert.Equal(ExtensionStatus.Running, active.Status);
-
-        await client.Rpc.User.Settings.ReloadAsync();
-        var discovered = await client.Rpc.Extensions.DiscoverAsync();
-        var discoveredExtension = Assert.Single(
-            discovered.Extensions,
-            extension => extension.Id == fixture.ExtensionId);
-        Assert.True(discoveredExtension.Enabled);
-        Assert.Equal(DiscoveredExtensionSource.User, discoveredExtension.Source);
-        Assert.Empty((await client.Rpc.Plugins.ListAsync()).Plugins);
-
-        await client.Rpc.Extensions.DisableAsync([fixture.ExtensionId]);
-        Assert.Equal(
-            ExtensionStatus.Running,
-            (await WaitForExtensionAsync(activeSession, fixture.ExtensionId)).Status);
-
-        await using var disabledSession = await Ctx.CreateSessionAsync(
-            client,
-            CreateSessionConfig(fixture.ProjectDirectory));
-        var disabled = await WaitForExtensionAsync(
-            disabledSession,
-            fixture.ExtensionId,
-            ExtensionStatus.Disabled);
-        Assert.Null(disabled.Pid);
-
-        await client.Rpc.Extensions.EnableAsync([fixture.ExtensionId]);
-        Assert.Equal(
-            ExtensionStatus.Disabled,
-            (await WaitForExtensionAsync(
-                disabledSession,
-                fixture.ExtensionId,
-                ExtensionStatus.Disabled)).Status);
-
-        await using var enabledSession = await Ctx.CreateSessionAsync(
-            client,
-            CreateSessionConfig(fixture.ProjectDirectory));
-        var enabled = await WaitForExtensionAsync(enabledSession, fixture.ExtensionId);
-        Assert.Equal(ExtensionStatus.Running, enabled.Status);
-        Assert.NotNull(enabled.Pid);
-    }
-
-    [Fact]
     public async Task Should_Bridge_Js_Extension_Canvas_Context_Log_And_Session_Continuation()
     {
         var fixture = await CreateExtensionFixtureAsync();

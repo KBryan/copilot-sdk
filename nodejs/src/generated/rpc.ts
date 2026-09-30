@@ -1826,6 +1826,24 @@ export type EntraTokenAcquireResult =
       status: "interaction-required";
     };
 /**
+ * GitHub Mission Control compute kind.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentKind".
+ */
+/** @experimental */
+export type EnvironmentKind =
+  /** A user-managed environment on a local machine. */
+  | "user-local"
+  /** A user-managed environment in a GitHub Codespace. */
+  | "user-codespace"
+  /** A GitHub-managed environment backed by GitHub Actions. */
+  | "managed-actions"
+  /** A GitHub-managed sandbox environment. */
+  | "managed-sandbox"
+  /** A GitHub-managed cloud coding agent environment. */
+  | "managed-cca";
+/**
  * Either '*' to receive all event types, or a non-empty list of event types to receive
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -10357,6 +10375,147 @@ export interface EntraTokenAcquireRequest {
   accessTokenToRenew?: string;
 }
 /**
+ * Hosting capabilities and session capacity advertised by an environment.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentCapabilities".
+ */
+/** @experimental */
+export interface EnvironmentCapabilities {
+  /**
+   * Advertised Agent Host Protocol version.
+   */
+  ahpVersion?: string;
+  /**
+   * Feature identifiers advertised by the environment.
+   */
+  features: string[];
+  /**
+   * Maximum session capacity, when advertised.
+   */
+  maxSessions?: number;
+  /**
+   * Current session count, when advertised.
+   */
+  currentSessions?: number;
+}
+/**
+ * Identify a user-managed Mission Control environment to delete.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsDeleteRequest".
+ */
+/** @experimental */
+export interface EnvironmentsDeleteRequest {
+  /**
+   * User-managed environment to delete. GitHub-managed environments cannot be deleted.
+   */
+  environmentId: string;
+}
+/**
+ * Acknowledgement that the requested environment was deleted.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsDeleteResult".
+ */
+/** @experimental */
+export interface EnvironmentsDeleteResult {}
+/**
+ * Identify a Mission Control environment to retrieve.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsGetRequest".
+ */
+/** @experimental */
+export interface EnvironmentsGetRequest {
+  /**
+   * Identifier assigned by Mission Control.
+   */
+  environmentId: string;
+}
+/**
+ * Safe discovery information for the requested environment.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsGetResult".
+ */
+/** @experimental */
+export interface EnvironmentsGetResult {
+  environment: GitHubEnvironment;
+}
+/**
+ * Safe discovery information. Host-side relay bootstrap credentials are never included.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "GitHubEnvironment".
+ */
+/** @experimental */
+export interface GitHubEnvironment {
+  /**
+   * Identifier assigned by Mission Control.
+   */
+  id: string;
+  /**
+   * Human-readable environment name.
+   */
+  name: string;
+  kind: EnvironmentKind;
+  /**
+   * Open-ended operational status vocabulary.
+   */
+  status: string;
+  capabilities?: EnvironmentCapabilities;
+  /**
+   * Identifier of the environment owner.
+   */
+  ownerId?: string;
+  /**
+   * Owner category reported by Mission Control.
+   */
+  ownerType?: string;
+  /**
+   * Organization identifier, when the environment belongs to an organization.
+   */
+  orgId?: string;
+  /**
+   * Discovery labels attached to the environment.
+   */
+  labels?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Timestamp of the last heartbeat received by Mission Control.
+   */
+  lastHeartbeatAt?: string;
+}
+/**
+ * Optional discovery filters supported by GitHub Mission Control.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsListRequest".
+ */
+/** @experimental */
+export interface EnvironmentsListRequest {
+  kind?: EnvironmentKind;
+  /**
+   * Operational status, such as online, offline, degraded, waking, or draining.
+   */
+  status?: string;
+}
+/**
+ * Environments visible to the authenticated caller and matching the supplied filters.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "EnvironmentsListResult".
+ */
+/** @experimental */
+export interface EnvironmentsListResult {
+  /**
+   * Safe discovery records without relay bootstrap credentials.
+   */
+  environments: GitHubEnvironment[];
+}
+/**
  * Cursor, batch size, and optional long-poll/filter parameters for reading session events.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -11536,6 +11695,25 @@ export interface HooksDiscoverResult {
  */
 /** @experimental */
 export interface HostConfiguration {
+  localServer?: HostLocalServerConfiguration;
+  githubEnvironment?: HostGitHubEnvironmentOptions;
+  /**
+   * Whether session materialization is delegated to the owning application.
+   */
+  sessionFactory: boolean;
+  /**
+   * Whether app-owned durable sessions are resumed by the owning application.
+   */
+  resumeFactory: boolean;
+}
+/**
+ * Normalized local WebSocket listener settings.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "HostLocalServerConfiguration".
+ */
+/** @experimental */
+export interface HostLocalServerConfiguration {
   /**
    * Hostname or IP address to bind.
    */
@@ -11552,14 +11730,23 @@ export interface HostConfiguration {
    * Whether the listener requires token authentication.
    */
   requireConnectionToken: boolean;
+}
+/**
+ * GitHub Mission Control registration options. The compute ID is application-owned and stable.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "HostGitHubEnvironmentOptions".
+ */
+/** @experimental */
+export interface HostGitHubEnvironmentOptions {
   /**
-   * Whether session materialization is delegated to the owning application.
+   * Human-readable environment display name.
    */
-  sessionFactory?: boolean;
+  name: string;
   /**
-   * Whether app-owned durable sessions are resumed by the owning application.
+   * Stable application installation identity, reused across host restarts.
    */
-  resumeFactory?: boolean;
+  computeId: string;
 }
 /**
  * Stops a connection-owned listener and joins its teardown.
@@ -11583,6 +11770,31 @@ export interface HostDisposeRequest {
 /** @experimental */
 export interface HostEmptyResult {}
 /**
+ * Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "HostEnvironmentCredentials".
+ */
+/** @experimental */
+export interface HostEnvironmentCredentials {
+  /**
+   * Current bearer token for the authenticated GitHub identity.
+   */
+  token: string;
+  /**
+   * Hostname of the authenticated GitHub service.
+   */
+  githubHost: string;
+  /**
+   * GitHub API base URL for the authenticated service.
+   */
+  githubApiUrl: string;
+  /**
+   * Mission Control API origin for environment registration and management.
+   */
+  missionControlUrl: string;
+}
+/**
  * Reports a supervised listener's hosting-task termination and cleanup outcome.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -11603,6 +11815,31 @@ export interface HostExitedNotification {
    * Explicit startup or teardown failure, when present.
    */
   error?: string | null;
+}
+/**
+ * Local WebSocket transport options.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "HostLocalServerOptions".
+ */
+/** @experimental */
+export interface HostLocalServerOptions {
+  /**
+   * Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
+   */
+  hostname?: string;
+  /**
+   * Listener port. Omitted or zero requests an OS-allocated port.
+   */
+  port?: number;
+  /**
+   * Nonempty connection token. Generated randomly when required and omitted.
+   */
+  token?: string;
+  /**
+   * Require token authentication (default true). Cannot be false with a token.
+   */
+  requireConnectionToken?: boolean;
 }
 /**
  * Publishes a resident session attached to the listener's owning connection.
@@ -11649,11 +11886,15 @@ export interface HostReadyRequest {
   /**
    * Actual bound WebSocket URL.
    */
-  address: string;
+  address?: string;
   /**
    * Configured secret token, absent when authentication is disabled.
    */
   token?: string;
+  /**
+   * Registered environment ID, reported only once the relay transport is connected.
+   */
+  environmentId?: string;
 }
 /**
  * Listener-scoped registration, not a copy or durable adoption of a session.
@@ -11782,7 +12023,7 @@ export interface HostSessionReleaseRequest {
   handoffId: string;
 }
 /**
- * Starts a supervised AHP listener in the runtime's configured working directory.
+ * Starts a supervised AHP host with at least one explicitly selected transport.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "HostStartRequest".
@@ -11793,22 +12034,8 @@ export interface HostStartRequest {
    * Caller-generated UUID identifying this connection-owned listener.
    */
   hostId: string;
-  /**
-   * Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
-   */
-  hostname?: string;
-  /**
-   * Listener port. Omitted or zero requests an OS-allocated port.
-   */
-  port?: number;
-  /**
-   * Nonempty connection token. Generated randomly when required and omitted.
-   */
-  token?: string;
-  /**
-   * Require token authentication (default true). Cannot be false with a token.
-   */
-  requireConnectionToken?: boolean;
+  localServer?: HostLocalServerOptions;
+  githubEnvironment?: HostGitHubEnvironmentOptions;
   /**
    * Ask the owning SDK application to materialize AHP sessions.
    */
@@ -11833,11 +12060,15 @@ export interface HostStartResult {
   /**
    * Actual bound WebSocket URL, including the allocated port.
    */
-  url: string;
+  url?: string;
   /**
    * Secret connection token, absent when authentication is disabled.
    */
   token?: string;
+  /**
+   * GitHub Mission Control environment ID, present when its relay transport is ready.
+   */
+  environmentId?: string;
   /**
    * Separate host process ID, when provided by a legacy runtime. Absent for in-process listeners.
    */
@@ -19071,6 +19302,40 @@ export interface ProviderTokenAcquireResult {
    * The bearer token value (without the `Bearer ` prefix).
    */
   token: string;
+}
+/**
+ * Host-managed model selection ids to withdraw from the session's BYOK registry.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderWithdrawRequest".
+ */
+/** @experimental */
+export interface ProviderWithdrawRequest {
+  /**
+   * Provider-qualified selection ids to withdraw. Ids that are not registered are ignored, so withdrawal is idempotent. A provider left with no models referencing it is removed too.
+   */
+  models: string[];
+}
+/**
+ * What the withdrawal actually removed from the registry.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderWithdrawResult".
+ */
+/** @experimental */
+export interface ProviderWithdrawResult {
+  /**
+   * Selection ids that were registered and are now withdrawn. Excludes requested ids that were not present.
+   */
+  withdrawn: string[];
+  /**
+   * Providers removed because one of the withdrawn models was the last entry referencing them. A provider that merely has no models is not removed.
+   */
+  providersRemoved: string[];
+  /**
+   * True when withdrawal removed the selected host-managed model, leaving the session with no explicit selection, so ordinary model resolution picks the session default. Withdrawal never promotes a surviving model in its place: the choice of which model to use stays with the user.
+   */
+  modelDeselected?: boolean;
 }
 /**
  * File attachment
@@ -28632,6 +28897,31 @@ export interface HostReleaseSessionRequest {
 /** @experimental */
 export interface HostDisposeResult {}
 /**
+ * Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "HostGetEnvironmentCredentialsResult".
+ */
+/** @experimental */
+export interface HostGetEnvironmentCredentialsResult {
+  /**
+   * Current bearer token for the authenticated GitHub identity.
+   */
+  token: string;
+  /**
+   * Hostname of the authenticated GitHub service.
+   */
+  githubHost: string;
+  /**
+   * GitHub API base URL for the authenticated service.
+   */
+  githubApiUrl: string;
+  /**
+   * Mission Control API origin for environment registration and management.
+   */
+  missionControlUrl: string;
+}
+/**
  * Normalized listener settings delivered only to the supervised hosting participant.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -28639,30 +28929,16 @@ export interface HostDisposeResult {}
  */
 /** @experimental */
 export interface HostGetConfigurationResult {
-  /**
-   * Hostname or IP address to bind.
-   */
-  hostname: string;
-  /**
-   * Port to bind, with zero requesting OS allocation.
-   */
-  port: number;
-  /**
-   * Secret connection token, absent when authentication is disabled.
-   */
-  token?: string;
-  /**
-   * Whether the listener requires token authentication.
-   */
-  requireConnectionToken: boolean;
+  localServer?: HostLocalServerConfiguration;
+  githubEnvironment?: HostGitHubEnvironmentOptions;
   /**
    * Whether session materialization is delegated to the owning application.
    */
-  sessionFactory?: boolean;
+  sessionFactory: boolean;
   /**
    * Whether app-owned durable sessions are resumed by the owning application.
    */
-  resumeFactory?: boolean;
+  resumeFactory: boolean;
 }
 /**
  * Empty acknowledgement for a completed host lifecycle operation.
@@ -29051,6 +29327,36 @@ export interface InstallationsConfirmRequest {
 export function createServerRpc(connection: MessageConnection) {
     return {
         /** @experimental */
+        environments: {
+            /**
+             * Lists GitHub Mission Control environments visible to the authenticated identity. Does not require a running host and excludes host relay credentials.
+             *
+             * @param params Optional discovery filters supported by GitHub Mission Control.
+             *
+             * @returns Environments visible to the authenticated caller and matching the supplied filters.
+             */
+            list: async (params: EnvironmentsListRequest): Promise<EnvironmentsListResult> =>
+                connection.sendRequest("environments.list", params),
+            /**
+             * Gets safe discovery information for a GitHub Mission Control environment without requiring a running host.
+             *
+             * @param params Identify a Mission Control environment to retrieve.
+             *
+             * @returns Safe discovery information for the requested environment.
+             */
+            get: async (params: EnvironmentsGetRequest): Promise<EnvironmentsGetResult> =>
+                connection.sendRequest("environments.get", params),
+            /**
+             * Deletes a user-managed GitHub Mission Control environment. GitHub-managed environments cannot be deleted. Does not stop a running host, which may register again.
+             *
+             * @param params Identify a user-managed Mission Control environment to delete.
+             *
+             * @returns Acknowledgement that the requested environment was deleted.
+             */
+            delete: async (params: EnvironmentsDeleteRequest): Promise<EnvironmentsDeleteResult> =>
+                connection.sendRequest("environments.delete", params),
+        },
+        /** @experimental */
         host: {
             /**
              * Publishes an attached resident session for this listener's lifetime without copying it.
@@ -29062,9 +29368,9 @@ export function createServerRpc(connection: MessageConnection) {
             publishSession: async (params: HostPublishSessionRequest): Promise<HostPublishSessionResult> =>
                 connection.sendRequest("host.publishSession", params),
             /**
-             * Starts a connection-owned local AHP listener as a supervised SDK participant.
+             * Starts a connection-owned AHP host with explicit localServer and/or githubEnvironment transports as a supervised SDK participant.
              *
-             * @param params Starts a supervised AHP listener in the runtime's configured working directory.
+             * @param params Starts a supervised AHP host with at least one explicitly selected transport.
              *
              * @returns Listener readiness, returned only after binding and the supervised participant's SDK handshake.
              */
@@ -30040,6 +30346,13 @@ export function createInternalServerRpc(connection: MessageConnection) {
              */
             releaseSession: async (params: HostReleaseSessionRequest): Promise<HostReleaseSessionResult> =>
                 connection.sendRequest("host.releaseSession", params),
+            /**
+             * Resolves current authenticated credentials and remote-control policy only for the runtime-owned Mission Control hosting participant.
+             *
+             * @returns Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+             */
+            getEnvironmentCredentials: async (): Promise<HostGetEnvironmentCredentialsResult> =>
+                connection.sendRequest("host.getEnvironmentCredentials", {}),
             /**
              * Returns listener settings only to the supervised hosting participant over its SDK connection.
              *
@@ -31568,6 +31881,15 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             sync: async (params: ProviderSyncRequest): Promise<ProviderSyncResult> =>
                 connection.sendRequest("session.provider.sync", { sessionId, ...params }),
+            /**
+             * Withdraws named host-managed models from the session's BYOK registry, leaving every other entry untouched. The scoped counterpart to `provider.sync`: a snapshot can only describe entries the caller knows about, so using it to remove one model silently withdraws rows registered by another source, such as a plugin calling `provider.add` at runtime. Naming what to remove leaves unrelated entries alone. Selection ids that are not registered are ignored, so withdrawal is idempotent. A provider is removed only when one of the withdrawn models was the last entry referencing it; a provider that simply has no models, which is the normal state while its rows are supplied by catalog discovery, is left in place.
+             *
+             * @param params Host-managed model selection ids to withdraw from the session's BYOK registry.
+             *
+             * @returns What the withdrawal actually removed from the registry.
+             */
+            withdraw: async (params: ProviderWithdrawRequest): Promise<ProviderWithdrawResult> =>
+                connection.sendRequest("session.provider.withdraw", { sessionId, ...params }),
         },
         /** @experimental */
         options: {

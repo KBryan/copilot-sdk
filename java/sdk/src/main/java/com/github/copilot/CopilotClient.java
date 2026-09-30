@@ -1805,7 +1805,8 @@ public final class CopilotClient implements AutoCloseable {
     }
 
     /**
-     * Starts an in-process AHP listener owned by this client's current connection.
+     * Starts in-process AHP hosting owned by this client's current connection. At
+     * least one of local server or GitHub environment must be selected explicitly.
      * Application callbacks stay in this SDK process; no host executable is
      * launched. If the returned future is cancelled, a listener that subsequently
      * starts is disposed.
@@ -1816,10 +1817,15 @@ public final class CopilotClient implements AutoCloseable {
      */
     @CopilotExperimental
     public CompletableFuture<AhpHost> startAhpHost(AhpHostOptions options) {
+        if (options == null || (options.getLocalServer() == null && options.getGithubEnvironment() == null)) {
+            return CompletableFuture
+                    .failedFuture(new IllegalArgumentException("At least one AHP transport must be configured"));
+        }
+        var snapshot = new AhpHostOptions(options);
         var result = new CompletableFuture<AhpHost>();
         ensureConnected().thenCompose(connection -> result.isDone()
                 ? CompletableFuture.<AhpHost>failedFuture(new java.util.concurrent.CancellationException())
-                : ahpHosts.start(connection.serverRpc().host, options)).whenComplete((host, error) -> {
+                : ahpHosts.start(connection.serverRpc().host, snapshot)).whenComplete((host, error) -> {
                     if (error != null) {
                         result.completeExceptionally(error);
                     } else if (!result.complete(host)) {

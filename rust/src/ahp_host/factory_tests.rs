@@ -39,7 +39,7 @@ fn factory_options() -> (
 ) {
     let (created_tx, created) = mpsc::unbounded_channel();
     let (released_tx, released) = mpsc::unbounded_channel();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_create_session(move |request: AhpSessionRequest, client: Client| {
             let created_tx = created_tx.clone();
             async move {
@@ -63,7 +63,7 @@ async fn owner_loss_cancels_pending_factory_but_releases_its_late_original() {
     let (released_tx, mut released) = mpsc::unbounded_channel();
     let finish = CancellationToken::new();
     let gate = finish.clone();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_create_session(move |request: AhpSessionRequest, client: Client| {
             let ready_tx = ready_tx.clone();
             let gate = gate.clone();
@@ -128,7 +128,7 @@ async fn resume_can_return_retained_original_after_creation_handoff_released() {
     let (released_tx, mut resumed_released) = mpsc::unbounded_channel();
     let pending = start(
         &client,
-        AhpHostOptions::new()
+        local_options()
             .with_resume_session(move |_: AhpSessionResumeRequest, _: Client| {
                 let retained = retained.clone();
                 async move { Ok(retained) }
@@ -191,7 +191,7 @@ async fn resume_rejects_superseded_retained_original() {
     let (released_tx, mut resumed_released) = mpsc::unbounded_channel();
     let pending = start(
         &client,
-        AhpHostOptions::new()
+        local_options()
             .with_resume_session(move |_: AhpSessionResumeRequest, _: Client| {
                 let retained = retained.clone();
                 async move { Ok(retained) }
@@ -232,7 +232,7 @@ async fn resume_factory_registered_before_start_retains_original_and_preserves_s
     let (released_tx, mut released) = mpsc::unbounded_channel();
     let pending = start(
         &client,
-        AhpHostOptions::new()
+        local_options()
             .with_resume_session(move |request: AhpSessionResumeRequest, client: Client| {
                 let created_tx = created_tx.clone();
                 async move {
@@ -289,10 +289,9 @@ async fn resume_factory_registered_before_start_retains_original_and_preserves_s
 #[tokio::test]
 async fn resume_never_falls_back_to_create_factory() {
     let (client, mut peer) = fixture();
-    let options =
-        AhpHostOptions::new().with_create_session(|_: AhpSessionRequest, _: Client| async {
-            panic!("must not create on resume")
-        });
+    let options = local_options().with_create_session(|_: AhpSessionRequest, _: Client| async {
+        panic!("must not create on resume")
+    });
     let host = start_factory(&client, &mut peer, options).await;
     peer.send(json!({
         "jsonrpc": "2.0", "id": 900, "method": "host.materializeSession",
@@ -317,7 +316,7 @@ async fn cancelled_resume_releases_late_original_once() {
     let (released_tx, mut released) = mpsc::unbounded_channel();
     let finish = CancellationToken::new();
     let gate = finish.clone();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_resume_session(move |request: AhpSessionResumeRequest, client: Client| {
             let ready_tx = ready_tx.clone();
             let gate = gate.clone();
@@ -416,7 +415,7 @@ async fn cancellation_responds_promptly_and_releases_late_original_once() {
     let (released_tx, mut released) = mpsc::unbounded_channel();
     let finish = CancellationToken::new();
     let gate = finish.clone();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_create_session(move |request: AhpSessionRequest, client: Client| {
             let ready_tx = ready_tx.clone();
             let gate = gate.clone();
@@ -454,7 +453,7 @@ async fn cancellation_responds_promptly_and_releases_late_original_once() {
 async fn callback_failure_and_panic_fail_handoff_without_release() {
     for panic in [false, true] {
         let (client, mut peer) = fixture();
-        let options = AhpHostOptions::new().with_create_session(
+        let options = local_options().with_create_session(
             move |_: AhpSessionRequest, _: Client| async move {
                 assert!(!panic, "application panic");
                 Err(handoff_error("application failure"))
@@ -473,7 +472,7 @@ async fn callback_failure_and_panic_fail_handoff_without_release() {
 async fn altered_post_create_setting_is_rejected_and_original_released() {
     let (client, mut peer) = fixture();
     let (released_tx, mut released) = mpsc::unbounded_channel();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_create_session(
             |mut request: AhpSessionRequest, client: Client| async move {
                 request.config.skip_custom_instructions = None;
@@ -694,7 +693,7 @@ async fn callback_returning_another_clients_session_is_released_not_destroyed() 
     let host = start_factory(
         &client,
         &mut peer,
-        AhpHostOptions::new()
+        local_options()
             .with_create_session(move |_: AhpSessionRequest, _: Client| {
                 let session = session.clone();
                 async move { Ok(session) }

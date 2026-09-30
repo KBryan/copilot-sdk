@@ -1,5 +1,5 @@
 # Invoked by sdk.yml to run the .NET SDK build/test matrix, documentation,
-# backend shards, full subprocess CAPI coverage, and focused in-process smoke
+# backend coverage, full subprocess CAPI coverage, and focused in-process smoke
 # coverage on Linux and x64 musl.
 name: "SDK .NET"
 
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   dotnet-linux-x64:
-    name: ".NET (ubuntu-latest, ${{ matrix.transport }}, CAPI, full)"
+    name: ".NET (ubuntu-latest, ${{ matrix.transport }}, CAPI)"
     if: inputs.platform == 'all' || inputs.platform == 'linux-x64'
     timeout-minutes: 30
     strategy:
@@ -40,7 +40,6 @@ jobs:
     env:
       COPILOT_SDK_E2E_BACKEND: capi
       DOTNET_TEST_FILTER: ${{ matrix.transport == 'inprocess' && 'FullyQualifiedName~GitHub.Copilot.Test.E2E.ClientE2ETests.Should_Start_And_Connect_Over_InProcess_Ffi|FullyQualifiedName~GitHub.Copilot.Test.E2E.SessionE2ETests.Should_Receive_Session_Events|FullyQualifiedName~GitHub.Copilot.Test.E2E.ClientOptionsE2ETests.Should_Use_Configured_GitHub_Host_For_Authentication' || '' }}
-      DOTNET_TEST_SHARD: full
       COPILOT_SDK_DEFAULT_CONNECTION: ${{ matrix.transport == 'inprocess' && 'inprocess' || '' }}
     steps:
       - uses: actions/checkout@v7
@@ -83,47 +82,22 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-test-diagnostics-ubuntu-latest-${{ matrix.transport }}-capi-full-${{ github.run_attempt }}
+          name: dotnet-test-diagnostics-ubuntu-latest-${{ matrix.transport }}-capi-${{ github.run_attempt }}
           path: ${{ inputs.sdk-home }}/dotnet/TestResults/
           if-no-files-found: warn
           retention-days: 7
 
   dotnet-darwin-arm64:
-    name: ".NET (macos-latest, default, CAPI, ${{ matrix.shard }})"
+    name: ".NET (macos-latest, default, CAPI)"
     if: inputs.platform == 'all' || inputs.platform == 'darwin-arm64'
     runs-on: macos-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard:
-          [
-            "1",
-            "2a",
-            "2b-pending",
-            "2b-permission",
-            "2b-auth",
-            "2b-hooks",
-            "2b-unit-p",
-            "2b-provider",
-            "2b-rpc-additional",
-            "2b-rpc-agent",
-            "2b-rpc-event-log",
-            "2b-rpc-event-effects",
-            "2b-rpc-mcp-skills",
-            "2b-rpc-mcp-config",
-            "2b-rpc-mcp-lifecycle",
-            "2b-rpc-q-z",
-            "extensions",
-            "2c",
-          ]
     defaults:
       run:
         shell: bash
         working-directory: ${{ inputs.sdk-home }}/dotnet
     env:
       COPILOT_SDK_E2E_BACKEND: capi
-      DOTNET_TEST_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 4
@@ -151,27 +125,22 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-test-diagnostics-macos-latest-default-capi-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: dotnet-test-diagnostics-macos-latest-default-capi-${{ github.run_attempt }}
           path: ${{ inputs.sdk-home }}/dotnet/TestResults/
           if-no-files-found: warn
           retention-days: 7
 
   dotnet-win32-x64:
-    name: ".NET (windows-latest, default, CAPI, ${{ matrix.shard }})"
+    name: ".NET (windows-latest, default, CAPI)"
     if: inputs.platform == 'all' || inputs.platform == 'win32-x64'
     runs-on: windows-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ["1", "2"]
     defaults:
       run:
         shell: bash
         working-directory: ${{ inputs.sdk-home }}/dotnet
     env:
       COPILOT_SDK_E2E_BACKEND: capi
-      DOTNET_TEST_SHARD: ${{ matrix.shard }}
       DOTNET_TEST_RUNTIME: win-x64
     steps:
       - uses: actions/checkout@v7
@@ -201,7 +170,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-test-diagnostics-windows-latest-default-capi-${{ matrix.shard }}-${{ github.run_attempt }}
+          name: dotnet-test-diagnostics-windows-latest-default-capi-${{ github.run_attempt }}
           path: ${{ inputs.sdk-home }}/dotnet/TestResults/
           if-no-files-found: warn
           retention-days: 7
@@ -224,7 +193,6 @@ jobs:
     env:
       COPILOT_SDK_E2E_BACKEND: ${{ matrix.backend }}
       DOTNET_TEST_FILTER: "FullyQualifiedName~GitHub.Copilot.Test.E2E&E2EBackend!=SelfConfiguredBackend&E2EBackend!=CapiOnly"
-      DOTNET_TEST_SHARD: full
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 4
@@ -252,7 +220,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-test-diagnostics-ubuntu-latest-default-${{ matrix.backend }}-full-${{ github.run_attempt }}
+          name: dotnet-test-diagnostics-ubuntu-latest-default-${{ matrix.backend }}-${{ github.run_attempt }}
           path: ${{ inputs.sdk-home }}/dotnet/TestResults/
           if-no-files-found: warn
           retention-days: 7

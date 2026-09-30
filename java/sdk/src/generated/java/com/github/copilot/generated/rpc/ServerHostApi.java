@@ -60,7 +60,7 @@ public final class ServerHostApi {
     }
 
     /**
-     * Starts a supervised AHP listener in the runtime's configured working directory.
+     * Starts a supervised AHP host with at least one explicitly selected transport.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0
@@ -79,6 +79,17 @@ public final class ServerHostApi {
     @CopilotExperimental
     public CompletableFuture<Void> dispose(HostDisposeParams params) {
         return caller.invoke("host.dispose", params, Void.class);
+    }
+
+    /**
+     * Empty acknowledgement for a completed host lifecycle operation.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    CompletableFuture<HostGetEnvironmentCredentialsResult> getEnvironmentCredentials() {
+        return caller.invoke("host.getEnvironmentCredentials", java.util.Map.of(), HostGetEnvironmentCredentialsResult.class);
     }
 
     /**

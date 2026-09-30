@@ -32,18 +32,17 @@ public sealed record AhpSessionCreateRequest(SessionConfig Config, CancellationT
 [Experimental(Diagnostics.Experimental)]
 public sealed record AhpSessionResumeRequest(string SessionId, ResumeSessionConfig Config, CancellationToken CancellationToken);
 
-/// <summary>Listener options and local application callbacks for in-process AHP hosting.</summary>
+/// <summary>
+/// Transport options and local application callbacks for in-process AHP hosting.
+/// Select at least one transport explicitly; no local listener is started by default.
+/// </summary>
 [Experimental(Diagnostics.Experimental)]
 public sealed class AhpHostOptions
 {
-    /// <summary>Bind address; defaults to loopback.</summary>
-    public string? Hostname { get; init; }
-    /// <summary>Listener port; omitted or zero selects an available port.</summary>
-    public int? Port { get; init; }
-    /// <summary>Connection token; omitted generates one when authentication is enabled.</summary>
-    public string? Token { get; init; }
-    /// <summary>Whether to require a connection token; defaults to true.</summary>
-    public bool? RequireConnectionToken { get; init; }
+    /// <summary>Local WebSocket transport settings; absent disables the local listener.</summary>
+    public HostLocalServerOptions? LocalServer { get; init; }
+    /// <summary>GitHub Mission Control transport settings, with required Name and ComputeId; absent disables it.</summary>
+    public HostGitHubEnvironmentOptions? GitHubEnvironment { get; init; }
     /// <summary>Creates the exact requested session on the owning client.</summary>
     public Func<AhpSessionCreateRequest, Task<CopilotSession>>? CreateSession { get; init; }
     /// <summary>Resumes the exact requested session on the owning client.</summary>
@@ -70,17 +69,20 @@ public sealed class AhpHost : IAsyncDisposable
         Url = info.Url;
         Token = info.Token;
         Pid = info.Pid;
+        EnvironmentId = info.EnvironmentId;
         _rpc = rpc;
     }
 
     /// <summary>The listener identity.</summary>
     public string HostId { get; }
-    /// <summary>The bound AHP WebSocket address.</summary>
-    public string Url { get; }
-    /// <summary>The connection token, absent when authentication is disabled.</summary>
+    /// <summary>The bound AHP WebSocket address, absent without a local server.</summary>
+    public string? Url { get; }
+    /// <summary>The connection token, absent without an authenticated local server.</summary>
     public string? Token { get; }
     /// <summary>Legacy companion PID; absent for in-process listeners, not the runtime PID.</summary>
     public long? Pid { get; }
+    /// <summary>The GitHub Mission Control environment ID, absent without a GitHub environment.</summary>
+    public string? EnvironmentId { get; }
 
     /// <summary>Publishes a resident session without invoking factories or transferring ownership.</summary>
     public Task<HostPublishSessionResult> PublishSessionAsync(string sessionId, CancellationToken cancellationToken = default)
@@ -100,21 +102,36 @@ public sealed partial class CopilotClient
     private readonly Dictionary<string, AhpHandoff> _ahpHandoffs = [];
 
     /// <summary>
-    /// Starts a full AHP listener in the connected runtime, without a companion process.
+    /// Starts AHP hosting in the connected runtime, without a companion process.
+    /// At least one of LocalServer or GitHubEnvironment must be selected explicitly.
     /// Its lifetime belongs to this connection, not the global runtime.
     /// Cancellation abandons the wait; a listener that subsequently starts is disposed.
     /// </summary>
     [Experimental(Diagnostics.Experimental)]
-    public async Task<AhpHost> StartAhpHostAsync(AhpHostOptions? options = null, CancellationToken cancellationToken = default)
+    public async Task<AhpHost> StartAhpHostAsync(AhpHostOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        var localServer = options.LocalServer is { } local ? new HostLocalServerOptions
+        {
+            Hostname = local.Hostname,
+            Port = local.Port,
+            Token = local.Token,
+            RequireConnectionToken = local.RequireConnectionToken
+        } : null;
+        var githubEnvironment = options.GitHubEnvironment is { } github ? new HostGitHubEnvironmentOptions
+        {
+            Name = github.Name,
+            ComputeId = github.ComputeId
+        } : null;
+        if (localServer is null && githubEnvironment is null)
+            throw new ArgumentException("At least one AHP transport must be configured", nameof(options));
         var connection = await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        options ??= new();
         var hostId = Guid.NewGuid().ToString();
         lock (_ahpGate) _ahpHosts.Add(hostId, options);
         var rpc = connection.Server.Host;
-        var startup = rpc.StartAsync(hostId, options.Hostname, options.Port, options.Token,
-            options.RequireConnectionToken, options.CreateSession is not null ? true : null,
+        var startup = rpc.StartAsync(hostId, localServer, githubEnvironment,
+            options.CreateSession is not null ? true : null,
             options.ResumeSession is not null ? true : null, CancellationToken.None);
         try
         {

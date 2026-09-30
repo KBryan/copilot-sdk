@@ -24,14 +24,10 @@ import javax.annotation.processing.Generated;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record HostGetConfigurationResult(
-    /** Hostname or IP address to bind. */
-    @JsonProperty("hostname") String hostname,
-    /** Port to bind, with zero requesting OS allocation. */
-    @JsonProperty("port") Long port,
-    /** Secret connection token, absent when authentication is disabled. */
-    @JsonProperty("token") String token,
-    /** Whether the listener requires token authentication. */
-    @JsonProperty("requireConnectionToken") Boolean requireConnectionToken,
+    /** Normalized local listener settings, absent for relay-only hosts. */
+    @JsonProperty("localServer") HostLocalServerConfiguration localServer,
+    /** Requested GitHub Mission Control registration. */
+    @JsonProperty("githubEnvironment") HostGitHubEnvironmentOptions gitHubEnvironment,
     /** Whether session materialization is delegated to the owning application. */
     @JsonProperty("sessionFactory") Boolean sessionFactory,
     /** Whether app-owned durable sessions are resumed by the owning application. */

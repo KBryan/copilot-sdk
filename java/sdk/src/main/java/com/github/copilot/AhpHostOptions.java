@@ -4,38 +4,37 @@
 
 package com.github.copilot;
 
+import com.github.copilot.generated.rpc.HostGitHubEnvironmentOptions;
+import com.github.copilot.generated.rpc.HostLocalServerOptions;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 /**
- * Options for an in-process AHP listener. Factories must return the exact
+ * Options for in-process AHP hosting. Select at least one transport explicitly;
+ * no local listener is started by default. Factories must return the exact
  * session registered on the owning client with the requested identity and
  * settings. Release callbacks end a participation, not the application's
  * session lifetime.
  */
 @CopilotExperimental
 public final class AhpHostOptions {
-    private String hostname;
-    private Integer port;
-    private String token;
-    private Boolean requireConnectionToken;
+    private HostLocalServerOptions localServer;
+    private HostGitHubEnvironmentOptions githubEnvironment;
     private Function<AhpSessionCreateRequest, CompletableFuture<CopilotSession>> createSession;
     private Function<AhpSessionResumeRequest, CompletableFuture<CopilotSession>> resumeSession;
     private Function<CopilotSession, CompletableFuture<Void>> onSessionReleased;
     private Function<AhpHostExit, CompletableFuture<Void>> onExit;
 
     /**
-     * Creates options with loopback binding, an ephemeral port, and token
-     * authentication.
+     * Creates options without a transport. Set a local server, a GitHub
+     * environment, or both before starting the host.
      */
     public AhpHostOptions() {
     }
 
     AhpHostOptions(AhpHostOptions options) {
-        hostname = options.hostname;
-        port = options.port;
-        token = options.token;
-        requireConnectionToken = options.requireConnectionToken;
+        localServer = options.localServer;
+        githubEnvironment = options.githubEnvironment;
         createSession = options.createSession;
         resumeSession = options.resumeSession;
         onSessionReleased = options.onSessionReleased;
@@ -43,86 +42,44 @@ public final class AhpHostOptions {
     }
 
     /**
-     * Gets the bind hostname.
+     * Gets the local WebSocket transport settings.
      *
-     * @return the hostname, or {@code null} for loopback
+     * @return the settings, or {@code null} when local hosting is disabled
      */
-    public String getHostname() {
-        return hostname;
+    public HostLocalServerOptions getLocalServer() {
+        return localServer;
     }
 
     /**
-     * Sets the bind hostname.
+     * Enables or disables the local WebSocket transport.
      *
-     * @param hostname
-     *            bind hostname
+     * @param localServer
+     *            local settings, or {@code null} to disable local hosting
      * @return these options
      */
-    public AhpHostOptions setHostname(String hostname) {
-        this.hostname = hostname;
+    public AhpHostOptions setLocalServer(HostLocalServerOptions localServer) {
+        this.localServer = localServer;
         return this;
     }
 
     /**
-     * Gets the requested port.
+     * Gets the GitHub Mission Control transport settings.
      *
-     * @return the port, or {@code null} for an ephemeral port
+     * @return the settings, or {@code null} when GitHub hosting is disabled
      */
-    public Integer getPort() {
-        return port;
+    public HostGitHubEnvironmentOptions getGithubEnvironment() {
+        return githubEnvironment;
     }
 
     /**
-     * Sets the bind port.
+     * Enables or disables GitHub Mission Control hosting.
      *
-     * @param port
-     *            bind port; zero requests an ephemeral port
+     * @param githubEnvironment
+     *            settings with a required name and compute ID, or {@code null}
      * @return these options
      */
-    public AhpHostOptions setPort(Integer port) {
-        this.port = port;
-        return this;
-    }
-
-    /**
-     * Gets the connection token.
-     *
-     * @return the token, or {@code null} to generate one
-     */
-    public String getToken() {
-        return token;
-    }
-
-    /**
-     * Sets the connection token.
-     *
-     * @param token
-     *            nonempty connection token
-     * @return these options
-     */
-    public AhpHostOptions setToken(String token) {
-        this.token = token;
-        return this;
-    }
-
-    /**
-     * Gets the authentication policy.
-     *
-     * @return whether authentication is required; {@code null} means true
-     */
-    public Boolean getRequireConnectionToken() {
-        return requireConnectionToken;
-    }
-
-    /**
-     * Sets the authentication policy.
-     *
-     * @param required
-     *            whether to require token authentication
-     * @return these options
-     */
-    public AhpHostOptions setRequireConnectionToken(Boolean required) {
-        requireConnectionToken = required;
+    public AhpHostOptions setGithubEnvironment(HostGitHubEnvironmentOptions githubEnvironment) {
+        this.githubEnvironment = githubEnvironment;
         return this;
     }
 

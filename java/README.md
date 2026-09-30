@@ -121,7 +121,15 @@ client.start().get();
 
 ## Quick Start
 
-For experimental in-process AHP hosting, use `client.startAhpHost(new AhpHostOptions())`.
+For experimental in-process AHP hosting, select a transport explicitly:
+`client.startAhpHost(new AhpHostOptions().setLocalServer(new HostLocalServerOptions(null, null, null, null)))`.
+The transport types are in `com.github.copilot.generated.rpc`. For GitHub Mission
+Control, use `.setGithubEnvironment(new HostGitHubEnvironmentOptions("My host", "compute-id"))`
+instead, or configure both transports. GitHub environment name and compute ID are
+required; there is no implicit local listener. The host's `getUrl()`, `getToken()`,
+and `getPid()` may return `null`; `getEnvironmentId()` returns the GitHub environment
+ID when configured. Environment list/get/delete operations are available only
+through the generated RPC API.
 See [runtime-supervised AHP hosting](../docs/runtime-supervised-host.md) for creation
 and resume callbacks, resident-session publication, ownership, and shared-snapshot E2Es.
 

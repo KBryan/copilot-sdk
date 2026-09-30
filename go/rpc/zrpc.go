@@ -4061,6 +4061,68 @@ func (EntraTokenAcquireResultOk) Status() EntraTokenAcquireResultStatus {
 	return EntraTokenAcquireResultStatusOk
 }
 
+// Hosting capabilities and session capacity advertised by an environment.
+// Experimental: EnvironmentCapabilities is part of an experimental API and may change or be
+// removed.
+type EnvironmentCapabilities struct {
+	// Advertised Agent Host Protocol version.
+	AhpVersion *string `json:"ahpVersion,omitempty"`
+	// Current session count, when advertised.
+	CurrentSessions *int64 `json:"currentSessions,omitempty"`
+	// Feature identifiers advertised by the environment.
+	Features []string `json:"features"`
+	// Maximum session capacity, when advertised.
+	MaxSessions *int64 `json:"maxSessions,omitempty"`
+}
+
+// Identify a user-managed Mission Control environment to delete.
+// Experimental: EnvironmentsDeleteRequest is part of an experimental API and may change or
+// be removed.
+type EnvironmentsDeleteRequest struct {
+	// User-managed environment to delete. GitHub-managed environments cannot be deleted.
+	EnvironmentID string `json:"environmentId"`
+}
+
+// Acknowledgement that the requested environment was deleted.
+// Experimental: EnvironmentsDeleteResult is part of an experimental API and may change or
+// be removed.
+type EnvironmentsDeleteResult struct {
+}
+
+// Identify a Mission Control environment to retrieve.
+// Experimental: EnvironmentsGetRequest is part of an experimental API and may change or be
+// removed.
+type EnvironmentsGetRequest struct {
+	// Identifier assigned by Mission Control.
+	EnvironmentID string `json:"environmentId"`
+}
+
+// Safe discovery information for the requested environment.
+// Experimental: EnvironmentsGetResult is part of an experimental API and may change or be
+// removed.
+type EnvironmentsGetResult struct {
+	// The requested environment without relay bootstrap credentials.
+	Environment GitHubEnvironment `json:"environment"`
+}
+
+// Optional discovery filters supported by GitHub Mission Control.
+// Experimental: EnvironmentsListRequest is part of an experimental API and may change or be
+// removed.
+type EnvironmentsListRequest struct {
+	// Restrict discovery to this compute kind.
+	Kind *EnvironmentKind `json:"kind,omitempty"`
+	// Operational status, such as online, offline, degraded, waking, or draining.
+	Status *string `json:"status,omitempty"`
+}
+
+// Environments visible to the authenticated caller and matching the supplied filters.
+// Experimental: EnvironmentsListResult is part of an experimental API and may change or be
+// removed.
+type EnvironmentsListResult struct {
+	// Safe discovery records without relay bootstrap credentials.
+	Environments []GitHubEnvironment `json:"environments"`
+}
+
 // Cursor, batch size, and optional long-poll/filter parameters for reading session events.
 // Experimental: EventLogReadRequest is part of an experimental API and may change or be
 // removed.
@@ -4600,6 +4662,32 @@ type FolderTrustCheckResult struct {
 	Trusted bool `json:"trusted"`
 }
 
+// Safe discovery information. Host-side relay bootstrap credentials are never included.
+// Experimental: GitHubEnvironment is part of an experimental API and may change or be
+// removed.
+type GitHubEnvironment struct {
+	// Hosting capabilities advertised by the environment.
+	Capabilities *EnvironmentCapabilities `json:"capabilities,omitempty"`
+	// Identifier assigned by Mission Control.
+	ID string `json:"id"`
+	// Compute kind reported by Mission Control.
+	Kind EnvironmentKind `json:"kind"`
+	// Discovery labels attached to the environment.
+	Labels map[string]string `json:"labels,omitzero"`
+	// Timestamp of the last heartbeat received by Mission Control.
+	LastHeartbeatAt *string `json:"lastHeartbeatAt,omitempty"`
+	// Human-readable environment name.
+	Name string `json:"name"`
+	// Organization identifier, when the environment belongs to an organization.
+	OrgID *string `json:"orgId,omitempty"`
+	// Identifier of the environment owner.
+	OwnerID *string `json:"ownerId,omitempty"`
+	// Owner category reported by Mission Control.
+	OwnerType *string `json:"ownerType,omitempty"`
+	// Open-ended operational status vocabulary.
+	Status string `json:"status"`
+}
+
 // Pointer to a GitHub repository.
 // Experimental: GitHubRepoRef is part of an experimental API and may change or be removed.
 type GitHubRepoRef struct {
@@ -5082,18 +5170,14 @@ type HooksDiscoverResult struct {
 // Experimental: HostConfiguration is part of an experimental API and may change or be
 // removed.
 type HostConfiguration struct {
-	// Hostname or IP address to bind.
-	Hostname string `json:"hostname"`
-	// Port to bind, with zero requesting OS allocation.
-	Port int32 `json:"port"`
-	// Whether the listener requires token authentication.
-	RequireConnectionToken bool `json:"requireConnectionToken"`
+	// Requested GitHub Mission Control registration.
+	GitHubEnvironment *HostGitHubEnvironmentOptions `json:"githubEnvironment,omitempty"`
+	// Normalized local listener settings, absent for relay-only hosts.
+	LocalServer *HostLocalServerConfiguration `json:"localServer,omitempty"`
 	// Whether app-owned durable sessions are resumed by the owning application.
-	ResumeFactory *bool `json:"resumeFactory,omitempty"`
+	ResumeFactory bool `json:"resumeFactory"`
 	// Whether session materialization is delegated to the owning application.
-	SessionFactory *bool `json:"sessionFactory,omitempty"`
-	// Secret connection token, absent when authentication is disabled.
-	Token *string `json:"token,omitempty"`
+	SessionFactory bool `json:"sessionFactory"`
 }
 
 // The resident session the application has materialized on its own connection.
@@ -5123,6 +5207,20 @@ type HostDisposeResult struct {
 type HostEmptyResult struct {
 }
 
+// Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+// Experimental: HostEnvironmentCredentials is part of an experimental API and may change or
+// be removed.
+type HostEnvironmentCredentials struct {
+	// GitHub API base URL for the authenticated service.
+	GitHubAPIURL string `json:"githubApiUrl"`
+	// Hostname of the authenticated GitHub service.
+	GitHubHost string `json:"githubHost"`
+	// Mission Control API origin for environment registration and management.
+	MissionControlURL string `json:"missionControlUrl"`
+	// Current bearer token for the authenticated GitHub identity.
+	Token string `json:"token"`
+}
+
 // Reports a supervised listener's hosting-task termination and cleanup outcome.
 // Experimental: HostExitedNotification is part of an experimental API and may change or be
 // removed.
@@ -5146,17 +5244,66 @@ type HostExitedResult struct {
 // Experimental: HostGetConfigurationResult is part of an experimental API and may change or
 // be removed.
 type HostGetConfigurationResult struct {
+	// Requested GitHub Mission Control registration.
+	GitHubEnvironment *HostGitHubEnvironmentOptions `json:"githubEnvironment,omitempty"`
+	// Normalized local listener settings, absent for relay-only hosts.
+	LocalServer *HostLocalServerConfiguration `json:"localServer,omitempty"`
+	// Whether app-owned durable sessions are resumed by the owning application.
+	ResumeFactory bool `json:"resumeFactory"`
+	// Whether session materialization is delegated to the owning application.
+	SessionFactory bool `json:"sessionFactory"`
+}
+
+// Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+// Experimental: HostGetEnvironmentCredentialsResult is part of an experimental API and may
+// change or be removed.
+type HostGetEnvironmentCredentialsResult struct {
+	// GitHub API base URL for the authenticated service.
+	GitHubAPIURL string `json:"githubApiUrl"`
+	// Hostname of the authenticated GitHub service.
+	GitHubHost string `json:"githubHost"`
+	// Mission Control API origin for environment registration and management.
+	MissionControlURL string `json:"missionControlUrl"`
+	// Current bearer token for the authenticated GitHub identity.
+	Token string `json:"token"`
+}
+
+// GitHub Mission Control registration options. The compute ID is application-owned and
+// stable.
+// Experimental: HostGitHubEnvironmentOptions is part of an experimental API and may change
+// or be removed.
+type HostGitHubEnvironmentOptions struct {
+	// Stable application installation identity, reused across host restarts.
+	ComputeID string `json:"computeId"`
+	// Human-readable environment display name.
+	Name string `json:"name"`
+}
+
+// Normalized local WebSocket listener settings.
+// Experimental: HostLocalServerConfiguration is part of an experimental API and may change
+// or be removed.
+type HostLocalServerConfiguration struct {
 	// Hostname or IP address to bind.
 	Hostname string `json:"hostname"`
 	// Port to bind, with zero requesting OS allocation.
 	Port int32 `json:"port"`
 	// Whether the listener requires token authentication.
 	RequireConnectionToken bool `json:"requireConnectionToken"`
-	// Whether app-owned durable sessions are resumed by the owning application.
-	ResumeFactory *bool `json:"resumeFactory,omitempty"`
-	// Whether session materialization is delegated to the owning application.
-	SessionFactory *bool `json:"sessionFactory,omitempty"`
 	// Secret connection token, absent when authentication is disabled.
+	Token *string `json:"token,omitempty"`
+}
+
+// Local WebSocket transport options.
+// Experimental: HostLocalServerOptions is part of an experimental API and may change or be
+// removed.
+type HostLocalServerOptions struct {
+	// Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
+	Hostname *string `json:"hostname,omitempty"`
+	// Listener port. Omitted or zero requests an OS-allocated port.
+	Port *int32 `json:"port,omitempty"`
+	// Require token authentication (default true). Cannot be false with a token.
+	RequireConnectionToken *bool `json:"requireConnectionToken,omitempty"`
+	// Nonempty connection token. Generated randomly when required and omitted.
 	Token *string `json:"token,omitempty"`
 }
 
@@ -5193,7 +5340,9 @@ type HostPublishSessionResult struct {
 // removed.
 type HostReadyRequest struct {
 	// Actual bound WebSocket URL.
-	Address string `json:"address"`
+	Address *string `json:"address,omitempty"`
+	// Registered environment ID, reported only once the relay transport is connected.
+	EnvironmentID *string `json:"environmentId,omitempty"`
 	// Configured secret token, absent when authentication is disabled.
 	Token *string `json:"token,omitempty"`
 }
@@ -5298,30 +5447,28 @@ type HostSessionReleaseRequest struct {
 type HostShutdownResult struct {
 }
 
-// Starts a supervised AHP listener in the runtime's configured working directory.
+// Starts a supervised AHP host with at least one explicitly selected transport.
 // Experimental: HostStartRequest is part of an experimental API and may change or be
 // removed.
 type HostStartRequest struct {
+	// Registers a GitHub Mission Control environment and enables its relay transport.
+	GitHubEnvironment *HostGitHubEnvironmentOptions `json:"githubEnvironment,omitempty"`
 	// Caller-generated UUID identifying this connection-owned listener.
 	HostID string `json:"hostId"`
-	// Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
-	Hostname *string `json:"hostname,omitempty"`
-	// Listener port. Omitted or zero requests an OS-allocated port.
-	Port *int32 `json:"port,omitempty"`
-	// Require token authentication (default true). Cannot be false with a token.
-	RequireConnectionToken *bool `json:"requireConnectionToken,omitempty"`
+	// Enables a local WebSocket listener.
+	LocalServer *HostLocalServerOptions `json:"localServer,omitempty"`
 	// Ask the owning application to resume its durable AHP sessions.
 	ResumeFactory *bool `json:"resumeFactory,omitempty"`
 	// Ask the owning SDK application to materialize AHP sessions.
 	SessionFactory *bool `json:"sessionFactory,omitempty"`
-	// Nonempty connection token. Generated randomly when required and omitted.
-	Token *string `json:"token,omitempty"`
 }
 
 // Listener readiness, returned only after binding and the supervised participant's SDK
 // handshake.
 // Experimental: HostStartResult is part of an experimental API and may change or be removed.
 type HostStartResult struct {
+	// GitHub Mission Control environment ID, present when its relay transport is ready.
+	EnvironmentID *string `json:"environmentId,omitempty"`
 	// Caller-generated listener UUID.
 	HostID string `json:"hostId"`
 	// Separate host process ID, when provided by a legacy runtime. Absent for in-process
@@ -5330,7 +5477,7 @@ type HostStartResult struct {
 	// Secret connection token, absent when authentication is disabled.
 	Token *string `json:"token,omitempty"`
 	// Actual bound WebSocket URL, including the allocated port.
-	URL string `json:"url"`
+	URL *string `json:"url,omitempty"`
 }
 
 // Catalogue identity retained from a bound candidate or plan at installation time.
@@ -11756,6 +11903,32 @@ type ProviderTokenAcquireRequest struct {
 type ProviderTokenAcquireResult struct {
 	// The bearer token value (without the `Bearer ` prefix).
 	Token string `json:"token"`
+}
+
+// Host-managed model selection ids to withdraw from the session's BYOK registry.
+// Experimental: ProviderWithdrawRequest is part of an experimental API and may change or be
+// removed.
+type ProviderWithdrawRequest struct {
+	// Provider-qualified selection ids to withdraw. Ids that are not registered are ignored, so
+	// withdrawal is idempotent. A provider left with no models referencing it is removed too.
+	Models []string `json:"models"`
+}
+
+// What the withdrawal actually removed from the registry.
+// Experimental: ProviderWithdrawResult is part of an experimental API and may change or be
+// removed.
+type ProviderWithdrawResult struct {
+	// True when withdrawal removed the selected host-managed model, leaving the session with no
+	// explicit selection, so ordinary model resolution picks the session default. Withdrawal
+	// never promotes a surviving model in its place: the choice of which model to use stays
+	// with the user.
+	ModelDeselected *bool `json:"modelDeselected,omitempty"`
+	// Providers removed because one of the withdrawn models was the last entry referencing
+	// them. A provider that merely has no models is not removed.
+	ProvidersRemoved []string `json:"providersRemoved"`
+	// Selection ids that were registered and are now withdrawn. Excludes requested ids that
+	// were not present.
+	Withdrawn []string `json:"withdrawn"`
 }
 
 // Attachment union accepted by push input, covering files, directories, GitHub objects,
@@ -21833,6 +22006,23 @@ const (
 	EntraTokenInteractionSilent EntraTokenInteraction = "silent"
 )
 
+// GitHub Mission Control compute kind.
+// Experimental: EnvironmentKind is part of an experimental API and may change or be removed.
+type EnvironmentKind string
+
+const (
+	// A GitHub-managed environment backed by GitHub Actions.
+	EnvironmentKindManagedActions EnvironmentKind = "managed-actions"
+	// A GitHub-managed cloud coding agent environment.
+	EnvironmentKindManagedCca EnvironmentKind = "managed-cca"
+	// A GitHub-managed sandbox environment.
+	EnvironmentKindManagedSandbox EnvironmentKind = "managed-sandbox"
+	// A user-managed environment in a GitHub Codespace.
+	EnvironmentKindUserCodespace EnvironmentKind = "user-codespace"
+	// A user-managed environment on a local machine.
+	EnvironmentKindUserLocal EnvironmentKind = "user-local"
+)
+
 type EventLogTypesString string
 
 const (
@@ -25604,6 +25794,71 @@ func (a *ServerCommandsAPI) List(ctx context.Context) (*CommandList, error) {
 	return &result, nil
 }
 
+// Experimental: ServerEnvironmentsAPI contains experimental APIs that may change or be
+// removed.
+type ServerEnvironmentsAPI serverAPI
+
+// Deletes a user-managed GitHub Mission Control environment. GitHub-managed environments
+// cannot be deleted. Does not stop a running host, which may register again.
+//
+// RPC method: environments.delete.
+//
+// Parameters: Identify a user-managed Mission Control environment to delete.
+//
+// Returns: Acknowledgement that the requested environment was deleted.
+func (a *ServerEnvironmentsAPI) Delete(ctx context.Context, params *EnvironmentsDeleteRequest) (*EnvironmentsDeleteResult, error) {
+	raw, err := a.client.Request(ctx, "environments.delete", params)
+	if err != nil {
+		return nil, err
+	}
+	var result EnvironmentsDeleteResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Gets safe discovery information for a GitHub Mission Control environment without
+// requiring a running host.
+//
+// RPC method: environments.get.
+//
+// Parameters: Identify a Mission Control environment to retrieve.
+//
+// Returns: Safe discovery information for the requested environment.
+func (a *ServerEnvironmentsAPI) Get(ctx context.Context, params *EnvironmentsGetRequest) (*EnvironmentsGetResult, error) {
+	raw, err := a.client.Request(ctx, "environments.get", params)
+	if err != nil {
+		return nil, err
+	}
+	var result EnvironmentsGetResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Lists GitHub Mission Control environments visible to the authenticated identity. Does not
+// require a running host and excludes host relay credentials.
+//
+// RPC method: environments.list.
+//
+// Parameters: Optional discovery filters supported by GitHub Mission Control.
+//
+// Returns: Environments visible to the authenticated caller and matching the supplied
+// filters.
+func (a *ServerEnvironmentsAPI) List(ctx context.Context, params *EnvironmentsListRequest) (*EnvironmentsListResult, error) {
+	raw, err := a.client.Request(ctx, "environments.list", params)
+	if err != nil {
+		return nil, err
+	}
+	var result EnvironmentsListResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Experimental: ServerExtensionsAPI contains experimental APIs that may change or be
 // removed.
 type ServerExtensionsAPI serverAPI
@@ -25734,12 +25989,12 @@ func (a *ServerHostAPI) PublishSession(ctx context.Context, params *HostPublishS
 	return &result, nil
 }
 
-// Starts a connection-owned local AHP listener as a supervised SDK participant.
+// Starts a connection-owned AHP host with explicit localServer and/or githubEnvironment
+// transports as a supervised SDK participant.
 //
 // RPC method: host.start.
 //
-// Parameters: Starts a supervised AHP listener in the runtime's configured working
-// directory.
+// Parameters: Starts a supervised AHP host with at least one explicitly selected transport.
 //
 // Returns: Listener readiness, returned only after binding and the supervised participant's
 // SDK handshake.
@@ -27627,6 +27882,7 @@ type ServerRPC struct {
 	Agents          *ServerAgentsAPI
 	Catalog         *ServerCatalogAPI
 	Commands        *ServerCommandsAPI
+	Environments    *ServerEnvironmentsAPI
 	Extensions      *ServerExtensionsAPI
 	Hooks           *ServerHooksAPI
 	Host            *ServerHostAPI
@@ -27694,6 +27950,7 @@ func NewServerRPC(client *jsonrpc2.Client) *ServerRPC {
 	r.Agents = (*ServerAgentsAPI)(&r.common)
 	r.Catalog = (*ServerCatalogAPI)(&r.common)
 	r.Commands = (*ServerCommandsAPI)(&r.common)
+	r.Environments = (*ServerEnvironmentsAPI)(&r.common)
 	r.Extensions = (*ServerExtensionsAPI)(&r.common)
 	r.Hooks = (*ServerHooksAPI)(&r.common)
 	r.Host = (*ServerHostAPI)(&r.common)
@@ -27788,6 +28045,27 @@ func (a *InternalServerHostAPI) GetConfiguration(ctx context.Context) (*HostGetC
 		return nil, err
 	}
 	var result HostGetConfigurationResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// GetEnvironmentCredentials resolves current authenticated credentials and remote-control
+// policy only for the runtime-owned Mission Control hosting participant.
+//
+// RPC method: host.getEnvironmentCredentials.
+//
+// Returns: Private credentials delivered only to a runtime-owned Mission Control hosting
+// participant.
+// Internal: GetEnvironmentCredentials is part of the SDK's internal handshake/plumbing;
+// external callers should not use it.
+func (a *InternalServerHostAPI) GetEnvironmentCredentials(ctx context.Context) (*HostGetEnvironmentCredentialsResult, error) {
+	raw, err := a.client.Request(ctx, "host.getEnvironmentCredentials", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result HostGetEnvironmentCredentialsResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}
@@ -32588,6 +32866,37 @@ func (a *ProviderAPI) Sync(ctx context.Context, params *ProviderSyncRequest) (*P
 		return nil, err
 	}
 	var result ProviderSyncResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Withdraws named host-managed models from the session's BYOK registry, leaving every other
+// entry untouched. The scoped counterpart to `provider.sync`: a snapshot can only describe
+// entries the caller knows about, so using it to remove one model silently withdraws rows
+// registered by another source, such as a plugin calling `provider.add` at runtime. Naming
+// what to remove leaves unrelated entries alone. Selection ids that are not registered are
+// ignored, so withdrawal is idempotent. A provider is removed only when one of the
+// withdrawn models was the last entry referencing it; a provider that simply has no models,
+// which is the normal state while its rows are supplied by catalog discovery, is left in
+// place.
+//
+// RPC method: session.provider.withdraw.
+//
+// Parameters: Host-managed model selection ids to withdraw from the session's BYOK registry.
+//
+// Returns: What the withdrawal actually removed from the registry.
+func (a *ProviderAPI) Withdraw(ctx context.Context, params *ProviderWithdrawRequest) (*ProviderWithdrawResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	if params != nil {
+		req["models"] = params.Models
+	}
+	raw, err := a.client.Request(ctx, "session.provider.withdraw", req)
+	if err != nil {
+		return nil, err
+	}
+	var result ProviderWithdrawResult
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}

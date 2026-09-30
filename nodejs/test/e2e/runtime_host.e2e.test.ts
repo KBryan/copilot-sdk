@@ -70,6 +70,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
     it("preserves MCP Apps advertisement and channel access on callback-backed attachment", async () => {
         let original: CopilotSession | undefined;
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 expect(config.enableMcpApps).toBe(true);
                 original = await owner.createSession({
@@ -153,6 +154,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const released = vi.fn();
         let original: CopilotSession | undefined;
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config, signal }) => {
                 expect(signal.aborted).toBe(false);
                 original = await owner.createSession({
@@ -228,6 +230,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         );
         let original: CopilotSession | undefined;
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 original = await owner.createSession({
                     ...config,
@@ -328,6 +331,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const tool = vi.fn(({ seed }: { seed: string }) => `MAGIC_${seed}_42`);
         let original: CopilotSession | undefined;
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 original = await owner.createSession({
                     ...config,
@@ -388,6 +392,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const released = vi.fn();
         let original: CopilotSession | undefined;
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 original = await owner.createSession({
                     ...config,
@@ -447,6 +452,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             return original;
         });
         const first = await firstOwner.startAhpHost({
+            localServer: {},
             createSession: create,
             onSessionReleased: released,
         });
@@ -509,6 +515,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         );
         const resumedReleased = vi.fn();
         const replacement = await resumedOwner.startAhpHost({
+            localServer: {},
             createSession: createAgain,
             resumeSession: resume,
             onSessionReleased: resumedReleased,
@@ -608,6 +615,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         let sessionUri = "";
         let sessionId = "";
         await using first = await owner.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 original = await owner.createSession({
                     ...config,
@@ -658,6 +666,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         );
         const resumedReleased = vi.fn();
         await using replacement = await owner.startAhpHost({
+            localServer: {},
             createSession: createAgain,
             resumeSession: resume,
             onSessionReleased: resumedReleased,
@@ -681,6 +690,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             const retainedResume = vi.fn(async () => resumedOriginal!);
             const retainedReleased = vi.fn();
             await using retainedHost = await owner.startAhpHost({
+                localServer: {},
                 resumeSession: retainedResume,
                 onSessionReleased: retainedReleased,
             });
@@ -724,6 +734,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         });
         const released = vi.fn();
         await using host = await owner.startAhpHost({
+            localServer: {},
             createSession: factory,
             resumeSession: factory,
             onSessionReleased: released,
@@ -842,13 +853,15 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
     it("disposes listener and client without closing the runtime or owner session", async () => {
         await using session = await owner.createSession({ onPermissionRequest: approveAll });
         const observed = exitObserver();
-        await using host = await owner.startAhpHost({ onExit: observed.onExit });
+        await using host = await owner.startAhpHost({ localServer: {}, onExit: observed.onExit });
         const ahp = await connectAhp(host);
         try {
             await ahp.client.ping();
             await assertRuntimeListener(host, runtimeDetails().pid, artifacts);
-            expect(new URL(host.url).hostname).toBe("127.0.0.1");
-            expect(Number(new URL(host.url).port)).toBeGreaterThan(0);
+            expect(host.url).toBeDefined();
+            expect(host.environmentId).toBeUndefined();
+            expect(new URL(host.url!).hostname).toBe("127.0.0.1");
+            expect(Number(new URL(host.url!).port)).toBeGreaterThan(0);
             expect(host.token?.length).toBeGreaterThan(0);
             await Promise.all([
                 owner.rpc.host.dispose({ hostId: host.hostId }),
@@ -877,7 +890,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const registerFromOwner = () =>
             owner.rpc.secrets.addFilterValues({ values: ["ordinary-sdk-filter-sentinel"] });
         await expect(registerFromOwner()).rejects.toThrow("COPILOT_ENABLE_SECRET_FILTERING");
-        await using host = await owner.startAhpHost();
+        await using host = await owner.startAhpHost({ localServer: {} });
         const ahp = await connectAhp(host);
         try {
             const session = await createAhpSession(ahp, ctx.workDir, ctx.env.GITHUB_TOKEN);
@@ -896,7 +909,9 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const address = blocker.address();
         if (!address || typeof address === "string") throw new Error("Missing blocker address");
         try {
-            await expect(owner.startAhpHost({ port: address.port })).rejects.toThrow();
+            await expect(
+                owner.startAhpHost({ localServer: { port: address.port } })
+            ).rejects.toThrow();
             await expect(session.getEvents()).resolves.toEqual(expect.any(Array));
         } finally {
             await new Promise<void>((resolve, reject) =>
@@ -905,7 +920,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         }
         // There is no host process to kill: listener recovery is not process isolation.
         await using host = await owner.startAhpHost({
-            port: address.port,
+            localServer: { port: address.port },
             onExit: observed.onExit,
         });
         const ahp = await connectAhp(host);
@@ -925,8 +940,10 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
 
     it("honors listener endpoints and supplied tokens through framed RPC", async () => {
         const token = `ahp-e2e-${randomUUID()}`;
-        const ephemeral = await owner.startAhpHost({ hostname: "127.0.0.1", port: 0, token });
-        const port = Number(new URL(ephemeral.url).port);
+        const ephemeral = await owner.startAhpHost({
+            localServer: { hostname: "127.0.0.1", port: 0, token },
+        });
+        const port = Number(new URL(ephemeral.url!).port);
         expect(port).toBeGreaterThan(0);
         expect(ephemeral.token).toBe(token);
         const initialAhp = await connectAhp(ephemeral);
@@ -939,12 +956,14 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
 
         for (const hostname of ["0.0.0.0", "localhost", "::1"]) {
             await using host = await owner.startAhpHost({
-                hostname,
-                port: hostname === "0.0.0.0" ? port : 0,
-                token,
-                requireConnectionToken: true,
+                localServer: {
+                    hostname,
+                    port: hostname === "0.0.0.0" ? port : 0,
+                    token,
+                    requireConnectionToken: true,
+                },
             });
-            const bound = new URL(host.url);
+            const bound = new URL(host.url!);
             expect(Number(bound.port)).toBeGreaterThan(0);
             if (hostname === "0.0.0.0") {
                 expect(bound.hostname).toBe("0.0.0.0");
@@ -954,7 +973,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             } else {
                 expect(["127.0.0.1", "[::1]"]).toContain(bound.hostname);
             }
-            const reachable = new URL(host.url);
+            const reachable = new URL(host.url!);
             if (reachable.hostname === "0.0.0.0") reachable.hostname = "127.0.0.1";
             await expect(connectAhp({ url: reachable.href, token: undefined })).rejects.toThrow();
             await expect(
@@ -973,6 +992,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
     });
 
     it("disables only connection-token auth and rejects invalid listener options through direct RPC", async () => {
+        await expect(owner.rpc.host.start({ hostId: randomUUID() })).rejects.toThrow();
         for (const options of [
             { port: -1 },
             { port: 65536 },
@@ -981,10 +1001,12 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             { token: "supplied", requireConnectionToken: false },
         ]) {
             await expect(
-                owner.rpc.host.start({ hostId: randomUUID(), ...options })
+                owner.rpc.host.start({ hostId: randomUUID(), localServer: options })
             ).rejects.toThrow();
         }
-        await using host = await owner.startAhpHost({ requireConnectionToken: false });
+        await using host = await owner.startAhpHost({
+            localServer: { requireConnectionToken: false },
+        });
         expect(host.token).toBeUndefined();
         const ahp = await connectAhp(host);
         try {
@@ -1029,7 +1051,10 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         });
         try {
             const observed = exitObserver();
-            const abandonedHost = await otherOwner.startAhpHost({ onExit: observed.onExit });
+            const abandonedHost = await otherOwner.startAhpHost({
+                localServer: {},
+                onExit: observed.onExit,
+            });
             const abandonedAhp = await connectAhp(abandonedHost);
             try {
                 const session = await createAhpSession(
@@ -1045,7 +1070,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
                 );
                 expect(response.text).toContain("4");
                 await assertRuntimeListener(abandonedHost, runtimeDetails().pid, artifacts);
-                await expect(owner.startAhpHost()).rejects.toThrow(
+                await expect(owner.startAhpHost({ localServer: {} })).rejects.toThrow(
                     /catalog (?:is )?already in use/
                 );
                 await expect(
@@ -1063,7 +1088,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
                 await assertHostStopped(abandonedHost, abandonedAhp);
                 await expect(survivingSession.getEvents()).resolves.toEqual(expect.any(Array));
                 expect(observed.exits).toHaveLength(1);
-                await using replacement = await owner.startAhpHost();
+                await using replacement = await owner.startAhpHost({ localServer: {} });
                 const replacementAhp = await connectAhp(replacement);
                 try {
                     await resumeAhp(replacementAhp, session.sessionUri, survivingSession.sessionId);
@@ -1092,7 +1117,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             onPermissionRequest: approveAll,
             streaming: true,
         });
-        await using host = await owner.startAhpHost();
+        await using host = await owner.startAhpHost({ localServer: {} });
         const ahp = await connectAhp(host);
         try {
             const session = await createAhpSession(ahp, ctx.workDir, ctx.env.GITHUB_TOKEN);
@@ -1124,7 +1149,10 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             ).toBe(true);
 
             const observed = exitObserver();
-            await using replacement = await owner.startAhpHost({ onExit: observed.onExit });
+            await using replacement = await owner.startAhpHost({
+                localServer: {},
+                onExit: observed.onExit,
+            });
             const replacementAhp = await connectAhp(replacement);
             try {
                 const resumed = await resumeAhp(
@@ -1141,7 +1169,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
             } finally {
                 await replacementAhp.client.shutdown();
             }
-            await using recovered = await owner.startAhpHost();
+            await using recovered = await owner.startAhpHost({ localServer: {} });
             const recoveredAhp = await connectAhp(recovered);
             try {
                 const resumed = await resumeAhp(
@@ -1167,7 +1195,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
         const second = ctx.createClient({ baseDirectory });
         let sessionUri: string;
         try {
-            await using host = await first.startAhpHost();
+            await using host = await first.startAhpHost({ localServer: {} });
             const ahp = await connectAhp(host);
             try {
                 const runtime = (first as unknown as { cliProcess: ChildProcess }).cliProcess;
@@ -1186,7 +1214,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
                 await using ordinary = await second.createSession({
                     onPermissionRequest: approveAll,
                 });
-                await expect(second.startAhpHost()).rejects.toThrow(
+                await expect(second.startAhpHost({ localServer: {} })).rejects.toThrow(
                     /catalog (?:is )?already in use/
                 );
                 await expect(ordinary.getEvents()).resolves.toEqual(expect.any(Array));
@@ -1203,7 +1231,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
 
         const restarted = ctx.createClient({ baseDirectory });
         try {
-            await using host = await restarted.startAhpHost();
+            await using host = await restarted.startAhpHost({ localServer: {} });
             const ahp = await connectAhp(host);
             try {
                 const resumed = await resumeAhp(ahp, sessionUri!);
@@ -1218,7 +1246,7 @@ describe.skipIf(!enabled)("Runtime-supervised AHP host", async () => {
 
     it("gracefully shuts down the runtime with an attached AHP session", async () => {
         const observed = exitObserver();
-        const host = await owner.startAhpHost({ onExit: observed.onExit });
+        const host = await owner.startAhpHost({ localServer: {}, onExit: observed.onExit });
         const ahp = await connectAhp(host);
         const runtimePid = runtimeDetails().pid;
         try {

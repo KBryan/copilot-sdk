@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using GitHub.Copilot.Rpc;
+using Environment = System.Environment;
 
 namespace GitHub.Copilot.Test.Harness;
 

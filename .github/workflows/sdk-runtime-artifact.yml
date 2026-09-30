@@ -70,6 +70,8 @@ jobs:
         with:
           persist-credentials: false
 
+      # Restore/save paths must match shared-cli-build.yml in the same order:
+      # Actions includes the path list in the cache version, independently of the key.
       - name: Restore completed runtime build
         id: cache
         if: inputs.runtime-source == 'checkout'
@@ -78,6 +80,8 @@ jobs:
           path: |
             project-build-receipt.txt
             dist-cli/
+            dist-tmp/release-downloads/ripgrep/
+            dist-tmp/release-downloads/tgrep/
             dist-bin/
             dist-pkg-tarballs/
             src/core/sharedApi/runtime-generated/index.d.ts
@@ -159,6 +163,8 @@ jobs:
           path: |
             project-build-receipt.txt
             dist-cli/
+            dist-tmp/release-downloads/ripgrep/
+            dist-tmp/release-downloads/tgrep/
             dist-bin/
             dist-pkg-tarballs/
             src/core/sharedApi/runtime-generated/index.d.ts

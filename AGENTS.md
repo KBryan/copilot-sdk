@@ -49,6 +49,13 @@
 
 ## Testing & E2E tips ⚙️
 
+- In the runtime repository, write new E2E tests for shared runtime behavior
+  available entirely through the SDK in the TypeScript SDK suite
+  (`<SDK_ROOT>/nodejs/test/e2e/`), not `test/cli/e2e/`. Use CLI E2Es for
+  terminal UI and CLI-only behavior. Add E2Es in Python, Go, .NET, Rust, or
+  Java only for that language's SDK surface area, not for shared runtime
+  functionality. In the runtime repository, invoke the `e2e-test-author` and
+  `writing-tests` skills before writing TypeScript SDK E2Es.
 - E2E runs against a local **replaying CAPI proxy** (see `<SDK_ROOT>/test/harness/server.ts`). Most language E2E harnesses spawn that server automatically (see `<SDK_ROOT>/python/e2e/testharness/proxy.py`).
 - Tests rely on YAML snapshot exchanges under `<SDK_ROOT>/test/snapshots/` — to add test scenarios, add or edit the appropriate YAML files and update tests.
 - The harness prints `Listening: http://...` — tests parse this URL to configure CLI or proxy.
@@ -82,7 +89,7 @@
 
 - SDK code: `<SDK_ROOT>/nodejs/src`, `<SDK_ROOT>/python/copilot`, `<SDK_ROOT>/go`, `<SDK_ROOT>/dotnet/src`, `<SDK_ROOT>/rust/src`, `<SDK_ROOT>/java/sdk/src/main/java`
 - Unit tests: `<SDK_ROOT>/nodejs/test`, `<SDK_ROOT>/python/*`, `<SDK_ROOT>/go/*`, `<SDK_ROOT>/dotnet/test`, `<SDK_ROOT>/rust/tests`, `<SDK_ROOT>/java/sdk/src/test/java`
-- E2E tests: `*/e2e/` folders that use the shared replay proxy and `<SDK_ROOT>/test/snapshots/`, `<SDK_ROOT>/java/sdk/src/test/java/**/e2e/`
+- E2E tests: `<SDK_ROOT>/nodejs/test/e2e/` for SDK-accessible runtime behavior; other `*/e2e/` folders and `<SDK_ROOT>/java/sdk/src/test/java/**/e2e/` for language-specific SDK behavior, using the shared replay proxy and `<SDK_ROOT>/test/snapshots/`
 - Generated types: in the runtime repository, run `npm --prefix <SDK_ROOT> run generate` or `generate:<language>` to derive committed schemas and clients from runtime HEAD. In the standalone SDK repository, the same commands use the pinned Copilot CLI release schemas. Update the pin only when intentionally advancing standalone generation inputs.
 - For schema-only generation, conditional freshness checks, and protocol
   generation, follow the contributor guide's

@@ -172,6 +172,17 @@ Language-specific details:
 - [Rust](rust/README.md#development)
 - [Java](java/README.md#development-setup)
 
+### E2E test ownership
+
+Keep end-to-end coverage of the runtime's individual generated RPC methods,
+their response shapes, and built-in tool behavior in the TypeScript SDK
+(`nodejs/test/e2e/`). The .NET, Go, Python, Rust, and Java suites retain a
+small number of generated RPC round trips to verify each language's transport
+and generated bindings, but should not repeat the per-method or built-in tool
+matrices. Their remaining E2E tests should exercise handwritten SDK behavior
+such as connection lifecycle, session orchestration, callbacks, custom tools,
+configuration, and language-specific integrations.
+
 ### Testing an unreleased runtime API
 
 In `github/copilot-agent-runtime`, Rust contracts under
@@ -294,6 +305,17 @@ follow [the Rust SDK workflow](.github/workflows/sdk-rust.yml) for rustdoc.
 
 ### Recording and replaying SDK tests
 
+For new E2E coverage of runtime functionality available entirely through the
+SDK, use the TypeScript SDK suite in `nodejs/test/e2e/` rather than the CLI
+suite in the runtime repository. CLI E2Es are for terminal interactions,
+rendered UI, CLI-only commands or flags, and other CLI-specific contracts.
+Add E2Es in other SDK languages only when they test that language's SDK surface
+area, not shared runtime behavior.
+
+For TypeScript SDK E2Es, use the existing
+`nodejs/test/e2e/harness/sdkTestContext.ts` fixture. In the runtime repository,
+also follow the `e2e-test-author` skill's SDK section.
+
 Owned-stdio shutdown regressions share
 `test/harness/stdio-shutdown-runtime.cjs` across all six SDKs. Launch it with
 Node and arguments `<cleanup-marker> <mode> <pid-file>`. The fixture acknowledges
@@ -318,10 +340,12 @@ environment. If the host proxy substitutes a protected credential, set
 `GITHUB_TOKEN="$GH_TOKEN"` using its issued placeholder; do not print or persist
 the credential. Keep localhost and loopback in `NO_PROXY`.
 
-Equivalent cross-language E2Es must share snapshot names and prompts, not
-language-specific copies. The structured-output suite in **all six SDKs** reuses
-the following captures in `test/snapshots/structured_output/`, recorded using
-real CAPI `gpt-4.1` calls through the shared harness:
+Where E2Es for equivalent language-specific SDK APIs are needed in multiple
+languages, share snapshot names and prompts instead of making language-specific
+copies. The existing structured-output suite in **all six SDKs** reuses the
+following captures in `test/snapshots/structured_output/`, recorded using real
+CAPI `gpt-4.1` calls through the shared harness. New shared-runtime E2Es do not
+need copies across languages:
 
 | Shared capture (without `.yaml`) | Flow |
 | --- | --- |
@@ -341,11 +365,11 @@ actual provider request's inferred schema, so a recorded JSON response alone
 cannot mask missing schema forwarding. Explicit-schema and event-stream cases
 exercise the corresponding raw public APIs instead.
 
-Every language additionally checks rejection before admission and zero provider
-calls for oversized schemas and typed immediate steering. These cases have no
-model responses and therefore need **no snapshot**. Do not create canned responses
-or empty model captures for them. Unit tests supplement, rather than replace,
-the shared runtime E2Es.
+The existing suite in each language also checks rejection before admission
+and zero provider calls for oversized schemas and typed immediate steering.
+These cases have no model responses and therefore need **no snapshot**. Do not
+create canned responses or empty model captures for them. Unit tests supplement,
+rather than replace, the shared runtime E2Es.
 
 ## Submitting a Pull Request
 

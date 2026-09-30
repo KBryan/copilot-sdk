@@ -141,18 +141,15 @@ pub type AhpSessionReleasedCallback = Arc<dyn Fn(Arc<Session>) + Send + Sync>;
 /// Options for [`Client::start_ahp_host`].
 ///
 /// **Experimental.** May change or be removed in future releases.
-/// Listener defaults and validation belong to the runtime, not the SDK.
+/// At least one transport must be explicitly enabled; both may be used.
+/// Transport defaults and validation belong to the runtime.
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct AhpHostOptions {
-    /// Listener hostname; defaults to loopback in the runtime.
-    pub hostname: Option<String>,
-    /// Listener port; zero asks the runtime for an available port.
-    pub port: Option<i32>,
-    /// Optional explicit connection token.
-    pub token: Option<String>,
-    /// Whether connections require a token. Defaults to true in the runtime.
-    pub require_connection_token: Option<bool>,
+    /// Experimental local WebSocket listener configuration.
+    pub local_server: Option<crate::rpc::HostLocalServerOptions>,
+    /// Experimental Mission Control registration; name and compute ID are required.
+    pub github_environment: Option<crate::rpc::HostGitHubEnvironmentOptions>,
     /// Local callback, never serialized. Called at most once.
     ///
     /// Disconnect reports `OwnerDisconnected` without claiming the host was
@@ -174,10 +171,11 @@ pub struct AhpHostOptions {
 impl std::fmt::Debug for AhpHostOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AhpHostOptions")
-            .field("hostname", &self.hostname)
-            .field("port", &self.port)
-            .field("token", &self.token.as_ref().map(|_| "[redacted]"))
-            .field("require_connection_token", &self.require_connection_token)
+            .field(
+                "local_server",
+                &self.local_server.as_ref().map(|_| "[configured]"),
+            )
+            .field("github_environment", &self.github_environment)
             .field("on_exit", &self.on_exit.is_some())
             .field("create_session", &self.create_session.is_some())
             .field("resume_session", &self.resume_session.is_some())
@@ -187,32 +185,23 @@ impl std::fmt::Debug for AhpHostOptions {
 }
 
 impl AhpHostOptions {
-    /// Create options using runtime defaults.
+    /// Create options with no transports enabled. Select at least one before starting.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the listener hostname.
-    pub fn with_hostname(mut self, hostname: impl Into<String>) -> Self {
-        self.hostname = Some(hostname.into());
+    /// Enable the local WebSocket listener. Experimental; may change or be removed.
+    pub fn with_local_server(mut self, options: crate::rpc::HostLocalServerOptions) -> Self {
+        self.local_server = Some(options);
         self
     }
 
-    /// Set the listener port.
-    pub fn with_port(mut self, port: i32) -> Self {
-        self.port = Some(port);
-        self
-    }
-
-    /// Set an explicit connection token.
-    pub fn with_token(mut self, token: impl Into<String>) -> Self {
-        self.token = Some(token.into());
-        self
-    }
-
-    /// Set whether connections require a token.
-    pub fn with_require_connection_token(mut self, required: bool) -> Self {
-        self.require_connection_token = Some(required);
+    /// Enable Mission Control registration. Experimental; may change or be removed.
+    pub fn with_github_environment(
+        mut self,
+        options: crate::rpc::HostGitHubEnvironmentOptions,
+    ) -> Self {
+        self.github_environment = Some(options);
         self
     }
 
@@ -236,6 +225,7 @@ impl AhpHostOptions {
     /// # async fn example(owner: &Client) -> Result<(), github_copilot_sdk::Error> {
     /// let host = owner.start_ahp_host(
     ///     AhpHostOptions::new()
+    ///         .with_local_server(Default::default())
     ///         .with_create_session(|request: AhpSessionRequest, client: Client| async move {
     ///             // Add application tools and hooks without changing host settings.
     ///             Ok(Arc::new(client.create_session(request.config).await?))
@@ -286,8 +276,10 @@ impl AhpHostOptions {
 pub struct AhpHost {
     /// Runtime host identifier.
     pub host_id: String,
-    /// Listener URL returned by the runtime.
-    pub url: String,
+    /// Local listener URL, absent for Mission Control-only hosts.
+    pub url: Option<String>,
+    /// Experimental Mission Control environment identifier, when registered.
+    pub environment_id: Option<String>,
     /// Legacy separate host process ID. Absent for in-process listeners; use `dispose()` to stop.
     pub pid: Option<i64>,
     /// Connection token, absent when token authentication is disabled.
@@ -300,6 +292,7 @@ impl std::fmt::Debug for AhpHost {
         f.debug_struct("AhpHost")
             .field("host_id", &self.host_id)
             .field("url", &self.url)
+            .field("environment_id", &self.environment_id)
             .field("pid", &self.pid)
             .field("token", &self.token.as_ref().map(|_| "[redacted]"))
             .finish_non_exhaustive()
@@ -412,6 +405,12 @@ impl Client {
     /// Cancelling this future removes local callbacks and disposes a successfully
     /// started listener once the pending start response arrives.
     pub async fn start_ahp_host(&self, options: AhpHostOptions) -> Result<AhpHost, Error> {
+        if options.local_server.is_none() && options.github_environment.is_none() {
+            return Err(Error::with_message(
+                ErrorKind::InvalidConfig,
+                "AHP hosting requires localServer or githubEnvironment",
+            ));
+        }
         let host_id = uuid::Uuid::new_v4().to_string();
         let mut pending = PendingStart {
             callbacks: self.inner.ahp_host_callbacks.clone(),
@@ -439,10 +438,8 @@ impl Client {
             "host.start",
             Some(serde_json::to_value(HostStartRequest {
                 host_id,
-                hostname: options.hostname,
-                port: options.port,
-                token: options.token,
-                require_connection_token: options.require_connection_token,
+                local_server: options.local_server,
+                github_environment: options.github_environment,
                 session_factory,
                 resume_factory,
             })?),
@@ -468,6 +465,7 @@ impl Client {
         Ok(AhpHost {
             host_id: result.host_id,
             url: result.url,
+            environment_id: result.environment_id,
             pid: result.pid,
             token: result.token,
             client: Arc::downgrade(&self.inner),

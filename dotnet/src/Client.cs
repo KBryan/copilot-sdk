@@ -291,7 +291,7 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
         var value = options.Environment is not null
             && options.Environment.TryGetValue(DefaultConnectionEnvVar, out var fromOptions)
                 ? fromOptions
-                : Environment.GetEnvironmentVariable(DefaultConnectionEnvVar);
+                : System.Environment.GetEnvironmentVariable(DefaultConnectionEnvVar);
 
         if (string.IsNullOrEmpty(value) || string.Equals(value, "stdio", StringComparison.OrdinalIgnoreCase))
         {

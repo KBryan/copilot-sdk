@@ -68,7 +68,7 @@ async fn callback_resume_composes_tools_after_application_session_runtime_restar
             let (released_tx, mut released) = mpsc::unbounded_channel();
             let expected_id = session_id.clone();
             let expected_directory = ctx.work_dir().canonicalize().unwrap();
-            let options = AhpHostOptions::new()
+            let options = local_options()
                 .with_create_session(move |_: AhpSessionRequest, _: Client| {
                     creates.fetch_add(1, Ordering::SeqCst);
                     async { Err::<Arc<Session>, Error>(std::io::Error::other("resume must not create").into()) }
@@ -102,7 +102,7 @@ async fn callback_resume_composes_tools_after_application_session_runtime_restar
                 })
                 .with_on_session_released(move |session| { released_tx.send(session).unwrap(); });
             let host = owner.start_ahp_host(options).await.unwrap();
-            let ahp = connect_url_as(&host.url, host.token.as_deref(), client_id).await;
+            let ahp = connect_url_as(host.url.as_deref().expect("local listener URL"), host.token.as_deref(), client_id).await;
             topology(&host, &owner, &home(ctx).join("ahp/sessions"));
             resume(&ahp, &uri, None).await;
             let restored = deadline(resumed.recv()).await.unwrap();
@@ -230,7 +230,7 @@ async fn callback_pending_disposal_releases_without_transport_drain_timeout() {
             let (released_tx, mut released) = mpsc::unbounded_channel();
             let finish = CancellationToken::new();
             let gate = finish.clone();
-            let options = AhpHostOptions::new()
+            let options = local_options()
                 .with_create_session(move |request: AhpSessionRequest, client: Client| {
                     let ready_tx = ready_tx.clone();
                     let gate = gate.clone();
@@ -318,7 +318,7 @@ fn options_with_app(
 ) {
     let (created_tx, created) = mpsc::unbounded_channel();
     let (released_tx, released) = mpsc::unbounded_channel();
-    let options = AhpHostOptions::new()
+    let options = local_options()
         .with_create_session(move |request: AhpSessionRequest, client: Client| {
             let callbacks = callbacks.clone();
             let created_tx = created_tx.clone();
@@ -512,7 +512,7 @@ async fn callback_cancellation_releases_late_session_after_host_disposal() {
             let (released_tx, mut released) = mpsc::unbounded_channel();
             let finish = CancellationToken::new();
             let gate = finish.clone();
-            let options = AhpHostOptions::new()
+            let options = local_options()
                 .with_create_session(move |request: AhpSessionRequest, client: Client| {
                     let ready_tx = ready_tx.clone();
                     let gate = gate.clone();

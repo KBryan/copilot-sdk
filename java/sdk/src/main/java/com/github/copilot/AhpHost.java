@@ -38,7 +38,8 @@ public final class AhpHost implements AutoCloseable {
     /**
      * Gets the bound address.
      *
-     * @return the actual bound WebSocket URL
+     * @return the actual bound WebSocket URL, or {@code null} without a local
+     *         server
      */
     public String getUrl() {
         return info.url();
@@ -47,7 +48,7 @@ public final class AhpHost implements AutoCloseable {
     /**
      * Gets the secret token.
      *
-     * @return the token, or {@code null} when authentication is disabled
+     * @return the token, or {@code null} without an authenticated local server
      */
     public String getToken() {
         return info.token();
@@ -60,6 +61,15 @@ public final class AhpHost implements AutoCloseable {
      */
     public Long getPid() {
         return info.pid();
+    }
+
+    /**
+     * Gets the GitHub Mission Control environment identity.
+     *
+     * @return the environment ID, or {@code null} without a GitHub environment
+     */
+    public String getEnvironmentId() {
+        return info.environmentId();
     }
 
     /**

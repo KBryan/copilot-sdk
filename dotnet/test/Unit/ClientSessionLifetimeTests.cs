@@ -2608,7 +2608,7 @@ public sealed partial class ClientSessionLifetimeTests
     private static Process StartExitedProcess()
     {
         var startInfo = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo(Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe", "/c exit 0")
+            ? new ProcessStartInfo(System.Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe", "/c exit 0")
             : new ProcessStartInfo("/bin/sh", "-c \"exit 0\"");
         startInfo.UseShellExecute = false;
         var process = Process.Start(startInfo)
@@ -2940,12 +2940,7 @@ public sealed partial class ClientSessionLifetimeTests
                 },
                 "session.create" => CreateSessionResult(request),
                 "session.resume" => CreateSessionResult(request),
-                "host.start" => new Dictionary<string, object?>
-                {
-                    ["hostId"] = paramsElement.GetProperty("hostId").GetString(),
-                    ["url"] = "ws://127.0.0.1:12345",
-                    ["token"] = "test-token"
-                },
+                "host.start" => CreateAhpHostResult(paramsElement),
                 "host.dispose" => new Dictionary<string, object?>(),
                 "host.publishSession" => new Dictionary<string, object?>
                 {

@@ -337,28 +337,6 @@ pub async fn with_dedicated_group_e2e_context<F>(
     with_dedicated_e2e_context(category, snapshot_name, test).await;
 }
 
-pub async fn skip_shared_e2e_inprocess(group: &'static SharedE2eGroup, reason: &str) -> bool {
-    if !skip_inprocess(reason) {
-        return false;
-    }
-
-    let mut state = group.state.lock().await;
-    let _permit = E2E_CONCURRENCY
-        .acquire()
-        .await
-        .expect("E2E concurrency semaphore should stay open");
-    let completed = group.completed_invocations.fetch_add(1, Ordering::Relaxed) + 1;
-    if completed == group.expected_invocations
-        && let Some(state) = state.take()
-    {
-        state
-            .shutdown_bounded(false)
-            .await
-            .unwrap_or_else(|error| panic!("tear down shared E2E group after skip: {error}"));
-    }
-    true
-}
-
 /// Run a dedicated one-client E2E test.
 ///
 /// New tests should call [`with_dedicated_e2e_context`] to make the lifecycle

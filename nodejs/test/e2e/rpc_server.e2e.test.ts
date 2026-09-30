@@ -356,6 +356,42 @@ describe("Server-scoped RPC", async () => {
         // The server-side close disposes the session; do not call session.disconnect().
     });
 
+    it.skipIf(isInProcessTransport)(
+        "should observe a session held by another runtime and release its lock",
+        async () => {
+            const sessionId = randomUUID();
+            const otherClient = createClientWithEnv({});
+            const otherSession = await otherClient.createSession({
+                sessionId,
+                workingDirectory: createUniqueWorkDirectory("server-rpc-in-use"),
+                onPermissionRequest: () => ({ kind: "approve-once" }),
+            });
+
+            try {
+                await client.start();
+                await waitForCondition(
+                    async () =>
+                        (
+                            await client.rpc.sessions.checkInUse({ sessionIds: [sessionId] })
+                        ).inUse.includes(sessionId),
+                    { timeoutMessage: `Session ${sessionId} was not reported in use` }
+                );
+
+                await otherClient.rpc.sessions.releaseLock({ sessionId });
+                await waitForCondition(
+                    async () =>
+                        !(
+                            await client.rpc.sessions.checkInUse({ sessionIds: [sessionId] })
+                        ).inUse.includes(sessionId),
+                    { timeoutMessage: `Session ${sessionId} was still reported in use` }
+                );
+            } finally {
+                await otherSession.disconnect();
+                await otherClient.stop();
+            }
+        }
+    );
+
     it("should prune dry-run and bulkDelete persisted session", async () => {
         const sessionId = randomUUID();
         const missingSessionId = randomUUID();

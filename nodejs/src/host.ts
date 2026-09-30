@@ -6,6 +6,8 @@ import type {
     HostExitedNotification,
     HostStartResult,
     HostPublishSessionResult,
+    HostLocalServerOptions,
+    HostGitHubEnvironmentOptions,
 } from "./generated/rpc.js";
 import type { CopilotSession } from "./session.js";
 import type { SessionConfig, ResumeSessionConfig } from "./types.js";
@@ -36,19 +38,16 @@ export interface AhpSessionResumeRequest {
 export type AhpHostExit = HostExitedNotification;
 
 /**
- * Options for a runtime-supervised AHP listener. Callbacks are captured at startup;
+ * Options for runtime-supervised AHP hosting. Select at least one transport.
+ * Callbacks are captured at startup;
  * later changes to this options object do not reconfigure an existing host.
  * @experimental
  */
 export interface AhpHostOptions {
-    /** Listener hostname. The runtime defaults to 127.0.0.1. */
-    hostname?: string;
-    /** Listener port. Omitted or zero asks the runtime for an available port. */
-    port?: number;
-    /** Connection token. The runtime generates one when required and omitted. */
-    token?: string;
-    /** Whether the listener requires token authentication. */
-    requireConnectionToken?: boolean;
+    /** Enable a local WebSocket listener; an empty object selects loopback defaults. */
+    localServer?: HostLocalServerOptions;
+    /** Register a Mission Control environment and enable remote WPS connections. */
+    githubEnvironment?: HostGitHubEnvironmentOptions;
     /** Called at most once when hosting ends, not on runtime process death. Local, never serialized. */
     onExit?: (exit: AhpHostExit) => void;
     /**
@@ -84,7 +83,10 @@ export interface AhpHostOptions {
  */
 export class AhpHost {
     readonly hostId: string;
-    readonly url: string;
+    /** Local WebSocket URL. Absent when only the GitHub environment is enabled. */
+    readonly url: string | undefined;
+    /** Mission Control environment ID, when GitHub hosting is enabled. */
+    readonly environmentId: string | undefined;
     /** Connection token, when required by the listener. Treat this value as a secret. */
     readonly token: string | undefined;
     /** Legacy separate host process ID. Absent for in-process listeners; use dispose() to stop. */
@@ -100,6 +102,7 @@ export class AhpHost {
     ) {
         this.hostId = info.hostId;
         this.url = info.url;
+        this.environmentId = info.environmentId;
         this.token = info.token;
         this.pid = info.pid;
     }

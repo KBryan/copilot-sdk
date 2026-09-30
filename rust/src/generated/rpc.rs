@@ -64,6 +64,13 @@ impl<'a> ClientRpc<'a> {
         }
     }
 
+    /// `environments.*` sub-namespace.
+    pub fn environments(&self) -> ClientRpcEnvironments<'a> {
+        ClientRpcEnvironments {
+            client: self.client,
+        }
+    }
+
     /// `extensions.*` sub-namespace.
     pub fn extensions(&self) -> ClientRpcExtensions<'a> {
         ClientRpcExtensions {
@@ -707,6 +714,107 @@ impl<'a> ClientRpcCommands<'a> {
     }
 }
 
+/// `environments.*` RPCs.
+#[derive(Clone, Copy)]
+pub struct ClientRpcEnvironments<'a> {
+    pub(crate) client: &'a Client,
+}
+
+impl<'a> ClientRpcEnvironments<'a> {
+    /// Lists GitHub Mission Control environments visible to the authenticated identity. Does not require a running host and excludes host relay credentials.
+    ///
+    /// Wire method: `environments.list`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Optional discovery filters supported by GitHub Mission Control.
+    ///
+    /// # Returns
+    ///
+    /// Environments visible to the authenticated caller and matching the supplied filters.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn list(
+        &self,
+        params: EnvironmentsListRequest,
+    ) -> Result<EnvironmentsListResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::ENVIRONMENTS_LIST, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Gets safe discovery information for a GitHub Mission Control environment without requiring a running host.
+    ///
+    /// Wire method: `environments.get`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Identify a Mission Control environment to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Safe discovery information for the requested environment.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn get(
+        &self,
+        params: EnvironmentsGetRequest,
+    ) -> Result<EnvironmentsGetResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::ENVIRONMENTS_GET, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Deletes a user-managed GitHub Mission Control environment. GitHub-managed environments cannot be deleted. Does not stop a running host, which may register again.
+    ///
+    /// Wire method: `environments.delete`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Identify a user-managed Mission Control environment to delete.
+    ///
+    /// # Returns
+    ///
+    /// Acknowledgement that the requested environment was deleted.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn delete(
+        &self,
+        params: EnvironmentsDeleteRequest,
+    ) -> Result<EnvironmentsDeleteResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::ENVIRONMENTS_DELETE, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+}
+
 /// `extensions.*` RPCs.
 #[derive(Clone, Copy)]
 pub struct ClientRpcExtensions<'a> {
@@ -926,13 +1034,13 @@ impl<'a> ClientRpcHost<'a> {
         Ok(serde_json::from_value(_value)?)
     }
 
-    /// Starts a connection-owned local AHP listener as a supervised SDK participant.
+    /// Starts a connection-owned AHP host with explicit localServer and/or githubEnvironment transports as a supervised SDK participant.
     ///
     /// Wire method: `host.start`.
     ///
     /// # Parameters
     ///
-    /// * `params` - Starts a supervised AHP listener in the runtime's configured working directory.
+    /// * `params` - Starts a supervised AHP host with at least one explicitly selected transport.
     ///
     /// # Returns
     ///
@@ -978,6 +1086,35 @@ impl<'a> ClientRpcHost<'a> {
         let _value = self
             .client
             .call(rpc_methods::HOST_DISPOSE, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Resolves current authenticated credentials and remote-control policy only for the runtime-owned Mission Control hosting participant.
+    ///
+    /// Wire method: `host.getEnvironmentCredentials`.
+    ///
+    /// # Returns
+    ///
+    /// Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub(crate) async fn get_environment_credentials(
+        &self,
+    ) -> Result<HostEnvironmentCredentials, Error> {
+        let wire_params = serde_json::json!({});
+        let _value = self
+            .client
+            .call(
+                rpc_methods::HOST_GETENVIRONMENTCREDENTIALS,
+                Some(wire_params),
+            )
             .await?;
         Ok(serde_json::from_value(_value)?)
     }
@@ -11016,6 +11153,39 @@ impl<'a> SessionRpcProvider<'a> {
             .session
             .client()
             .call(rpc_methods::SESSION_PROVIDER_SYNC, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Withdraws named host-managed models from the session's BYOK registry, leaving every other entry untouched. The scoped counterpart to `provider.sync`: a snapshot can only describe entries the caller knows about, so using it to remove one model silently withdraws rows registered by another source, such as a plugin calling `provider.add` at runtime. Naming what to remove leaves unrelated entries alone. Selection ids that are not registered are ignored, so withdrawal is idempotent. A provider is removed only when one of the withdrawn models was the last entry referencing it; a provider that simply has no models, which is the normal state while its rows are supplied by catalog discovery, is left in place.
+    ///
+    /// Wire method: `session.provider.withdraw`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Host-managed model selection ids to withdraw from the session's BYOK registry.
+    ///
+    /// # Returns
+    ///
+    /// What the withdrawal actually removed from the registry.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn withdraw(
+        &self,
+        params: ProviderWithdrawRequest,
+    ) -> Result<ProviderWithdrawResult, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_PROVIDER_WITHDRAW, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
     }

@@ -76,6 +76,7 @@ public sealed class RuntimeHostE2ETests(E2ETestFixture fixture, ITestOutputHelpe
 
         public AhpHostOptions Options() => new()
         {
+            LocalServer = new(),
             CreateSession = async request =>
             {
                 Interlocked.Increment(ref Creates);
@@ -110,6 +111,7 @@ public sealed class RuntimeHostE2ETests(E2ETestFixture fixture, ITestOutputHelpe
 
     private static async Task<string> ConnectAsync(AhpTestClient ahp, AhpHost host, string? clientId = null)
     {
+        Assert.NotNull(host.Url);
         var command = new JsonObject
         {
             ["op"] = "connect",

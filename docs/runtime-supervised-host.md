@@ -24,12 +24,13 @@ target architecture; application callbacks use ordinary SDK RPC.
 
 ## Ownership and transport
 
-The application connects to a runtime in the usual way. `client.startAhpHost()`
+The application connects to a runtime in the usual way. `client.startAhpHost(options)`
 asks that runtime to start the host library in a task. An in-memory duplex stream
 carries ordinary SDK JSON-RPC on a separate connection to that same runtime.
 This is not an AHP transport stream.
 
-The hosting task owns the physical, authenticated AHP listener. The requesting SDK
+The hosting task owns the selected local WebSocket listener and/or GitHub Mission
+Control registration and WPS connections. The requesting SDK
 connection owns the task. Disposing the handle, losing that connection, or
 shutting down the runtime ends the host's participation. Cleanup must not
 independently delete sessions or terminate another owner's work. A new SDK
@@ -56,6 +57,7 @@ detached, and the hosting task has stopped, not merely that shutdown was request
 ```ts
 await client.start();
 const host = await client.startAhpHost({
+    localServer: {},
     onExit: (exit) => console.log(`AHP host stopped: ${exit.reason}`),
 });
 // Connect an AHP client using host.url and, when defined, host.token.
@@ -63,7 +65,9 @@ const host = await client.startAhpHost({
 await client.stop();
 ```
 
-`AhpHostOptions` also accepts `hostname`, `port`, `token`, and
+`AhpHostOptions` requires at least one explicit transport: `localServer`,
+`githubEnvironment`, or both. There is no implicit local listener.
+`localServer` accepts `hostname`, `port`, `token`, and
 `requireConnectionToken`. The hostname defaults to `127.0.0.1`; explicit
 non-loopback addresses are allowed. An omitted or zero port selects an available
 port; other values must be integers from 1 through 65535. The returned URL contains
@@ -81,6 +85,57 @@ loopback with a generated token. Tokens travel over framed SDK RPC, not argv.
 Node.js, Rust, Python, Go, .NET, and Java expose experimental thin handles over the generated host RPCs.
 `onExit` is a local callback, not part of the serialized start request. There is no
 `closed` promise and no public generic notification-registration API.
+
+### GitHub Mission Control hosting
+
+```ts
+const host = await client.startAhpHost({
+    githubEnvironment: {
+        name: "My application",
+        computeId: "stable-application-installation-id",
+    },
+    // Include localServer: {} to also enable a local listener.
+});
+console.log(host.environmentId);
+```
+
+Both `name` and `computeId` are required. Keep the application-supplied compute ID
+stable across restarts to re-adopt the environment. The runtime uses its existing
+authenticated GitHub identity; a local listener token is not an MC credential.
+Startup fails if a requested transport cannot become ready, rather than silently
+downgrading to local-only hosting. Select transports at startup; dispose and
+recreate the host to change them.
+
+GitHub-only hosting does not open a local listener. Its host handle has an
+environment ID but no local URL or connection token. `environmentId` is absent
+for local-only hosting. Disposal ends transport and registration activity without
+deleting the saved MC environment record or application-owned sessions.
+
+Registering an environment does not publish every application session. Use
+`publishSession` for existing resident sessions; factory callbacks and durable
+catalog behavior are unchanged. Environment management is independent of a
+running host and available only through generated `rpc.environments.list`,
+`rpc.environments.get`, and `rpc.environments.delete` operations, using each
+language's naming conventions.
+
+```ts
+const { environments } = await client.rpc.environments.list({
+    kind: "user-local",
+    status: "online",
+});
+const selected = environments[0];
+if (selected) {
+    const { environment } = await client.rpc.environments.get({
+        environmentId: selected.id,
+    });
+    // Delete only when the application intends to remove this saved environment.
+    await client.rpc.environments.delete({ environmentId: environment.id });
+}
+```
+
+These management operations are experimental and do not require a running host.
+Discovery returns safe metadata, not host-side relay credentials. GitHub-managed
+environments cannot be deleted through this API.
 
 ## Application-owned sessions
 
@@ -100,6 +155,7 @@ import { approveAll, type CopilotClient } from "@github/copilot-sdk";
 
 async function startApplicationHost(client: CopilotClient) {
     return client.startAhpHost({
+        localServer: {},
         createSession: ({ config, signal }) => {
             signal.throwIfAborted();
             return client.createSession({
@@ -121,11 +177,13 @@ async function startApplicationHost(client: CopilotClient) {
 ```rust
 use std::sync::Arc;
 use github_copilot_sdk::{AhpHost, AhpHostOptions, AhpSessionRequest, Client, Error};
+use github_copilot_sdk::rpc::HostLocalServerOptions;
 
 async fn start_application_host(owner: &Client) -> Result<AhpHost, Error> {
     owner
         .start_ahp_host(
             AhpHostOptions::new()
+                .with_local_server(HostLocalServerOptions::default())
                 .with_create_session(
                     |request: AhpSessionRequest, client: Client| async move {
                         Ok(Arc::new(client.create_session(request.config).await?))
@@ -153,6 +211,7 @@ from copilot import (
     AhpHostOptions, AhpSessionCreateRequest, CopilotClient, CopilotSession,
     PermissionHandler,
 )
+from copilot.rpc import HostLocalServerOptions
 
 async def start_application_host(client: CopilotClient):
     async def create(request: AhpSessionCreateRequest):
@@ -164,7 +223,11 @@ async def start_application_host(client: CopilotClient):
         await session.disconnect()
 
     return await client.start_ahp_host(
-        AhpHostOptions(create_session=create, on_session_released=release)
+        AhpHostOptions(
+            local_server=HostLocalServerOptions(),
+            create_session=create,
+            on_session_released=release,
+        )
     )
 ```
 
@@ -178,10 +241,12 @@ package main
 import (
     "context"
     copilot "github.com/github/copilot-sdk/go"
+    "github.com/github/copilot-sdk/go/rpc"
 )
 
 func startApplicationHost(ctx context.Context, client *copilot.Client) (*copilot.AhpHost, error) {
     return client.StartAhpHost(ctx, &copilot.AhpHostOptions{
+        LocalServer: &rpc.HostLocalServerOptions{},
         CreateSession: func(ctx context.Context, request copilot.AhpSessionCreateRequest) (*copilot.Session, error) {
             request.Config.OnPermissionRequest = copilot.PermissionHandler.ApproveAll
             return client.CreateSession(ctx, request.Config)
@@ -209,6 +274,7 @@ static class HostingExample
     public static Task<AhpHost> StartApplicationHostAsync(CopilotClient client) =>
         client.StartAhpHostAsync(new AhpHostOptions
         {
+            LocalServer = new(),
             CreateSession = request =>
             {
                 request.CancellationToken.ThrowIfCancellationRequested();
@@ -229,6 +295,7 @@ import com.github.copilot.AhpHost;
 import com.github.copilot.AhpHostOptions;
 import com.github.copilot.AllowCopilotExperimental;
 import com.github.copilot.CopilotClient;
+import com.github.copilot.generated.rpc.HostLocalServerOptions;
 import com.github.copilot.rpc.PermissionHandler;
 import java.util.concurrent.CompletableFuture;
 
@@ -236,6 +303,7 @@ import java.util.concurrent.CompletableFuture;
 class HostingExample {
     static CompletableFuture<AhpHost> startApplicationHost(CopilotClient client) {
         return client.startAhpHost(new AhpHostOptions()
+                .setLocalServer(new HostLocalServerOptions(null, null, null, null))
                 .setCreateSession(request -> client.createSession(request.config()
                         .setOnPermissionRequest(PermissionHandler.APPROVE_ALL)))
                 .setOnSessionReleased(session -> {

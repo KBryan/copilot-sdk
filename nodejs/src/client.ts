@@ -2196,23 +2196,24 @@ export class CopilotClient {
      * SDK connection to the same runtime, not another runtime process.
      * Only one AHP host may own the catalog in an effective Copilot home
      * at a time. Other SDK clients and sessions remain usable in that home.
-     * The runtime validates listener options and defaults to 127.0.0.1 on an
-     * available port. `onExit` runs at most once; owner disconnection cannot
+     * Select localServer, githubEnvironment, or both. An empty localServer
+     * selects 127.0.0.1 on an available port. `onExit` runs at most once; owner disconnection cannot
      * acknowledge listener cleanup over the disconnected transport.
      *
      * @experimental
      */
-    async startAhpHost(options: AhpHostOptions = {}): Promise<AhpHost> {
+    async startAhpHost(options: AhpHostOptions): Promise<AhpHost> {
+        if (!options?.localServer && !options?.githubEnvironment) {
+            throw new Error("At least one of localServer or githubEnvironment is required");
+        }
         if (this.state !== "connected") {
             await this.start();
         }
         const rpc = this.rpc;
         const hostId = randomUUID();
         const {
-            hostname,
-            port,
-            token,
-            requireConnectionToken,
+            localServer,
+            githubEnvironment,
             onExit,
             createSession,
             resumeSession,
@@ -2231,10 +2232,8 @@ export class CopilotClient {
         try {
             const info = await rpc.host.start({
                 hostId,
-                hostname,
-                port,
-                token,
-                requireConnectionToken,
+                localServer,
+                githubEnvironment,
                 sessionFactory: createSession ? true : undefined,
                 resumeFactory: resumeSession ? true : undefined,
             });

@@ -1,5 +1,9 @@
 # Examples: New Java E2E Test with YAML Snapshot
 
+These examples document existing Java tests. For new E2E tests of shared
+runtime behavior available through the SDK, use the TypeScript SDK suite
+instead; add Java E2Es only for Java SDK surface area.
+
 ## Example 1: Simple single-turn conversation (no tool calls)
 
 ### Snapshot YAML

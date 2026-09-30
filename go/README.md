@@ -36,6 +36,14 @@ go run ./manual_tool_resume
 ## Quick Start
 
 For experimental in-process AHP hosting, use `client.StartAhpHost(ctx, &copilot.AhpHostOptions{...})`.
+Select at least one explicit transport: `LocalServer: &rpc.HostLocalServerOptions{}`
+enables a local listener; `GitHubEnvironment: &rpc.HostGitHubEnvironmentOptions{Name: "My host", ComputeID: "my-compute"}`
+registers a Mission Control environment. Both can be enabled. Import `rpc` from
+`github.com/github/copilot-sdk/go/rpc`. No transport is enabled by default.
+Local hostname, port, token, and authentication settings belong inside `LocalServer`.
+The returned handle's `URL`, `Token`, `PID`, and `EnvironmentID` are optional pointers;
+Mission Control-only hosting has no local URL. These APIs are experimental.
+Use the generated `client.RPC.Environments` namespace for environment list/get/delete operations.
 See [runtime-supervised AHP hosting](../docs/runtime-supervised-host.md) for creation
 and resume callbacks, resident-session publication, ownership, and shared-snapshot E2Es.
 

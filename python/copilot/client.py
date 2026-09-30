@@ -3809,7 +3809,7 @@ class CopilotClient:
         )
         return session
 
-    async def start_ahp_host(self, options: AhpHostOptions | None = None) -> AhpHost:
+    async def start_ahp_host(self, options: AhpHostOptions) -> AhpHost:
         """Start an experimental, connection-owned in-process AHP listener.
 
         Factories preserve host-selected settings while adding application
@@ -3817,11 +3817,13 @@ class CopilotClient:
         If canceled during startup, cleanup continues on the owning connection
         and disposes the listener once startup settles.
         """
+        if options is None or (options.local_server is None and options.github_environment is None):
+            raise ValueError("At least one of local_server or github_environment is required")
         if self._state != "connected":
             await self.start()
         if self._client is None:
             raise RuntimeError("Client not connected")
-        return await self._ahp_hosts.start(self._client, options or AhpHostOptions())
+        return await self._ahp_hosts.start(self._client, options)
 
     async def ping(self, message: str | None = None) -> PingResponse:
         """

@@ -27,6 +27,8 @@ public record HostReadyParams(
     /** Actual bound WebSocket URL. */
     @JsonProperty("address") String address,
     /** Configured secret token, absent when authentication is disabled. */
-    @JsonProperty("token") String token
+    @JsonProperty("token") String token,
+    /** Registered environment ID, reported only once the relay transport is connected. */
+    @JsonProperty("environmentId") String environmentId
 ) {
 }

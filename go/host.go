@@ -38,23 +38,29 @@ type AhpSessionResumeRequest struct {
 // Factory contexts are cancelled when participation ends. A late returned session
 // is still released exactly once; the SDK never disconnects or destroys it.
 // Notification callbacks run asynchronously, with errors reported to the Go logger.
+// At least one transport must be supplied. Both may be enabled.
+// Experimental: AHP hosting may change or be removed.
 type AhpHostOptions struct {
-	Hostname               *string
-	Port                   *int32
-	Token                  *string
-	RequireConnectionToken *bool
-	CreateSession          func(context.Context, AhpSessionCreateRequest) (*Session, error)
-	ResumeSession          func(context.Context, AhpSessionResumeRequest) (*Session, error)
-	OnSessionReleased      func(*Session) error
-	OnExit                 func(AhpHostExit) error
+	// LocalServer explicitly enables the local WebSocket listener.
+	LocalServer *rpc.HostLocalServerOptions
+	// GitHubEnvironment registers the host with Mission Control; Name and ComputeID are required.
+	GitHubEnvironment *rpc.HostGitHubEnvironmentOptions
+	CreateSession     func(context.Context, AhpSessionCreateRequest) (*Session, error)
+	ResumeSession     func(context.Context, AhpSessionResumeRequest) (*Session, error)
+	OnSessionReleased func(*Session) error
+	OnExit            func(AhpHostExit) error
 }
 
 // AhpHost is an experimental listener owned by one SDK connection.
 // Reconnecting the client does not transfer this handle to its new connection.
+// Experimental: AHP hosting may change or be removed.
 type AhpHost struct {
 	HostID string
-	URL    string
-	Token  *string
+	// URL is absent when no local listener was requested.
+	URL   *string
+	Token *string
+	// EnvironmentID identifies the optional Mission Control registration.
+	EnvironmentID *string
 	// PID is absent for in-process listeners, not the owning runtime's PID.
 	PID *int64
 	rpc *rpc.ServerHostAPI
@@ -97,16 +103,16 @@ var errAhpHandoffEnded = errors.New("AHP session handoff ended")
 // Cancellation abandons the wait; a listener that subsequently starts is disposed.
 // Experimental: AHP hosting may change or be removed.
 func (c *Client) StartAhpHost(ctx context.Context, options *AhpHostOptions) (*AhpHost, error) {
+	if options == nil || (options.LocalServer == nil && options.GitHubEnvironment == nil) {
+		return nil, errors.New("AHP hosting requires localServer or githubEnvironment")
+	}
 	if err := c.ensureConnected(ctx); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	var opts AhpHostOptions
-	if options != nil {
-		opts = *options
-	}
+	opts := *options
 	c.startStopMux.RLock()
 	if c.RPC == nil {
 		c.startStopMux.RUnlock()
@@ -123,8 +129,8 @@ func (c *Client) StartAhpHost(ctx context.Context, options *AhpHostOptions) (*Ah
 	c.ahp.hosts[hostID] = opts
 	c.ahp.mu.Unlock()
 	params := &rpc.HostStartRequest{
-		HostID: hostID, Hostname: opts.Hostname, Port: opts.Port,
-		Token: opts.Token, RequireConnectionToken: opts.RequireConnectionToken,
+		HostID: hostID, LocalServer: opts.LocalServer,
+		GitHubEnvironment: opts.GitHubEnvironment,
 	}
 	if opts.CreateSession != nil {
 		params.SessionFactory = Bool(true)
@@ -148,7 +154,7 @@ func (c *Client) StartAhpHost(ctx context.Context, options *AhpHostOptions) (*Ah
 			return nil, result.err
 		}
 		info := result.info
-		return &AhpHost{HostID: info.HostID, URL: info.URL, Token: info.Token, PID: info.Pid, rpc: hostRPC}, nil
+		return &AhpHost{HostID: info.HostID, URL: info.URL, Token: info.Token, PID: info.Pid, EnvironmentID: info.EnvironmentID, rpc: hostRPC}, nil
 	case <-ctx.Done():
 		// Wait for registration before disposing: an early dispose can miss the listener.
 		go func() {

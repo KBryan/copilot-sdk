@@ -143,27 +143,32 @@ use github_copilot_sdk::{AhpHostOptions, Client};
 # async fn example(client: &Client) -> Result<(), github_copilot_sdk::Error> {
 let host = client.start_ahp_host(
     AhpHostOptions::default()
-        .with_hostname("127.0.0.1")
-        .with_port(0)
+        .with_local_server(Default::default())
         .with_on_exit(|exit| {
             println!("host {} exited: {:?}", exit.host_id, exit.reason);
         }),
 ).await?;
-println!("{} (in-process host {})", host.url, host.host_id);
+println!("{:?} (in-process host {})", host.url, host.host_id);
 // Supply host.token to AHP clients when present; never log it.
 host.dispose().await?;
 # Ok(())
 # }
 ```
 
-`AhpHostOptions` has optional `hostname`, `port`, `token`,
-`require_connection_token`, and local-only `on_exit` fields, with matching
-`with_*` builders. Defaults and validation stay in the runtime: loopback hostname,
-an available port, and required connection-token authentication. Set
-`with_require_connection_token(false)` to disable token authentication; then
-`AhpHost::token` is `None`.
+`AhpHostOptions` requires at least one explicit transport: `with_local_server`
+accepts generated `rpc::HostLocalServerOptions`, and `with_github_environment`
+accepts generated `rpc::HostGitHubEnvironmentOptions` with required `name` and
+`compute_id`. Both transports may be enabled. There is no implicit local listener.
+Local `hostname`, `port`, `token`, and `require_connection_token` settings belong
+inside `HostLocalServerOptions`. Its runtime defaults are loopback, an available
+port, and required token authentication. Set its `require_connection_token` to
+`Some(false)` to disable connection-token authentication.
+The `on_exit` callback remains local-only. All hosting APIs are experimental.
 
-The returned `AhpHost` exposes `host_id`, `url`, `pid`, and `token`.
+The returned `AhpHost` exposes `host_id` and optional `url`, `pid`, `token`, and
+`environment_id`. Mission Control-only hosting has no local URL; `environment_id`
+identifies its registration. Environment list/get/delete operations are available
+only through the generated `client.rpc().environments()` namespace.
 `pid` is `None` for in-process listeners; `Some(pid)` preserves a separate host
 process ID returned by a legacy runtime, never the runtime PID. Stop the
 in-process listener with `dispose()`. There is no
@@ -209,6 +214,7 @@ use github_copilot_sdk::handler::ApproveAllHandler;
 # async fn example(client: &Client) -> Result<(), github_copilot_sdk::Error> {
 let host = client.start_ahp_host(
     AhpHostOptions::new()
+        .with_local_server(Default::default())
         .with_create_session(|request: AhpSessionRequest, client: Client| async move {
             // Use this request-scoped client instead of capturing the owner.
             // Preserve request.config; add your tools/hooks here.

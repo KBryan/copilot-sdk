@@ -99,10 +99,8 @@ final class AhpHostManager {
         }
         var snapshot = host.options;
         return rpc
-                .start(new HostStartParams(host.id, snapshot.getHostname(),
-                        snapshot.getPort() == null ? null : snapshot.getPort().longValue(), snapshot.getToken(),
-                        snapshot.getRequireConnectionToken(), snapshot.getCreateSession() != null,
-                        snapshot.getResumeSession() != null))
+                .start(new HostStartParams(host.id, snapshot.getLocalServer(), snapshot.getGithubEnvironment(),
+                        snapshot.getCreateSession() != null, snapshot.getResumeSession() != null))
                 .thenApply(info -> new AhpHost(info, rpc)).whenComplete((result, error) -> {
                     if (error != null) {
                         endHost(host, null);

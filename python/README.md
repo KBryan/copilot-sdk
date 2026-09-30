@@ -74,6 +74,11 @@ python chat.py
 ## Quick Start
 
 For experimental in-process AHP hosting, use `client.start_ahp_host(AhpHostOptions(...))`.
+Select `local_server=HostLocalServerOptions()` for a local listener,
+`github_environment=HostGitHubEnvironmentOptions(name="My app", compute_id="stable-installation-id")`
+for Mission Control/WPS, or both. Import the transport types from `copilot.rpc`.
+At least one transport is required. GitHub-only hosts have no `url` or `token`;
+`host.environment_id` exposes their Mission Control identity.
 See [runtime-supervised AHP hosting](../docs/runtime-supervised-host.md) for creation
 and resume callbacks, resident-session publication, ownership, and shared-snapshot E2Es.
 

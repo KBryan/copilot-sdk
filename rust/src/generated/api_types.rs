@@ -22,6 +22,12 @@ use crate::types::{RequestId, SessionEvent, SessionId};
 
 /// JSON-RPC method name constants.
 pub mod rpc_methods {
+    /// `environments.list`
+    pub const ENVIRONMENTS_LIST: &str = "environments.list";
+    /// `environments.get`
+    pub const ENVIRONMENTS_GET: &str = "environments.get";
+    /// `environments.delete`
+    pub const ENVIRONMENTS_DELETE: &str = "environments.delete";
     /// `host.publishSession`
     pub const HOST_PUBLISHSESSION: &str = "host.publishSession";
     /// `host.createSession`
@@ -32,6 +38,8 @@ pub mod rpc_methods {
     pub const HOST_START: &str = "host.start";
     /// `host.dispose`
     pub const HOST_DISPOSE: &str = "host.dispose";
+    /// `host.getEnvironmentCredentials`
+    pub const HOST_GETENVIRONMENTCREDENTIALS: &str = "host.getEnvironmentCredentials";
     /// `host.getConfiguration`
     pub const HOST_GETCONFIGURATION: &str = "host.getConfiguration";
     /// `host.ready`
@@ -636,6 +644,8 @@ pub mod rpc_methods {
     pub const SESSION_PROVIDER_ADD: &str = "session.provider.add";
     /// `session.provider.sync`
     pub const SESSION_PROVIDER_SYNC: &str = "session.provider.sync";
+    /// `session.provider.withdraw`
+    pub const SESSION_PROVIDER_WITHDRAW: &str = "session.provider.withdraw";
     /// `session.options.update`
     pub const SESSION_OPTIONS_UPDATE: &str = "session.options.update";
     /// `session.lsp.initialize`
@@ -6655,6 +6665,160 @@ pub struct EntraTokenAcquireResultInteractionRequired {
     pub status: EntraTokenAcquireResultInteractionRequiredStatus,
 }
 
+/// Hosting capabilities and session capacity advertised by an environment.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentCapabilities {
+    /// Advertised Agent Host Protocol version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ahp_version: Option<String>,
+    /// Current session count, when advertised.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_sessions: Option<i64>,
+    /// Feature identifiers advertised by the environment.
+    pub features: Vec<String>,
+    /// Maximum session capacity, when advertised.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_sessions: Option<i64>,
+}
+
+/// Identify a user-managed Mission Control environment to delete.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsDeleteRequest {
+    /// User-managed environment to delete. GitHub-managed environments cannot be deleted.
+    pub environment_id: String,
+}
+
+/// Acknowledgement that the requested environment was deleted.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsDeleteResult {}
+
+/// Identify a Mission Control environment to retrieve.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsGetRequest {
+    /// Identifier assigned by Mission Control.
+    pub environment_id: String,
+}
+
+/// Safe discovery information. Host-side relay bootstrap credentials are never included.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubEnvironment {
+    /// Hosting capabilities advertised by the environment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<EnvironmentCapabilities>,
+    /// Identifier assigned by Mission Control.
+    pub id: String,
+    /// Compute kind reported by Mission Control.
+    pub kind: EnvironmentKind,
+    /// Discovery labels attached to the environment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<HashMap<String, String>>,
+    /// Timestamp of the last heartbeat received by Mission Control.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_at: Option<String>,
+    /// Human-readable environment name.
+    pub name: String,
+    /// Organization identifier, when the environment belongs to an organization.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org_id: Option<String>,
+    /// Identifier of the environment owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_id: Option<String>,
+    /// Owner category reported by Mission Control.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_type: Option<String>,
+    /// Open-ended operational status vocabulary.
+    pub status: String,
+}
+
+/// Safe discovery information for the requested environment.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsGetResult {
+    /// The requested environment without relay bootstrap credentials.
+    pub environment: GitHubEnvironment,
+}
+
+/// Optional discovery filters supported by GitHub Mission Control.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsListRequest {
+    /// Restrict discovery to this compute kind.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<EnvironmentKind>,
+    /// Operational status, such as online, offline, degraded, waking, or draining.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+/// Environments visible to the authenticated caller and matching the supplied filters.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvironmentsListResult {
+    /// Safe discovery records without relay bootstrap credentials.
+    pub environments: Vec<GitHubEnvironment>,
+}
+
 /// Cursor, batch size, and optional long-poll/filter parameters for reading session events.
 ///
 /// <div class="warning">
@@ -7854,6 +8018,45 @@ pub struct HooksDiscoverResult {
     pub warnings: Vec<String>,
 }
 
+/// GitHub Mission Control registration options. The compute ID is application-owned and stable.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostGitHubEnvironmentOptions {
+    /// Stable application installation identity, reused across host restarts.
+    pub compute_id: String,
+    /// Human-readable environment display name.
+    pub name: String,
+}
+
+/// Normalized local WebSocket listener settings.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostLocalServerConfiguration {
+    /// Hostname or IP address to bind.
+    pub hostname: String,
+    /// Port to bind, with zero requesting OS allocation.
+    pub port: i32,
+    /// Whether the listener requires token authentication.
+    pub require_connection_token: bool,
+    /// Secret connection token, absent when authentication is disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+}
+
 /// Normalized listener settings delivered only to the supervised hosting participant.
 ///
 /// <div class="warning">
@@ -7865,21 +8068,16 @@ pub struct HooksDiscoverResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostConfiguration {
-    /// Hostname or IP address to bind.
-    pub hostname: String,
-    /// Port to bind, with zero requesting OS allocation.
-    pub port: i32,
-    /// Whether the listener requires token authentication.
-    pub require_connection_token: bool,
+    /// Requested GitHub Mission Control registration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_environment: Option<HostGitHubEnvironmentOptions>,
+    /// Normalized local listener settings, absent for relay-only hosts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_server: Option<HostLocalServerConfiguration>,
     /// Whether app-owned durable sessions are resumed by the owning application.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resume_factory: Option<bool>,
+    pub resume_factory: bool,
     /// Whether session materialization is delegated to the owning application.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_factory: Option<bool>,
-    /// Secret connection token, absent when authentication is disabled.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>,
+    pub session_factory: bool,
 }
 
 /// Stops a connection-owned listener and joins its teardown.
@@ -7909,6 +8107,27 @@ pub struct HostDisposeRequest {
 #[serde(rename_all = "camelCase")]
 pub struct HostEmptyResult {}
 
+/// Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostEnvironmentCredentials {
+    /// GitHub API base URL for the authenticated service.
+    pub github_api_url: String,
+    /// Hostname of the authenticated GitHub service.
+    pub github_host: String,
+    /// Mission Control API origin for environment registration and management.
+    pub mission_control_url: String,
+    /// Current bearer token for the authenticated GitHub identity.
+    pub token: String,
+}
+
 /// Reports a supervised listener's hosting-task termination and cleanup outcome.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -7923,6 +8142,31 @@ pub struct HostExitedNotification {
     pub host_id: String,
     /// Cause of termination.
     pub reason: HostExitReason,
+}
+
+/// Local WebSocket transport options.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostLocalServerOptions {
+    /// Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    /// Listener port. Omitted or zero requests an OS-allocated port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<i32>,
+    /// Require token authentication (default true). Cannot be false with a token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_connection_token: Option<bool>,
+    /// Nonempty connection token. Generated randomly when required and omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
 }
 
 /// Publishes a resident session attached to the listener's owning connection.
@@ -7971,7 +8215,11 @@ pub struct HostPublishSessionResult {
 #[serde(rename_all = "camelCase")]
 pub struct HostReadyRequest {
     /// Actual bound WebSocket URL.
-    pub address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    /// Registered environment ID, reported only once the relay transport is connected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<String>,
     /// Configured secret token, absent when authentication is disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -8074,7 +8322,7 @@ pub struct HostSessionReleaseRequest {
     pub handoff_id: String,
 }
 
-/// Starts a supervised AHP listener in the runtime's configured working directory.
+/// Starts a supervised AHP host with at least one explicitly selected transport.
 ///
 /// <div class="warning">
 ///
@@ -8085,26 +8333,20 @@ pub struct HostSessionReleaseRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostStartRequest {
+    /// Registers a GitHub Mission Control environment and enables its relay transport.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_environment: Option<HostGitHubEnvironmentOptions>,
     /// Caller-generated UUID identifying this connection-owned listener.
     pub host_id: String,
-    /// Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.
+    /// Enables a local WebSocket listener.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
-    /// Listener port. Omitted or zero requests an OS-allocated port.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<i32>,
-    /// Require token authentication (default true). Cannot be false with a token.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub require_connection_token: Option<bool>,
+    pub local_server: Option<HostLocalServerOptions>,
     /// Ask the owning application to resume its durable AHP sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resume_factory: Option<bool>,
     /// Ask the owning SDK application to materialize AHP sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_factory: Option<bool>,
-    /// Nonempty connection token. Generated randomly when required and omitted.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>,
 }
 
 /// Listener readiness, returned only after binding and the supervised participant's SDK handshake.
@@ -8118,6 +8360,9 @@ pub struct HostStartRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostStartResult {
+    /// GitHub Mission Control environment ID, present when its relay transport is ready.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<String>,
     /// Caller-generated listener UUID.
     pub host_id: String,
     /// Separate host process ID, when provided by a legacy runtime. Absent for in-process listeners.
@@ -8127,7 +8372,8 @@ pub struct HostStartResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// Actual bound WebSocket URL, including the allocated port.
-    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 /// Catalogue identity retained from a bound candidate or plan at installation time.
@@ -16801,6 +17047,41 @@ pub struct ProviderTokenAcquireRequest {
 pub struct ProviderTokenAcquireResult {
     /// The bearer token value (without the `Bearer ` prefix).
     pub token: String,
+}
+
+/// Host-managed model selection ids to withdraw from the session's BYOK registry.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderWithdrawRequest {
+    /// Provider-qualified selection ids to withdraw. Ids that are not registered are ignored, so withdrawal is idempotent. A provider left with no models referencing it is removed too.
+    pub models: Vec<String>,
+}
+
+/// What the withdrawal actually removed from the registry.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderWithdrawResult {
+    /// True when withdrawal removed the selected host-managed model, leaving the session with no explicit selection, so ordinary model resolution picks the session default. Withdrawal never promotes a surviving model in its place: the choice of which model to use stays with the user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_deselected: Option<bool>,
+    /// Providers removed because one of the withdrawn models was the last entry referencing them. A provider that merely has no models is not removed.
+    pub providers_removed: Vec<String>,
+    /// Selection ids that were registered and are now withdrawn. Excludes requested ids that were not present.
+    pub withdrawn: Vec<String>,
 }
 
 /// Blob attachment with inline base64-encoded data
@@ -27285,6 +27566,27 @@ pub struct HostReleaseSessionResult {}
 #[serde(rename_all = "camelCase")]
 pub struct HostDisposeResult {}
 
+/// Private credentials delivered only to a runtime-owned Mission Control hosting participant.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostGetEnvironmentCredentialsResult {
+    /// GitHub API base URL for the authenticated service.
+    pub github_api_url: String,
+    /// Hostname of the authenticated GitHub service.
+    pub github_host: String,
+    /// Mission Control API origin for environment registration and management.
+    pub mission_control_url: String,
+    /// Current bearer token for the authenticated GitHub identity.
+    pub token: String,
+}
+
 /// Normalized listener settings delivered only to the supervised hosting participant.
 ///
 /// <div class="warning">
@@ -27296,21 +27598,16 @@ pub struct HostDisposeResult {}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostGetConfigurationResult {
-    /// Hostname or IP address to bind.
-    pub hostname: String,
-    /// Port to bind, with zero requesting OS allocation.
-    pub port: i32,
-    /// Whether the listener requires token authentication.
-    pub require_connection_token: bool,
+    /// Requested GitHub Mission Control registration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_environment: Option<HostGitHubEnvironmentOptions>,
+    /// Normalized local listener settings, absent for relay-only hosts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_server: Option<HostLocalServerConfiguration>,
     /// Whether app-owned durable sessions are resumed by the owning application.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resume_factory: Option<bool>,
+    pub resume_factory: bool,
     /// Whether session materialization is delegated to the owning application.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_factory: Option<bool>,
-    /// Secret connection token, absent when authentication is disabled.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub token: Option<String>,
+    pub session_factory: bool,
 }
 
 /// Empty acknowledgement for a completed host lifecycle operation.
@@ -31618,6 +31915,26 @@ pub struct SessionProviderSyncResult {
     pub models: Vec<serde_json::Value>,
     /// Provider-qualified model selection ids present after synchronization.
     pub selection_ids: Vec<String>,
+}
+
+/// What the withdrawal actually removed from the registry.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionProviderWithdrawResult {
+    /// True when withdrawal removed the selected host-managed model, leaving the session with no explicit selection, so ordinary model resolution picks the session default. Withdrawal never promotes a surviving model in its place: the choice of which model to use stays with the user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_deselected: Option<bool>,
+    /// Providers removed because one of the withdrawn models was the last entry referencing them. A provider that merely has no models is not removed.
+    pub providers_removed: Vec<String>,
+    /// Selection ids that were registered and are now withdrawn. Excludes requested ids that were not present.
+    pub withdrawn: Vec<String>,
 }
 
 /// Indicates whether the session options patch was applied successfully.
@@ -37458,6 +37775,37 @@ pub enum EntraTokenAcquireResultInteractionRequiredStatus {
 pub enum EntraTokenAcquireResult {
     Ok(EntraTokenAcquireResultOk),
     InteractionRequired(EntraTokenAcquireResultInteractionRequired),
+}
+
+/// GitHub Mission Control compute kind.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EnvironmentKind {
+    /// A user-managed environment on a local machine.
+    #[serde(rename = "user-local")]
+    UserLocal,
+    /// A user-managed environment in a GitHub Codespace.
+    #[serde(rename = "user-codespace")]
+    UserCodespace,
+    /// A GitHub-managed environment backed by GitHub Actions.
+    #[serde(rename = "managed-actions")]
+    ManagedActions,
+    /// A GitHub-managed sandbox environment.
+    #[serde(rename = "managed-sandbox")]
+    ManagedSandbox,
+    /// A GitHub-managed cloud coding agent environment.
+    #[serde(rename = "managed-cca")]
+    ManagedCca,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// Agent-scope filter: 'primary' returns only main-agent events plus events whose type starts with 'subagent.' (matching the typed-subscription default behavior); 'all' returns events from all agents (matching wildcard-subscription behavior). Default is 'all' to preserve wildcard semantics for catch-up callers.

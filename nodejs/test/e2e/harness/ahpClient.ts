@@ -39,10 +39,11 @@ export async function withDeadline<T>(promise: Promise<T>, label: string, ms = 3
 }
 
 export async function connectAhp(
-    host: { url: string; token?: string },
+    host: { url?: string; token?: string },
     capabilities?: ClientCapabilities,
     clientId: string = randomUUID()
 ) {
+    assert(host.url, "A local listener URL is required for a WebSocket connection");
     const url = new URL(host.url);
     if (host.token !== undefined) url.searchParams.set("tkn", host.token);
     const socket = new WebSocket(url, { handshakeTimeout: 10_000 });

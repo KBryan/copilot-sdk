@@ -25,6 +25,8 @@ public final class ServerRpc {
 
     private final RpcCaller caller;
 
+    /** API methods for the {@code environments} namespace. */
+    public final ServerEnvironmentsApi environments;
     /** API methods for the {@code host} namespace. */
     public final ServerHostApi host;
     /** API methods for the {@code hooks} namespace. */
@@ -79,6 +81,7 @@ public final class ServerRpc {
      */
     public ServerRpc(RpcCaller caller) {
         this.caller = caller;
+        this.environments = new ServerEnvironmentsApi(caller);
         this.host = new ServerHostApi(caller);
         this.hooks = new ServerHooksApi(caller);
         this.models = new ServerModelsApi(caller);

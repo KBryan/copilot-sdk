@@ -1,6 +1,6 @@
 ---
 name: sdk-java-e2e-test
-description: "Use this skill when creating a Java SDK E2E integration test backed by a replay proxy YAML snapshot"
+description: "Use this skill when creating a Java SDK surface-area E2E integration test backed by a replay proxy YAML snapshot"
 ---
 
 # Creating a New Java E2E Test with a Replay Proxy YAML Snapshot
@@ -16,6 +16,10 @@ examples.
 
 This skill covers the complete workflow for adding a new Java failsafe
 integration test backed by a handcrafted YAML snapshot for the replay proxy.
+Use it only when the new E2E tests Java SDK surface area; shared runtime
+functionality available entirely through the SDK should instead be covered
+in the TypeScript SDK suite (`nodejs/test/e2e/` under the SDK root, or
+`src/sdk/nodejs/test/e2e/` from the runtime repository root).
 
 ## Overview
 

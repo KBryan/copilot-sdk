@@ -216,6 +216,8 @@ pub enum SessionEventType {
     PromptCacheBreak,
     #[serde(rename = "model.call_failure")]
     ModelCallFailure,
+    #[serde(rename = "model.call_final_result")]
+    ModelCallFinalResult,
     #[serde(rename = "model.call_finished")]
     ModelCallFinished,
     #[serde(rename = "model.call_start")]
@@ -764,6 +766,8 @@ pub enum SessionEventData {
     PromptCacheBreak(PromptCacheBreakData),
     #[serde(rename = "model.call_failure")]
     ModelCallFailure(ModelCallFailureData),
+    #[serde(rename = "model.call_final_result")]
+    ModelCallFinalResult(ModelCallFinalResultData),
     #[serde(rename = "model.call_finished")]
     ModelCallFinished(ModelCallFinishedData),
     #[serde(rename = "model.call_start")]
@@ -3873,6 +3877,19 @@ pub struct ModelCallFailureData {
     /// Transport used for the failed model call (http or websocket)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transport: Option<ModelCallFailureTransport>,
+}
+
+/// Session event "model.call_final_result". Internal telemetry result for one logical model operation after all orchestrator-owned retries settle
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCallFinalResultData {
+    /// Whether the final attempt used a bring-your-own-key provider
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_byok: Option<bool>,
+    /// Model identifier used by the final attempt
+    pub model: String,
+    /// Bounded result of the final attempt
+    pub result: ModelCallFinalResult,
 }
 
 /// Session event "model.call_finished". Final lifecycle outcome for one logical model dispatch. A logical dispatch may include internal reconnect or fallback work, so event count is not provider HTTP-request count.
@@ -9269,6 +9286,39 @@ pub enum ModelCallFailureSource {
     /// Model call from MCP sampling.
     #[serde(rename = "mcp_sampling")]
     McpSampling,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Final bounded result of one logical model operation after its internal retry loop settles
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelCallFinalResult {
+    /// The final attempt succeeded.
+    #[serde(rename = "success")]
+    Success,
+    /// The final attempt failed with HTTP 400.
+    #[serde(rename = "http_400")]
+    Http400,
+    /// The final attempt failed with HTTP 413.
+    #[serde(rename = "http_413")]
+    Http413,
+    /// The final attempt failed with HTTP 429.
+    #[serde(rename = "http_429")]
+    Http429,
+    /// The final attempt failed with another HTTP 4xx status.
+    #[serde(rename = "http_4xx")]
+    Http4xx,
+    /// The final attempt failed with an HTTP 5xx status.
+    #[serde(rename = "http_5xx")]
+    Http5xx,
+    /// The final attempt failed in the request transport.
+    #[serde(rename = "transport_error")]
+    TransportError,
+    /// The final attempt failed without another bounded classification.
+    #[serde(rename = "other_error")]
+    OtherError,
     /// Unknown variant for forward compatibility.
     #[default]
     #[serde(other)]

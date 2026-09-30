@@ -107,6 +107,127 @@ internal sealed class ConnectRequest
     public string? Token { get; set; }
 }
 
+/// <summary>Hosting capabilities and session capacity advertised by an environment.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class EnvironmentCapabilities
+{
+    /// <summary>Advertised Agent Host Protocol version.</summary>
+    [JsonPropertyName("ahpVersion")]
+    public string? AhpVersion { get; set; }
+
+    /// <summary>Current session count, when advertised.</summary>
+    [JsonPropertyName("currentSessions")]
+    public long? CurrentSessions { get; set; }
+
+    /// <summary>Feature identifiers advertised by the environment.</summary>
+    [JsonPropertyName("features")]
+    public IList<string> Features { get => field ??= []; set; }
+
+    /// <summary>Maximum session capacity, when advertised.</summary>
+    [JsonPropertyName("maxSessions")]
+    public long? MaxSessions { get; set; }
+}
+
+/// <summary>Safe discovery information. Host-side relay bootstrap credentials are never included.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class GitHubEnvironment
+{
+    /// <summary>Hosting capabilities advertised by the environment.</summary>
+    [JsonPropertyName("capabilities")]
+    public EnvironmentCapabilities? Capabilities { get; set; }
+
+    /// <summary>Identifier assigned by Mission Control.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Compute kind reported by Mission Control.</summary>
+    [JsonPropertyName("kind")]
+    public EnvironmentKind Kind { get; set; }
+
+    /// <summary>Discovery labels attached to the environment.</summary>
+    [JsonPropertyName("labels")]
+    public IDictionary<string, string>? Labels { get; set; }
+
+    /// <summary>Timestamp of the last heartbeat received by Mission Control.</summary>
+    [JsonPropertyName("lastHeartbeatAt")]
+    public string? LastHeartbeatAt { get; set; }
+
+    /// <summary>Human-readable environment name.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Organization identifier, when the environment belongs to an organization.</summary>
+    [JsonPropertyName("orgId")]
+    public string? OrgId { get; set; }
+
+    /// <summary>Identifier of the environment owner.</summary>
+    [JsonPropertyName("ownerId")]
+    public string? OwnerId { get; set; }
+
+    /// <summary>Owner category reported by Mission Control.</summary>
+    [JsonPropertyName("ownerType")]
+    public string? OwnerType { get; set; }
+
+    /// <summary>Open-ended operational status vocabulary.</summary>
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = string.Empty;
+}
+
+/// <summary>Environments visible to the authenticated caller and matching the supplied filters.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class EnvironmentsListResult
+{
+    /// <summary>Safe discovery records without relay bootstrap credentials.</summary>
+    [JsonPropertyName("environments")]
+    public IList<GitHubEnvironment> Environments { get => field ??= []; set; }
+}
+
+/// <summary>Optional discovery filters supported by GitHub Mission Control.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class EnvironmentsListRequest
+{
+    /// <summary>Restrict discovery to this compute kind.</summary>
+    [JsonPropertyName("kind")]
+    public EnvironmentKind? Kind { get; set; }
+
+    /// <summary>Operational status, such as online, offline, degraded, waking, or draining.</summary>
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+}
+
+/// <summary>Safe discovery information for the requested environment.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class EnvironmentsGetResult
+{
+    /// <summary>The requested environment without relay bootstrap credentials.</summary>
+    [JsonPropertyName("environment")]
+    public GitHubEnvironment Environment { get => field ??= new(); set; }
+}
+
+/// <summary>Identify a Mission Control environment to retrieve.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class EnvironmentsGetRequest
+{
+    /// <summary>Identifier assigned by Mission Control.</summary>
+    [JsonPropertyName("environmentId")]
+    public string EnvironmentId { get; set; } = string.Empty;
+}
+
+/// <summary>Acknowledgement that the requested environment was deleted.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class EnvironmentsDeleteResult
+{
+}
+
+/// <summary>Identify a user-managed Mission Control environment to delete.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class EnvironmentsDeleteRequest
+{
+    /// <summary>User-managed environment to delete. GitHub-managed environments cannot be deleted.</summary>
+    [JsonPropertyName("environmentId")]
+    public string EnvironmentId { get; set; } = string.Empty;
+}
+
 /// <summary>The existing runtime identity and its resource on the listener.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class HostPublishSessionResult
@@ -178,6 +299,10 @@ internal sealed class HostReleaseSessionRequest
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class HostStartResult
 {
+    /// <summary>GitHub Mission Control environment ID, present when its relay transport is ready.</summary>
+    [JsonPropertyName("environmentId")]
+    public string? EnvironmentId { get; set; }
+
     /// <summary>Caller-generated listener UUID.</summary>
     [JsonPropertyName("hostId")]
     public string HostId { get; set; } = string.Empty;
@@ -192,17 +317,26 @@ public sealed class HostStartResult
 
     /// <summary>Actual bound WebSocket URL, including the allocated port.</summary>
     [JsonPropertyName("url")]
-    public string Url { get; set; } = string.Empty;
+    public string? Url { get; set; }
 }
 
-/// <summary>Starts a supervised AHP listener in the runtime's configured working directory.</summary>
+/// <summary>GitHub Mission Control registration options. The compute ID is application-owned and stable.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-internal sealed class HostStartRequest
+public sealed class HostGitHubEnvironmentOptions
 {
-    /// <summary>Caller-generated UUID identifying this connection-owned listener.</summary>
-    [JsonPropertyName("hostId")]
-    public string HostId { get; set; } = string.Empty;
+    /// <summary>Stable application installation identity, reused across host restarts.</summary>
+    [JsonPropertyName("computeId")]
+    public string ComputeId { get; set; } = string.Empty;
 
+    /// <summary>Human-readable environment display name.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>Local WebSocket transport options.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class HostLocalServerOptions
+{
     /// <summary>Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.</summary>
     [JsonPropertyName("hostname")]
     public string? Hostname { get; set; }
@@ -215,6 +349,27 @@ internal sealed class HostStartRequest
     [JsonPropertyName("requireConnectionToken")]
     public bool? RequireConnectionToken { get; set; }
 
+    /// <summary>Nonempty connection token. Generated randomly when required and omitted.</summary>
+    [JsonPropertyName("token")]
+    public string? Token { get; set; }
+}
+
+/// <summary>Starts a supervised AHP host with at least one explicitly selected transport.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class HostStartRequest
+{
+    /// <summary>Registers a GitHub Mission Control environment and enables its relay transport.</summary>
+    [JsonPropertyName("githubEnvironment")]
+    public HostGitHubEnvironmentOptions? GitHubEnvironment { get; set; }
+
+    /// <summary>Caller-generated UUID identifying this connection-owned listener.</summary>
+    [JsonPropertyName("hostId")]
+    public string HostId { get; set; } = string.Empty;
+
+    /// <summary>Enables a local WebSocket listener.</summary>
+    [JsonPropertyName("localServer")]
+    public HostLocalServerOptions? LocalServer { get; set; }
+
     /// <summary>Ask the owning application to resume its durable AHP sessions.</summary>
     [JsonPropertyName("resumeFactory")]
     public bool? ResumeFactory { get; set; }
@@ -222,10 +377,6 @@ internal sealed class HostStartRequest
     /// <summary>Ask the owning SDK application to materialize AHP sessions.</summary>
     [JsonPropertyName("sessionFactory")]
     public bool? SessionFactory { get; set; }
-
-    /// <summary>Nonempty connection token. Generated randomly when required and omitted.</summary>
-    [JsonPropertyName("token")]
-    public string? Token { get; set; }
 }
 
 /// <summary>Empty acknowledgement for a completed host lifecycle operation.</summary>
@@ -243,9 +394,30 @@ internal sealed class HostDisposeRequest
     public string HostId { get; set; } = string.Empty;
 }
 
-/// <summary>Normalized listener settings delivered only to the supervised hosting participant.</summary>
+/// <summary>Private credentials delivered only to a runtime-owned Mission Control hosting participant.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-internal sealed class HostGetConfigurationResult
+internal sealed class HostGetEnvironmentCredentialsResult
+{
+    /// <summary>GitHub API base URL for the authenticated service.</summary>
+    [JsonPropertyName("githubApiUrl")]
+    public string GitHubApiUrl { get; set; } = string.Empty;
+
+    /// <summary>Hostname of the authenticated GitHub service.</summary>
+    [JsonPropertyName("githubHost")]
+    public string GitHubHost { get; set; } = string.Empty;
+
+    /// <summary>Mission Control API origin for environment registration and management.</summary>
+    [JsonPropertyName("missionControlUrl")]
+    public string MissionControlUrl { get; set; } = string.Empty;
+
+    /// <summary>Current bearer token for the authenticated GitHub identity.</summary>
+    [JsonPropertyName("token")]
+    public string Token { get; set; } = string.Empty;
+}
+
+/// <summary>Normalized local WebSocket listener settings.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class HostLocalServerConfiguration
 {
     /// <summary>Hostname or IP address to bind.</summary>
     [JsonPropertyName("hostname")]
@@ -259,17 +431,30 @@ internal sealed class HostGetConfigurationResult
     [JsonPropertyName("requireConnectionToken")]
     public bool RequireConnectionToken { get; set; }
 
-    /// <summary>Whether app-owned durable sessions are resumed by the owning application.</summary>
-    [JsonPropertyName("resumeFactory")]
-    public bool? ResumeFactory { get; set; }
-
-    /// <summary>Whether session materialization is delegated to the owning application.</summary>
-    [JsonPropertyName("sessionFactory")]
-    public bool? SessionFactory { get; set; }
-
     /// <summary>Secret connection token, absent when authentication is disabled.</summary>
     [JsonPropertyName("token")]
     public string? Token { get; set; }
+}
+
+/// <summary>Normalized listener settings delivered only to the supervised hosting participant.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class HostGetConfigurationResult
+{
+    /// <summary>Requested GitHub Mission Control registration.</summary>
+    [JsonPropertyName("githubEnvironment")]
+    public HostGitHubEnvironmentOptions? GitHubEnvironment { get; set; }
+
+    /// <summary>Normalized local listener settings, absent for relay-only hosts.</summary>
+    [JsonPropertyName("localServer")]
+    public HostLocalServerConfiguration? LocalServer { get; set; }
+
+    /// <summary>Whether app-owned durable sessions are resumed by the owning application.</summary>
+    [JsonPropertyName("resumeFactory")]
+    public bool ResumeFactory { get; set; }
+
+    /// <summary>Whether session materialization is delegated to the owning application.</summary>
+    [JsonPropertyName("sessionFactory")]
+    public bool SessionFactory { get; set; }
 }
 
 /// <summary>Empty acknowledgement for a completed host lifecycle operation.</summary>
@@ -284,7 +469,11 @@ internal sealed class HostReadyRequest
 {
     /// <summary>Actual bound WebSocket URL.</summary>
     [JsonPropertyName("address")]
-    public string Address { get; set; } = string.Empty;
+    public string? Address { get; set; }
+
+    /// <summary>Registered environment ID, reported only once the relay transport is connected.</summary>
+    [JsonPropertyName("environmentId")]
+    public string? EnvironmentId { get; set; }
 
     /// <summary>Configured secret token, absent when authentication is disabled.</summary>
     [JsonPropertyName("token")]
@@ -17054,6 +17243,36 @@ internal sealed class ProviderSyncRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
+/// <summary>What the withdrawal actually removed from the registry.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class ProviderWithdrawResult
+{
+    /// <summary>True when withdrawal removed the selected host-managed model, leaving the session with no explicit selection, so ordinary model resolution picks the session default. Withdrawal never promotes a surviving model in its place: the choice of which model to use stays with the user.</summary>
+    [JsonPropertyName("modelDeselected")]
+    public bool? ModelDeselected { get; set; }
+
+    /// <summary>Providers removed because one of the withdrawn models was the last entry referencing them. A provider that merely has no models is not removed.</summary>
+    [JsonPropertyName("providersRemoved")]
+    public IList<string> ProvidersRemoved { get => field ??= []; set; }
+
+    /// <summary>Selection ids that were registered and are now withdrawn. Excludes requested ids that were not present.</summary>
+    [JsonPropertyName("withdrawn")]
+    public IList<string> Withdrawn { get => field ??= []; set; }
+}
+
+/// <summary>Host-managed model selection ids to withdraw from the session's BYOK registry.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class ProviderWithdrawRequest
+{
+    /// <summary>Provider-qualified selection ids to withdraw. Ids that are not registered are ignored, so withdrawal is idempotent. A provider left with no models referencing it is removed too.</summary>
+    [JsonPropertyName("models")]
+    public IList<string> Models { get => field ??= []; set; }
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
 /// <summary>Indicates whether the session options patch was applied successfully.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SessionUpdateOptionsResult
@@ -25493,6 +25712,78 @@ public readonly struct TaskKind : IEquatable<TaskKind>
         public override void Write(Utf8JsonWriter writer, TaskKind value, JsonSerializerOptions options)
         {
             GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(TaskKind));
+        }
+    }
+}
+
+
+/// <summary>GitHub Mission Control compute kind.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct EnvironmentKind : IEquatable<EnvironmentKind>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="EnvironmentKind"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="EnvironmentKind"/>.</param>
+    [JsonConstructor]
+    public EnvironmentKind(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="EnvironmentKind"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>A user-managed environment on a local machine.</summary>
+    public static EnvironmentKind UserLocal { get; } = new("user-local");
+
+    /// <summary>A user-managed environment in a GitHub Codespace.</summary>
+    public static EnvironmentKind UserCodespace { get; } = new("user-codespace");
+
+    /// <summary>A GitHub-managed environment backed by GitHub Actions.</summary>
+    public static EnvironmentKind ManagedActions { get; } = new("managed-actions");
+
+    /// <summary>A GitHub-managed sandbox environment.</summary>
+    public static EnvironmentKind ManagedSandbox { get; } = new("managed-sandbox");
+
+    /// <summary>A GitHub-managed cloud coding agent environment.</summary>
+    public static EnvironmentKind ManagedCca { get; } = new("managed-cca");
+
+    /// <summary>Returns a value indicating whether two <see cref="EnvironmentKind"/> instances are equivalent.</summary>
+    public static bool operator ==(EnvironmentKind left, EnvironmentKind right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="EnvironmentKind"/> instances are not equivalent.</summary>
+    public static bool operator !=(EnvironmentKind left, EnvironmentKind right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is EnvironmentKind other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(EnvironmentKind other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{EnvironmentKind}"/> for serializing <see cref="EnvironmentKind"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<EnvironmentKind>
+    {
+        /// <inheritdoc />
+        public override EnvironmentKind Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, EnvironmentKind value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(EnvironmentKind));
         }
     }
 }
@@ -39934,6 +40225,12 @@ public sealed class ServerRpc
         await CopilotClient.InvokeRpcAsync(_rpc, "registerExtensionLaunchProvider", [], cancellationToken);
     }
 
+    /// <summary>Environments APIs.</summary>
+    public ServerEnvironmentsApi Environments =>
+        field ??
+        Interlocked.CompareExchange(ref field, new(_rpc), null) ??
+        field;
+
     /// <summary>Host APIs.</summary>
     public ServerHostApi Host =>
         field ??
@@ -40073,6 +40370,53 @@ public sealed class ServerRpc
         field;
 }
 
+/// <summary>Provides server-scoped Environments APIs.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class ServerEnvironmentsApi
+{
+    private readonly JsonRpc _rpc;
+
+    internal ServerEnvironmentsApi(JsonRpc rpc)
+    {
+        _rpc = rpc;
+    }
+
+    /// <summary>Lists GitHub Mission Control environments visible to the authenticated identity. Does not require a running host and excludes host relay credentials.</summary>
+    /// <param name="kind">Restrict discovery to this compute kind.</param>
+    /// <param name="status">Operational status, such as online, offline, degraded, waking, or draining.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Environments visible to the authenticated caller and matching the supplied filters.</returns>
+    public async Task<EnvironmentsListResult> ListAsync(EnvironmentKind? kind = null, string? status = null, CancellationToken cancellationToken = default)
+    {
+        var request = new EnvironmentsListRequest { Kind = kind, Status = status };
+        return await CopilotClient.InvokeRpcAsync<EnvironmentsListResult>(_rpc, "environments.list", [request], cancellationToken);
+    }
+
+    /// <summary>Gets safe discovery information for a GitHub Mission Control environment without requiring a running host.</summary>
+    /// <param name="environmentId">Identifier assigned by Mission Control.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Safe discovery information for the requested environment.</returns>
+    public async Task<EnvironmentsGetResult> GetAsync(string environmentId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(environmentId);
+
+        var request = new EnvironmentsGetRequest { EnvironmentId = environmentId };
+        return await CopilotClient.InvokeRpcAsync<EnvironmentsGetResult>(_rpc, "environments.get", [request], cancellationToken);
+    }
+
+    /// <summary>Deletes a user-managed GitHub Mission Control environment. GitHub-managed environments cannot be deleted. Does not stop a running host, which may register again.</summary>
+    /// <param name="environmentId">User-managed environment to delete. GitHub-managed environments cannot be deleted.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Acknowledgement that the requested environment was deleted.</returns>
+    public async Task<EnvironmentsDeleteResult> DeleteAsync(string environmentId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(environmentId);
+
+        var request = new EnvironmentsDeleteRequest { EnvironmentId = environmentId };
+        return await CopilotClient.InvokeRpcAsync<EnvironmentsDeleteResult>(_rpc, "environments.delete", [request], cancellationToken);
+    }
+}
+
 /// <summary>Provides server-scoped Host APIs.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class ServerHostApi
@@ -40125,21 +40469,19 @@ public sealed class ServerHostApi
         return await CopilotClient.InvokeRpcAsync<HostReleaseSessionResult>(_rpc, "host.releaseSession", [request], cancellationToken);
     }
 
-    /// <summary>Starts a connection-owned local AHP listener as a supervised SDK participant.</summary>
+    /// <summary>Starts a connection-owned AHP host with explicit localServer and/or githubEnvironment transports as a supervised SDK participant.</summary>
     /// <param name="hostId">Caller-generated UUID identifying this connection-owned listener.</param>
-    /// <param name="hostname">Listener hostname. Defaults to 127.0.0.1; explicit non-loopback binds are allowed.</param>
-    /// <param name="port">Listener port. Omitted or zero requests an OS-allocated port.</param>
-    /// <param name="token">Nonempty connection token. Generated randomly when required and omitted.</param>
-    /// <param name="requireConnectionToken">Require token authentication (default true). Cannot be false with a token.</param>
+    /// <param name="localServer">Enables a local WebSocket listener.</param>
+    /// <param name="githubEnvironment">Registers a GitHub Mission Control environment and enables its relay transport.</param>
     /// <param name="sessionFactory">Ask the owning SDK application to materialize AHP sessions.</param>
     /// <param name="resumeFactory">Ask the owning application to resume its durable AHP sessions.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Listener readiness, returned only after binding and the supervised participant's SDK handshake.</returns>
-    public async Task<HostStartResult> StartAsync(string hostId, string? hostname = null, int? port = null, string? token = null, bool? requireConnectionToken = null, bool? sessionFactory = null, bool? resumeFactory = null, CancellationToken cancellationToken = default)
+    public async Task<HostStartResult> StartAsync(string hostId, HostLocalServerOptions? localServer = null, HostGitHubEnvironmentOptions? githubEnvironment = null, bool? sessionFactory = null, bool? resumeFactory = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(hostId);
 
-        var request = new HostStartRequest { HostId = hostId, Hostname = hostname, Port = port, Token = token, RequireConnectionToken = requireConnectionToken, SessionFactory = sessionFactory, ResumeFactory = resumeFactory };
+        var request = new HostStartRequest { HostId = hostId, LocalServer = localServer, GitHubEnvironment = githubEnvironment, SessionFactory = sessionFactory, ResumeFactory = resumeFactory };
         return await CopilotClient.InvokeRpcAsync<HostStartResult>(_rpc, "host.start", [request], cancellationToken);
     }
 
@@ -40155,6 +40497,14 @@ public sealed class ServerHostApi
         return await CopilotClient.InvokeRpcAsync<HostDisposeResult>(_rpc, "host.dispose", [request], cancellationToken);
     }
 
+    /// <summary>Resolves current authenticated credentials and remote-control policy only for the runtime-owned Mission Control hosting participant.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Private credentials delivered only to a runtime-owned Mission Control hosting participant.</returns>
+    internal async Task<HostGetEnvironmentCredentialsResult> GetEnvironmentCredentialsAsync(CancellationToken cancellationToken = default)
+    {
+        return await CopilotClient.InvokeRpcAsync<HostGetEnvironmentCredentialsResult>(_rpc, "host.getEnvironmentCredentials", [], cancellationToken);
+    }
+
     /// <summary>Returns listener settings only to the supervised hosting participant over its SDK connection.</summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Normalized listener settings delivered only to the supervised hosting participant.</returns>
@@ -40166,13 +40516,12 @@ public sealed class ServerHostApi
     /// <summary>Reports a supervised hosting participant's bound AHP endpoint after its SDK handshake.</summary>
     /// <param name="address">Actual bound WebSocket URL.</param>
     /// <param name="token">Configured secret token, absent when authentication is disabled.</param>
+    /// <param name="environmentId">Registered environment ID, reported only once the relay transport is connected.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Empty acknowledgement for a completed host lifecycle operation.</returns>
-    internal async Task<HostReadyResult> ReadyAsync(string address, string? token = null, CancellationToken cancellationToken = default)
+    internal async Task<HostReadyResult> ReadyAsync(string? address = null, string? token = null, string? environmentId = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(address);
-
-        var request = new HostReadyRequest { Address = address, Token = token };
+        var request = new HostReadyRequest { Address = address, Token = token, EnvironmentId = environmentId };
         return await CopilotClient.InvokeRpcAsync<HostReadyResult>(_rpc, "host.ready", [request], cancellationToken);
     }
 }
@@ -45190,6 +45539,19 @@ public sealed class ProviderApi
         var request = new ProviderSyncRequest { SessionId = _session.SessionId, Providers = providers, Models = models };
         return await CopilotClient.InvokeRpcAsync<ProviderSyncResult>(_session.Rpc, "session.provider.sync", [request], cancellationToken);
     }
+
+    /// <summary>Withdraws named host-managed models from the session's BYOK registry, leaving every other entry untouched. The scoped counterpart to `provider.sync`: a snapshot can only describe entries the caller knows about, so using it to remove one model silently withdraws rows registered by another source, such as a plugin calling `provider.add` at runtime. Naming what to remove leaves unrelated entries alone. Selection ids that are not registered are ignored, so withdrawal is idempotent. A provider is removed only when one of the withdrawn models was the last entry referencing it; a provider that simply has no models, which is the normal state while its rows are supplied by catalog discovery, is left in place.</summary>
+    /// <param name="models">Provider-qualified selection ids to withdraw. Ids that are not registered are ignored, so withdrawal is idempotent. A provider left with no models referencing it is removed too.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>What the withdrawal actually removed from the registry.</returns>
+    public async Task<ProviderWithdrawResult> WithdrawAsync(IList<string> models, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        _session.ThrowIfDisposed();
+
+        var request = new ProviderWithdrawRequest { SessionId = _session.SessionId, Models = models };
+        return await CopilotClient.InvokeRpcAsync<ProviderWithdrawResult>(_session.Rpc, "session.provider.withdraw", [request], cancellationToken);
+    }
 }
 
 /// <summary>Provides session-scoped Options APIs.</summary>
@@ -47789,6 +48151,9 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFailureRequestFingerprint), TypeInfoPropertyName = "SessionEventsModelCallFailureRequestFingerprint")]
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFailureSource), TypeInfoPropertyName = "SessionEventsModelCallFailureSource")]
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFailureTransport), TypeInfoPropertyName = "SessionEventsModelCallFailureTransport")]
+[JsonSerializable(typeof(GitHub.Copilot.ModelCallFinalResult), TypeInfoPropertyName = "SessionEventsModelCallFinalResult")]
+[JsonSerializable(typeof(GitHub.Copilot.ModelCallFinalResultData), TypeInfoPropertyName = "SessionEventsModelCallFinalResultData")]
+[JsonSerializable(typeof(GitHub.Copilot.ModelCallFinalResultEvent), TypeInfoPropertyName = "SessionEventsModelCallFinalResultEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFinishedData), TypeInfoPropertyName = "SessionEventsModelCallFinishedData")]
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFinishedEvent), TypeInfoPropertyName = "SessionEventsModelCallFinishedEvent")]
 [JsonSerializable(typeof(GitHub.Copilot.ModelCallFinishedOutcome), TypeInfoPropertyName = "SessionEventsModelCallFinishedOutcome")]
@@ -48201,6 +48566,13 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(EnqueueCommandResult))]
 [JsonSerializable(typeof(EntraTokenAcquireRequest))]
 [JsonSerializable(typeof(EntraTokenAcquireResult))]
+[JsonSerializable(typeof(EnvironmentCapabilities))]
+[JsonSerializable(typeof(EnvironmentsDeleteRequest))]
+[JsonSerializable(typeof(EnvironmentsDeleteResult))]
+[JsonSerializable(typeof(EnvironmentsGetRequest))]
+[JsonSerializable(typeof(EnvironmentsGetResult))]
+[JsonSerializable(typeof(EnvironmentsListRequest))]
+[JsonSerializable(typeof(EnvironmentsListResult))]
 [JsonSerializable(typeof(EventLogReadRequest))]
 [JsonSerializable(typeof(EventLogReleaseInterestResult))]
 [JsonSerializable(typeof(EventLogTailResult))]
@@ -48222,6 +48594,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(FolderTrustAddParams))]
 [JsonSerializable(typeof(FolderTrustCheckParams))]
 [JsonSerializable(typeof(FolderTrustCheckResult))]
+[JsonSerializable(typeof(GitHubEnvironment))]
 [JsonSerializable(typeof(GitHubTelemetryClientInfo))]
 [JsonSerializable(typeof(GitHubTelemetryEvent))]
 [JsonSerializable(typeof(GitHubTelemetryNotification))]
@@ -48254,6 +48627,10 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(HostDisposeResult))]
 [JsonSerializable(typeof(HostExitedRequest))]
 [JsonSerializable(typeof(HostGetConfigurationResult))]
+[JsonSerializable(typeof(HostGetEnvironmentCredentialsResult))]
+[JsonSerializable(typeof(HostGitHubEnvironmentOptions))]
+[JsonSerializable(typeof(HostLocalServerConfiguration))]
+[JsonSerializable(typeof(HostLocalServerOptions))]
 [JsonSerializable(typeof(HostPublishSessionRequest))]
 [JsonSerializable(typeof(HostPublishSessionResult))]
 [JsonSerializable(typeof(HostReadyRequest))]
@@ -48598,6 +48975,8 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(ProviderSyncResult))]
 [JsonSerializable(typeof(ProviderTokenAcquireRequest))]
 [JsonSerializable(typeof(ProviderTokenAcquireResult))]
+[JsonSerializable(typeof(ProviderWithdrawRequest))]
+[JsonSerializable(typeof(ProviderWithdrawResult))]
 [JsonSerializable(typeof(PushAttachment))]
 [JsonSerializable(typeof(PushAttachmentFileLineRange))]
 [JsonSerializable(typeof(PushAttachmentGitHubFileDiffSide))]

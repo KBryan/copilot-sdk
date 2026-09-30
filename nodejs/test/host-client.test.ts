@@ -50,6 +50,36 @@ function info(hostId: string) {
 }
 
 describe("CopilotClient.startAhpHost", () => {
+    it("requires an explicit transport without starting the client", async () => {
+        const client = new CopilotClient();
+        const start = vi.spyOn(client, "start");
+        await expect(client.startAhpHost({})).rejects.toThrow("At least one");
+        expect(start).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])(
+        "forwards GitHub hosting with optional local transport (%s)",
+        async (local) => {
+            const githubEnvironment = { name: "Application", computeId: "stable-installation-id" };
+            const start = vi.fn(({ hostId }: HostStartRequest) => ({
+                hostId,
+                environmentId: "environment-1",
+                ...(local ? { url: "ws://127.0.0.1:54321", token: "local-token" } : {}),
+            }));
+            const client = await fixture((rpc) => rpc.onRequest("host.start", start));
+            const options = {
+                githubEnvironment,
+                ...(local ? { localServer: {} } : {}),
+            };
+            const host = await client.startAhpHost(options);
+            expect(start.mock.calls[0]?.[0]).toEqual({ hostId: host.hostId, ...options });
+            expect(host.environmentId).toBe("environment-1");
+            expect(host.url).toBe(local ? "ws://127.0.0.1:54321" : undefined);
+            expect(host.token).toBe(local ? "local-token" : undefined);
+            expect(host.pid).toBeUndefined();
+        }
+    );
+
     it("snapshots factories and release callbacks at startup", async () => {
         let rpc!: MessageConnection;
         const client = await fixture((connection) => {
@@ -65,6 +95,7 @@ describe("CopilotClient.startAhpHost", () => {
         const released = vi.fn();
         const replacement = vi.fn();
         const options: AhpHostOptions = {
+            localServer: {},
             createSession: ({ config }) =>
                 client.createSession({ ...config, onPermissionRequest: approveAll }),
             resumeSession: ({ sessionId, config }) =>
@@ -109,6 +140,7 @@ describe("CopilotClient.startAhpHost", () => {
                 expect(config).not.toHaveProperty("configDir");
             };
             const host = await client.startAhpHost({
+                localServer: {},
                 createSession: ({ config }) => {
                     checkConfig(config);
                     return client.createSession({ ...config, onPermissionRequest: approveAll });
@@ -142,7 +174,7 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
         });
         const onExit = vi.fn();
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         expect(host.pid).toBeUndefined();
         const exit = { hostId: host.hostId, reason: "exited" };
         await rpc.sendNotification("host.exited", exit);
@@ -164,6 +196,7 @@ describe("CopilotClient.startAhpHost", () => {
         const released = vi.fn();
         let original: Awaited<ReturnType<CopilotClient["createSession"]>>;
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: async ({ config }) => {
                 original = await client.createSession({
                     ...config,
@@ -216,6 +249,7 @@ describe("CopilotClient.startAhpHost", () => {
             });
             let original: Awaited<ReturnType<CopilotClient["createSession"]>> | undefined;
             const host = await client.startAhpHost({
+                localServer: {},
                 createSession: async ({ config }) => {
                     original = await client.createSession({
                         ...config,
@@ -279,6 +313,7 @@ describe("CopilotClient.startAhpHost", () => {
         });
         const released = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: creates,
             resumeSession: ({ sessionId, config }) =>
                 client.resumeSession(sessionId, { ...config, onPermissionRequest: approveAll }),
@@ -309,7 +344,7 @@ describe("CopilotClient.startAhpHost", () => {
             rpc = connection;
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
         });
-        const host = await client.startAhpHost({ createSession: creates });
+        const host = await client.startAhpHost({ localServer: {}, createSession: creates });
         await expect(
             rpc.sendRequest("host.materializeSession", {
                 hostId: host.hostId,
@@ -343,6 +378,7 @@ describe("CopilotClient.startAhpHost", () => {
             });
             const released = vi.fn();
             const host = await client.startAhpHost({
+                localServer: {},
                 createSession: async (request) => {
                     signal = request.signal;
                     original = await client.createSession({
@@ -401,7 +437,7 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
             rpc.onRequest("host.publishSession", publish);
         });
-        const host = await client.startAhpHost();
+        const host = await client.startAhpHost({ localServer: {} });
         await expect(host.publishSession("existing")).resolves.toEqual({
             sessionId: "existing",
             sessionUri: "copilot:/existing",
@@ -424,6 +460,7 @@ describe("CopilotClient.startAhpHost", () => {
         });
         const released = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: ({ config }) =>
                 client.createSession({
                     ...config,
@@ -458,6 +495,7 @@ describe("CopilotClient.startAhpHost", () => {
         });
         const released = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: async () => original,
             onSessionReleased: released,
         });
@@ -485,6 +523,7 @@ describe("CopilotClient.startAhpHost", () => {
         const onSessionReleased = vi.fn();
         const toolHandler = vi.fn(() => "app-result");
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: ({ config }) =>
                 client.createSession({
                     ...config,
@@ -541,6 +580,7 @@ describe("CopilotClient.startAhpHost", () => {
         let original: Awaited<ReturnType<typeof client.createSession>> | undefined;
         const released = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: async (request) => {
                 signal = request.signal;
                 await pending;
@@ -582,6 +622,7 @@ describe("CopilotClient.startAhpHost", () => {
         });
         const released = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: ({ config }) =>
                 client.createSession({
                     sessionId: config.sessionId,
@@ -601,15 +642,15 @@ describe("CopilotClient.startAhpHost", () => {
         );
     });
 
-    it("supports omitted options and token-free responses without retaining callbacks", async () => {
+    it("supports explicit local defaults and token-free responses without retaining callbacks", async () => {
         const start = vi.fn(({ hostId }: HostStartRequest) => {
             const { token: _token, ...withoutToken } = info(hostId);
             return withoutToken;
         });
         const client = await fixture((rpc) => rpc.onRequest("host.start", start));
 
-        const host = await client.startAhpHost();
-        expect(start.mock.calls[0]?.[0]).toEqual({ hostId: host.hostId });
+        const host = await client.startAhpHost({ localServer: {} });
+        expect(start.mock.calls[0]?.[0]).toEqual({ hostId: host.hostId, localServer: {} });
         expect(host.token).toBeUndefined();
         expect(client["hostExitCallbacks"].size).toBe(0);
     });
@@ -623,10 +664,10 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.dispose", dispose);
         });
 
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         expect(start).toHaveBeenCalledOnce();
         expect(host.hostId).toMatch(/^[a-f0-9-]{36}$/);
-        expect(start.mock.calls[0]?.[0]).toEqual({ hostId: host.hostId });
+        expect(start.mock.calls[0]?.[0]).toEqual({ hostId: host.hostId, localServer: {} });
         expect(client).not.toHaveProperty("startHost");
         await Promise.all([host.dispose(), host.dispose()]);
         await host.dispose();
@@ -643,10 +684,12 @@ describe("CopilotClient.startAhpHost", () => {
         const client = await fixture((rpc) => rpc.onRequest("host.start", start));
         const onExit = Object.assign(vi.fn(), { toJSON: () => "must-not-serialize" });
         const options: AhpHostOptions & { hostId: string; workingDirectory: string } = {
-            hostname: "::1",
-            port: 0,
-            token: "explicit-test-token",
-            requireConnectionToken: false,
+            localServer: {
+                hostname: "::1",
+                port: 0,
+                token: "explicit-test-token",
+                requireConnectionToken: false,
+            },
             onExit,
             hostId: "caller-cannot-select-id",
             workingDirectory: "/not-sent",
@@ -655,10 +698,7 @@ describe("CopilotClient.startAhpHost", () => {
         const host = await client.startAhpHost(options);
         expect(start.mock.calls[0]?.[0]).toEqual({
             hostId: host.hostId,
-            hostname: "::1",
-            port: 0,
-            token: "explicit-test-token",
-            requireConnectionToken: false,
+            localServer: options.localServer,
         });
         expect(host.hostId).not.toBe(options.hostId);
         expect(onExit).not.toHaveBeenCalled();
@@ -670,10 +710,12 @@ describe("CopilotClient.startAhpHost", () => {
         });
         const client = await fixture((rpc) => rpc.onRequest("host.start", start));
         const options = {
-            hostname: "",
-            port: -1,
-            token: "",
-            requireConnectionToken: true,
+            localServer: {
+                hostname: "",
+                port: -1,
+                token: "",
+                requireConnectionToken: true,
+            },
         };
 
         await expect(client.startAhpHost(options)).rejects.toThrow(
@@ -698,7 +740,7 @@ describe("CopilotClient.startAhpHost", () => {
             });
         });
 
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         expect(onExit).toHaveBeenCalledExactlyOnceWith({
             hostId: host.hostId,
             reason: "exited",
@@ -715,7 +757,9 @@ describe("CopilotClient.startAhpHost", () => {
             });
         });
 
-        await expect(client.startAhpHost({ onExit })).rejects.toThrow("address already in use");
+        await expect(client.startAhpHost({ localServer: {}, onExit })).rejects.toThrow(
+            "address already in use"
+        );
         expect(client["hostExitCallbacks"].size).toBe(0);
         await client.forceStop();
         expect(onExit).not.toHaveBeenCalled();
@@ -730,7 +774,9 @@ describe("CopilotClient.startAhpHost", () => {
             });
         });
 
-        await expect(client.startAhpHost({ onExit })).rejects.toThrow("Startup failed after exit");
+        await expect(client.startAhpHost({ localServer: {}, onExit })).rejects.toThrow(
+            "Startup failed after exit"
+        );
         expect(onExit).toHaveBeenCalledOnce();
         expect(client["hostExitCallbacks"].size).toBe(0);
         await client.forceStop();
@@ -746,7 +792,7 @@ describe("CopilotClient.startAhpHost", () => {
             });
         });
 
-        await expect(client.startAhpHost({ onExit })).rejects.toThrow();
+        await expect(client.startAhpHost({ localServer: {}, onExit })).rejects.toThrow();
         expect(onExit).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ reason: "ownerDisconnected" })
         );
@@ -794,7 +840,7 @@ describe("CopilotClient.startAhpHost", () => {
         await client.start();
         const unanswered = expect(client.ping()).rejects.toThrow();
         const onExit = vi.fn();
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         expect(onExit).toHaveBeenCalledExactlyOnceWith({
             hostId: host.hostId,
             reason: "exited",
@@ -814,6 +860,7 @@ describe("CopilotClient.startAhpHost", () => {
         let signal: AbortSignal | undefined;
         const onExit = vi.fn();
         const host = await client.startAhpHost({
+            localServer: {},
             createSession: (request) => {
                 signal = request.signal;
                 return new Promise<never>(() => {});
@@ -866,8 +913,8 @@ describe("CopilotClient.startAhpHost", () => {
         const firstExit = vi.fn();
         const secondExit = vi.fn();
         const [first, second] = await Promise.all([
-            client.startAhpHost({ onExit: firstExit }),
-            client.startAhpHost({ onExit: secondExit }),
+            client.startAhpHost({ localServer: {}, onExit: firstExit }),
+            client.startAhpHost({ localServer: {}, onExit: secondExit }),
         ]);
 
         expect(first.hostId).not.toBe(second.hostId);
@@ -889,7 +936,7 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
             rpc.onRequest("host.dispose", dispose);
         });
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         await serverRpc.sendNotification("host.exited", { hostId: "unrelated", reason: "exited" });
         await client.ping();
         expect(onExit).not.toHaveBeenCalled();
@@ -919,7 +966,7 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
             rpc.onRequest("host.dispose", dispose);
         });
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         await expect(host.dispose()).rejects.toThrow("Runtime cleanup failed");
         expect(dispose).toHaveBeenCalledOnce();
         expect(onExit).not.toHaveBeenCalled();
@@ -936,7 +983,7 @@ describe("CopilotClient.startAhpHost", () => {
                 rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
                 rpc.onRequest("host.dispose", dispose);
             });
-            await client.startAhpHost({ onExit });
+            await client.startAhpHost({ localServer: {}, onExit });
             await client[method]();
             expect(onExit).toHaveBeenCalledExactlyOnceWith(
                 expect.objectContaining({ reason: "ownerDisconnected" })
@@ -963,7 +1010,7 @@ describe("CopilotClient.startAhpHost", () => {
                 });
             });
 
-            const host = await client.startAhpHost({ onExit });
+            const host = await client.startAhpHost({ localServer: {}, onExit });
             expect(onExit).toHaveBeenCalledOnce();
             expect(log).toHaveBeenCalledExactlyOnceWith("AHP host exit callback failed", {
                 hostId: host.hostId,
@@ -982,12 +1029,13 @@ describe("CopilotClient.startAhpHost", () => {
             rpc.onRequest("host.start", ({ hostId }: HostStartRequest) => info(hostId));
         });
         const first = await client.startAhpHost({
+            localServer: {},
             onExit: () => {
                 throw error;
             },
         });
         const secondExit = vi.fn();
-        await client.startAhpHost({ onExit: secondExit });
+        await client.startAhpHost({ localServer: {}, onExit: secondExit });
         await client.forceStop();
         expect(log).toHaveBeenCalledExactlyOnceWith("AHP host exit callback failed", {
             hostId: first.hostId,
@@ -1008,7 +1056,7 @@ describe("CopilotClient.startAhpHost", () => {
             disconnect = () => socket.destroy();
         });
 
-        const host = await client.startAhpHost({ onExit });
+        const host = await client.startAhpHost({ localServer: {}, onExit });
         disconnect?.();
         await vi.waitFor(() =>
             expect(onExit).toHaveBeenCalledExactlyOnceWith(

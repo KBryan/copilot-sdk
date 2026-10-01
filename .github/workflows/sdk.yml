@@ -70,6 +70,8 @@ jobs:
         with:
           persist-credentials: false
 
+      # Resolve identity before cache restoration and Bazel configuration. The
+      # composite setup below remains cache-miss-only because it also installs dependencies.
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -89,7 +91,8 @@ jobs:
             src/native/runtime/index.d.ts
             src/native/cli/cli-native.win32-x64-msvc.node
             src/native/cli/index.d.ts
-          key: windows-x64-addons-v1-release-windows-e2e-no-icf-${{ github.sha }}
+          # v2 evicts addons created before producer build identity was required.
+          key: windows-x64-addons-v2-release-windows-e2e-no-icf-${{ github.sha }}
 
       - uses: ./.github/actions/setup-node
         if: steps.cache.outputs.cache-hit != 'true'

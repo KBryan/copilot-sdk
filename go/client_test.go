@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+
 package copilot
 
 import (
@@ -3889,6 +3891,108 @@ func TestModeCallbackRequestHandlers(t *testing.T) {
 	}
 	if autoResult.Response != AutoModeSwitchResponseYesAlways {
 		t.Fatalf("Expected yes_always, got %q", autoResult.Response)
+	}
+}
+
+func TestResumeTranscriptRecoveryDefaultsAndReport(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		mode     ClientMode
+		explicit *bool
+		want     *bool
+	}{
+		{"CLI default", ModeCopilotCli, nil, nil},
+		{"empty default", ModeEmpty, nil, nil},
+		{"CLI strict", ModeCopilotCli, Bool(false), Bool(false)},
+		{"CLI recovery", ModeCopilotCli, Bool(true), Bool(true)},
+		{"empty strict", ModeEmpty, Bool(false), Bool(false)},
+		{"empty recovery", ModeEmpty, Bool(true), Bool(true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rpcClient, server, _ := newRuntimeShutdownRpcPair(t)
+			t.Cleanup(server.Stop)
+			client := &Client{
+				options:  ClientOptions{Mode: tc.mode},
+				client:   rpcClient,
+				RPC:      rpc.NewServerRPC(rpcClient),
+				sessions: make(map[string]*Session),
+			}
+			resumeParams := make(chan json.RawMessage, 2)
+			server.SetRequestHandler("session.resume", func(params json.RawMessage) (json.RawMessage, *jsonrpc2.Error) {
+				resumeParams <- append(json.RawMessage(nil), params...)
+				if sessionIDFromParams(t, params) == "unrepaired" {
+					return []byte(`{"sessionId":"unrepaired"}`), nil
+				}
+				return []byte(`{"sessionId":"s1","transcriptRecovery":{"plannedBackupPath":"backup.jsonl","invalidLineNumbers":[3,4],"sessionStartMoved":true}}`), nil
+			})
+			server.SetRequestHandler("session.options.update", func(json.RawMessage) (json.RawMessage, *jsonrpc2.Error) {
+				return []byte(`{"success":true}`), nil
+			})
+			server.SetRequestHandler("session.detach", func(json.RawMessage) (json.RawMessage, *jsonrpc2.Error) {
+				return []byte(`{"success":true}`), nil
+			})
+			session, err := client.ResumeSessionWithOptions(t.Context(), "s1", &ResumeSessionConfig{
+				AllowTranscriptRecovery: tc.explicit,
+				AvailableTools:          []string{},
+			})
+			if err != nil {
+				t.Fatalf("ResumeSessionWithOptions failed: %v", err)
+			}
+			t.Cleanup(func() {
+				if err := session.Disconnect(); err != nil {
+					t.Errorf("session disconnect failed: %v", err)
+				}
+			})
+			var wire map[string]any
+			if err := json.Unmarshal(<-resumeParams, &wire); err != nil {
+				t.Fatal(err)
+			}
+			value, present := wire["allowTranscriptRecovery"]
+			if tc.want == nil {
+				if present {
+					t.Fatalf("unexpected allowTranscriptRecovery: %v", value)
+				}
+			} else if !present || value != *tc.want {
+				t.Fatalf("allowTranscriptRecovery = %v (present %v), want %v", value, present, *tc.want)
+			}
+			report := session.TranscriptRecovery()
+			if report == nil || report.PlannedBackupPath != "backup.jsonl" || !reflect.DeepEqual(report.InvalidLineNumbers, []int{3, 4}) || !report.SessionStartMoved {
+				t.Fatalf("unexpected returned transcript recovery report: %+v", report)
+			}
+			unrepaired, err := client.ResumeSessionWithOptions(t.Context(), "unrepaired", &ResumeSessionConfig{
+				AvailableTools: []string{},
+			})
+			if err != nil {
+				t.Fatalf("unrepaired ResumeSessionWithOptions failed: %v", err)
+			}
+			t.Cleanup(func() {
+				if err := unrepaired.Disconnect(); err != nil {
+					t.Errorf("unrepaired session disconnect failed: %v", err)
+				}
+			})
+			if unrepaired.TranscriptRecovery() != nil {
+				t.Fatalf("unexpected recovery report on unrepaired session: %+v", unrepaired.TranscriptRecovery())
+			}
+		})
+	}
+}
+
+func TestTranscriptRecoveryReportCopyIsolation(t *testing.T) {
+	session := &Session{transcriptRecovery: &TranscriptRecoveryReport{
+		PlannedBackupPath:  "backup.jsonl",
+		InvalidLineNumbers: []int{3, 4},
+		SessionStartMoved:  true,
+	}}
+	report := session.TranscriptRecovery()
+	if report == nil || report.PlannedBackupPath != "backup.jsonl" || !reflect.DeepEqual(report.InvalidLineNumbers, []int{3, 4}) || !report.SessionStartMoved {
+		t.Fatalf("unexpected transcript recovery report: %+v", report)
+	}
+	report.InvalidLineNumbers[0] = 99
+	if session.TranscriptRecovery().InvalidLineNumbers[0] != 3 {
+		t.Fatal("report should not expose the session's slice")
+	}
+	if (&Session{}).TranscriptRecovery() != nil {
+		t.Fatal("new session should have no recovery report")
 	}
 }
 

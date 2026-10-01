@@ -1056,6 +1056,16 @@ session = await client.resume_session(
 )
 ```
 
+`allow_transcript_recovery` controls repair of a damaged transcript on resume.
+It defaults to `True` in all modes; set it to `False` to reject recovery. If repaired,
+`session.transcript_recovery` reports `planned_backup_path`,
+`invalid_line_numbers` (including discarded torn-tail lines), and
+`session_start_moved`; otherwise it is `None`. If repair is rejected, the
+existing `JsonRpcError` exposes the server's `code` and `data` (with
+`invalidLineNumbers` and `sessionStartMoved`) alongside its message.
+Disabling recovery still permits adding a missing newline after an intact final
+record; it rejects torn tails.
+
 ### Per-Tool Skip Permission
 
 To let a specific custom tool bypass the permission prompt entirely, set `skip_permission=True` on the tool definition. See [Skipping Permission Prompts](#skipping-permission-prompts) under Tools.

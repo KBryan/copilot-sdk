@@ -1004,6 +1004,18 @@ type AuthIdentity struct {
 	Type AuthInfoType `json:"type"`
 }
 
+// Credential-free identity metadata.
+// Experimental: AuthIdentityMetadata is part of an experimental API and may change or be
+// removed.
+type AuthIdentityMetadata struct {
+	// Identity host.
+	Host string `json:"host"`
+	// User login.
+	Login string `json:"login"`
+	// Authentication type.
+	Type AuthInfoType `json:"type"`
+}
+
 // Authentication credentials accepted only at native protocol ingress. Runtime outputs use
 // credential-free `AuthIdentity` metadata.
 // Experimental: AuthInfo is part of an experimental API and may change or be removed.
@@ -3095,6 +3107,10 @@ type ConnectorCapabilities struct {
 	// Whether callers select a host-owned GitHub account through an opaque selection ID rather
 	// than supplying a provider token.
 	OpaqueAccountSelection bool `json:"opaqueAccountSelection"`
+	// Whether getAccount is supported. Absence means false.
+	SessionAccountSelection *bool `json:"sessionAccountSelection,omitempty"`
+	// Whether reconcile accepts forceConnectorName. Absence means false.
+	TargetedReconcile *bool `json:"targetedReconcile,omitempty"`
 }
 
 // Credential-free Connector catalog entry.
@@ -3105,12 +3121,18 @@ type ConnectorCatalogEntry struct {
 	Description *string `json:"description,omitempty"`
 	// Untrusted display label from the service.
 	DisplayName string `json:"displayName"`
+	// Optional catalog logo.
+	Logo *string `json:"logo,omitempty"`
 	// Canonical Connector name used by lifecycle methods.
 	Name string `json:"name"`
+	// Optional catalog release tag.
+	ReleaseTag *string `json:"releaseTag,omitempty"`
 	// Opaque stable runtime IDs currently projected into the session for this Connector.
 	RuntimeServerIDs []string `json:"runtimeServerIds"`
 	// Current authoritative service connection state.
 	Status ConnectorCatalogStatus `json:"status"`
+	// Optional catalog tier.
+	Tier *string `json:"tier,omitempty"`
 }
 
 // Validated Connector catalog snapshot cached by the session.
@@ -3222,6 +3244,8 @@ type ConnectorReconcileRequest struct {
 	// Opaque account selection ID. It must match the account already pinned to the session, if
 	// any.
 	AccountID string `json:"accountId"`
+	// Optional Connector name to reinitialize. Requires the targetedReconcile capability.
+	ForceConnectorName *string `json:"forceConnectorName,omitempty"`
 	// When true, refresh the catalog before reconciling. A disabled Connector API performs no
 	// service request.
 	RefreshCatalog *bool `json:"refreshCatalog,omitempty"`
@@ -3238,6 +3262,21 @@ type ConnectorRuntimeStatus struct {
 	// Current live MCP host status.
 	Status ConnectorMCPStatus `json:"status"`
 }
+
+// Session account selection.
+// Experimental: ConnectorSessionAccount is part of an experimental API and may change or be
+// removed.
+type ConnectorSessionAccount struct {
+	// Opaque session-scoped account selection ID.
+	AccountID string `json:"accountId"`
+	// Credential-free identity metadata.
+	AuthInfo AuthIdentityMetadata `json:"authInfo"`
+}
+
+// Session account selection, or null.
+// Experimental: ConnectorSessionAccountResult is part of an experimental API and may change
+// or be removed.
+type ConnectorSessionAccountResult = *ConnectorSessionAccount
 
 // Authoritative session connector state. Account IDs are opaque routing identifiers and
 // credentials are never included.
@@ -13864,24 +13903,10 @@ type SessionAgentListRequest struct {
 type SessionAgentSetPromptResult struct {
 }
 
-// Credential-free authentication identity safe to expose to hosts and user interfaces.
+// Current authentication information, or null when no authentication is active.
 // Experimental: SessionAuthInfoResult is part of an experimental API and may change or be
 // removed.
-type SessionAuthInfoResult struct {
-	// Snapshot of the authenticated user's Copilot subscription info, if known
-	CopilotUser *CopilotUserResponse `json:"copilotUser,omitempty"`
-	// Name of the environment variable that supplied the credential, when applicable
-	EnvVar *string `json:"envVar,omitempty"`
-	// Authentication host
-	Host string `json:"host"`
-	// Authenticated login, when available
-	Login *string `json:"login,omitempty"`
-	// Opaque SDK GitHub credential registration backing this identity. Routing metadata only;
-	// never a credential.
-	RegistrationID *string `json:"registrationId,omitempty"`
-	// Authentication type
-	Type AuthInfoType `json:"type"`
-}
+type SessionAuthInfoResult = *AuthIdentity
 
 // Internal GitHub login parameters.
 // Experimental: SessionAuthLoginRequest is part of an experimental API and may change or be
@@ -29406,6 +29431,24 @@ func (a *ConnectorsAPI) Disconnect(ctx context.Context, params *ConnectorConnect
 	return &result, nil
 }
 
+// GetAccount returns the session account selection, or null.
+//
+// RPC method: session.connectors.getAccount.
+//
+// Returns: Session account selection, or null.
+func (a *ConnectorsAPI) GetAccount(ctx context.Context) (*ConnectorSessionAccount, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	raw, err := a.client.Request(ctx, "session.connectors.getAccount", req)
+	if err != nil {
+		return nil, err
+	}
+	var result *ConnectorSessionAccount
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetCapabilities returns feature availability and bounded polling limits for the
 // EXPERIMENTAL session connector API. This method never performs a Connector service
 // request.
@@ -29486,6 +29529,9 @@ func (a *ConnectorsAPI) Reconcile(ctx context.Context, params *ConnectorReconcil
 	req := map[string]any{"sessionId": a.sessionID}
 	if params != nil {
 		req["accountId"] = params.AccountID
+		if params.ForceConnectorName != nil {
+			req["forceConnectorName"] = *params.ForceConnectorName
+		}
 		if params.RefreshCatalog != nil {
 			req["refreshCatalog"] = *params.RefreshCatalog
 		}
@@ -36247,11 +36293,11 @@ func (a *InternalGitHubAuthAPI) GetCurrentAuthInfo(ctx context.Context) (*AuthId
 	if err != nil {
 		return nil, err
 	}
-	var result AuthIdentity
+	var result *AuthIdentity
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	return result, nil
 }
 
 // LastAuthErrors gets validation errors from the most recent authentication attempt.
@@ -36363,11 +36409,11 @@ func (a *InternalGitHubAuthAPI) RefreshCopilotUser(ctx context.Context) (*AuthId
 	if err != nil {
 		return nil, err
 	}
-	var result AuthIdentity
+	var result *AuthIdentity
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}
-	return &result, nil
+	return result, nil
 }
 
 // SwitchToAuth switches the session to another available authentication.

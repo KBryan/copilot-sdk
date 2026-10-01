@@ -38,7 +38,8 @@ use crate::types::{
     GetMessagesResponse, MessageOptions, PermissionRequestData, RequestId, ResumeSessionConfig,
     ResumeSessionResult, SectionOverride, SessionCapabilities, SessionConfig, SessionEvent,
     SessionId, SetModelOptions, SystemMessageConfig, ToolInvocation, ToolResult,
-    ToolResultExpanded, TraceContext, UiInputOptions, ensure_attachment_display_names,
+    ToolResultExpanded, TraceContext, TranscriptRecovery, UiInputOptions,
+    ensure_attachment_display_names,
 };
 use crate::{
     Client, Error, ErrorKind, JsonRpcResponse, SessionErrorKind, SessionEventNotification,
@@ -490,6 +491,7 @@ impl CreateEventLoop {
 /// unregisters from the router as a best-effort safety net.
 pub struct Session {
     ahp_creation_config: ParkingLotMutex<Option<serde_json::Value>>,
+    transcript_recovery: Option<TranscriptRecovery>,
     id: SessionId,
     cwd: PathBuf,
     workspace_path: Option<PathBuf>,
@@ -592,6 +594,11 @@ impl Session {
     /// Workspace directory for the session (if using infinite sessions).
     pub fn workspace_path(&self) -> Option<&Path> {
         self.workspace_path.as_deref()
+    }
+
+    /// Transcript repair proposed when this session was resumed, if any.
+    pub fn transcript_recovery(&self) -> Option<&TranscriptRecovery> {
+        self.transcript_recovery.as_ref()
     }
 
     /// Remote session URL, if the session is running remotely.
@@ -1833,6 +1840,7 @@ impl Client {
         );
         let session = Session {
             ahp_creation_config: ParkingLotMutex::new(ahp_creation_config),
+            transcript_recovery: None,
             id: session_id,
             cwd: self.cwd().clone(),
             workspace_path: create_result.workspace_path,
@@ -1877,6 +1885,7 @@ impl Client {
         shutdown: CancellationToken,
     ) -> Result<Session, Error> {
         let total_start = Instant::now();
+        let mode = self.inner.mode;
         let ahp_creation_config = if self
             .inner
             .ahp_host_sessions
@@ -1894,7 +1903,6 @@ impl Client {
         if let Some(transforms) = config.system_message_transform.clone() {
             inject_transform_sections_resume(&mut config, transforms.as_ref());
         }
-        let mode = self.inner.mode;
         if mode == crate::ClientMode::Empty && config.available_tools.is_none() {
             return Err(Error::with_message(
                 ErrorKind::InvalidConfig,
@@ -2133,6 +2141,7 @@ impl Client {
         );
         let session = Session {
             ahp_creation_config: ParkingLotMutex::new(ahp_creation_config),
+            transcript_recovery: resume_result.transcript_recovery,
             id: session_id,
             cwd: self.cwd().clone(),
             workspace_path: resume_result.workspace_path,

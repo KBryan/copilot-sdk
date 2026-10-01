@@ -16363,11 +16363,58 @@ public sealed class ConnectorCapabilities
     /// <summary>Whether callers select a host-owned GitHub account through an opaque selection ID rather than supplying a provider token.</summary>
     [JsonPropertyName("opaqueAccountSelection")]
     public bool OpaqueAccountSelection { get; set; }
+
+    /// <summary>Whether getAccount is supported. Absence means false.</summary>
+    [JsonPropertyName("sessionAccountSelection")]
+    public bool? SessionAccountSelection { get; set; }
+
+    /// <summary>Whether reconcile accepts forceConnectorName. Absence means false.</summary>
+    [JsonPropertyName("targetedReconcile")]
+    public bool? TargetedReconcile { get; set; }
 }
 
 /// <summary>Identifies the target session.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class SessionConnectorsGetCapabilitiesRequest
+{
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>Credential-free identity metadata.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class AuthIdentityMetadata
+{
+    /// <summary>Identity host.</summary>
+    [JsonPropertyName("host")]
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>User login.</summary>
+    [JsonPropertyName("login")]
+    public string Login { get; set; } = string.Empty;
+
+    /// <summary>Authentication type.</summary>
+    [JsonPropertyName("type")]
+    public AuthInfoType Type { get; set; }
+}
+
+/// <summary>Session account selection.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class ConnectorSessionAccount
+{
+    /// <summary>Opaque session-scoped account selection ID.</summary>
+    [JsonPropertyName("accountId")]
+    public string AccountId { get; set; } = string.Empty;
+
+    /// <summary>Credential-free identity metadata.</summary>
+    [JsonPropertyName("authInfo")]
+    public AuthIdentityMetadata AuthInfo { get => field ??= new(); set; }
+}
+
+/// <summary>Identifies the target session.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class SessionConnectorsGetAccountRequest
 {
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -16399,9 +16446,17 @@ public sealed class ConnectorCatalogEntry
     [JsonPropertyName("displayName")]
     public string DisplayName { get; set; } = string.Empty;
 
+    /// <summary>Optional catalog logo.</summary>
+    [JsonPropertyName("logo")]
+    public string? Logo { get; set; }
+
     /// <summary>Canonical Connector name used by lifecycle methods.</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>Optional catalog release tag.</summary>
+    [JsonPropertyName("releaseTag")]
+    public string? ReleaseTag { get; set; }
 
     /// <summary>Opaque stable runtime IDs currently projected into the session for this Connector.</summary>
     [JsonPropertyName("runtimeServerIds")]
@@ -16410,6 +16465,10 @@ public sealed class ConnectorCatalogEntry
     /// <summary>Current authoritative service connection state.</summary>
     [JsonPropertyName("status")]
     public ConnectorCatalogStatus Status { get; set; }
+
+    /// <summary>Optional catalog tier.</summary>
+    [JsonPropertyName("tier")]
+    public string? Tier { get; set; }
 }
 
 /// <summary>Validated Connector catalog snapshot cached by the session.</summary>
@@ -16621,11 +16680,32 @@ public sealed class ConnectorDisconnectResult
 
 /// <summary>Requests authoritative Connector-to-MCP reconciliation for the pinned account.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-internal sealed class ConnectorReconcileRequest
+public sealed class ConnectorReconcileRequest
+{
+    /// <summary>Opaque account selection ID. It must match the account already pinned to the session, if any.</summary>
+    [JsonPropertyName("accountId")]
+    public required string AccountId { get; set; }
+
+    /// <summary>Optional Connector name to reinitialize. Requires the targetedReconcile capability.</summary>
+    [JsonPropertyName("forceConnectorName")]
+    public string? ForceConnectorName { get; set; }
+
+    /// <summary>When true, refresh the catalog before reconciling. A disabled Connector API performs no service request.</summary>
+    [JsonPropertyName("refreshCatalog")]
+    public bool? RefreshCatalog { get; set; }
+}
+
+/// <summary>Requests authoritative Connector-to-MCP reconciliation for the pinned account.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class ConnectorReconcileRequestWithSession
 {
     /// <summary>Opaque account selection ID. It must match the account already pinned to the session, if any.</summary>
     [JsonPropertyName("accountId")]
     public string AccountId { get; set; } = string.Empty;
+
+    /// <summary>Optional Connector name to reinitialize. Requires the targetedReconcile capability.</summary>
+    [JsonPropertyName("forceConnectorName")]
+    public string? ForceConnectorName { get; set; }
 
     /// <summary>When true, refresh the catalog before reconciling. A disabled Connector API performs no service request.</summary>
     [JsonPropertyName("refreshCatalog")]
@@ -45531,6 +45611,17 @@ public sealed class ConnectorsApi
         return await CopilotClient.InvokeRpcAsync<ConnectorCapabilities>(_session.Rpc, "session.connectors.getCapabilities", [request], cancellationToken);
     }
 
+    /// <summary>Returns the session account selection, or null.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Session account selection, or null.</returns>
+    public async Task<ConnectorSessionAccount?> GetAccountAsync(CancellationToken cancellationToken = default)
+    {
+        _session.ThrowIfDisposed();
+
+        var request = new SessionConnectorsGetAccountRequest { SessionId = _session.SessionId };
+        return await CopilotClient.InvokeRpcAsync<ConnectorSessionAccount?>(_session.Rpc, "session.connectors.getAccount", [request], cancellationToken);
+    }
+
     /// <summary>Returns authoritative session Connector state from current availability, pinned account selection, cached catalog, and live MCP projection without performing a Connector service request.</summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.</returns>
@@ -45639,8 +45730,21 @@ public sealed class ConnectorsApi
         ArgumentNullException.ThrowIfNull(accountId);
         _session.ThrowIfDisposed();
 
-        var request = new ConnectorReconcileRequest { SessionId = _session.SessionId, AccountId = accountId, RefreshCatalog = refreshCatalog };
+        var request = new ConnectorReconcileRequestWithSession { SessionId = _session.SessionId, AccountId = accountId, RefreshCatalog = refreshCatalog };
         return await CopilotClient.InvokeRpcAsync<ConnectorStatus>(_session.Rpc, "session.connectors.reconcile", [request], cancellationToken);
+    }
+
+    /// <summary>Reconciles the authoritative cached or freshly requested Connector catalog into the session Connector MCP projection and returns live status.</summary>
+    /// <param name="request">Requests authoritative Connector-to-MCP reconciliation for the pinned account.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.</returns>
+    public async Task<ConnectorStatus> ReconcileAsync(ConnectorReconcileRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.AccountId);
+        _session.ThrowIfDisposed();
+        var wireRequest = new ConnectorReconcileRequestWithSession { SessionId = _session.SessionId, AccountId = request.AccountId, RefreshCatalog = request.RefreshCatalog, ForceConnectorName = request.ForceConnectorName };
+        return await CopilotClient.InvokeRpcAsync<ConnectorStatus>(_session.Rpc, "session.connectors.reconcile", [wireRequest], cancellationToken);
     }
 
     /// <summary>Reconciles the authoritative Connector catalog into the session MCP projection during startup with a bounded deadline and fail-closed cleanup.</summary>
@@ -48817,6 +48921,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(AuthEnumerateQuery))]
 [JsonSerializable(typeof(AuthEnumerateValue))]
 [JsonSerializable(typeof(AuthIdentity))]
+[JsonSerializable(typeof(AuthIdentityMetadata))]
 [JsonSerializable(typeof(AuthInfo))]
 [JsonSerializable(typeof(AuthLoginAdvanceRequest))]
 [JsonSerializable(typeof(AuthLoginBeginRequest))]
@@ -48904,7 +49009,9 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(ConnectorContinueRequest))]
 [JsonSerializable(typeof(ConnectorDisconnectResult))]
 [JsonSerializable(typeof(ConnectorReconcileRequest))]
+[JsonSerializable(typeof(ConnectorReconcileRequestWithSession))]
 [JsonSerializable(typeof(ConnectorRuntimeStatus))]
+[JsonSerializable(typeof(ConnectorSessionAccount))]
 [JsonSerializable(typeof(ConnectorStatus))]
 [JsonSerializable(typeof(ContentExclusionCheckPathsRequest))]
 [JsonSerializable(typeof(ContentExclusionCheckPathsResult))]
@@ -49485,6 +49592,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(SessionCommandsListRequestWithSession))]
 [JsonSerializable(typeof(SessionCompletionItem))]
 [JsonSerializable(typeof(SessionCompletionsGetTriggerCharactersRequest))]
+[JsonSerializable(typeof(SessionConnectorsGetAccountRequest))]
 [JsonSerializable(typeof(SessionConnectorsGetCapabilitiesRequest))]
 [JsonSerializable(typeof(SessionConnectorsGetStatusRequest))]
 [JsonSerializable(typeof(SessionConnectorsWithdrawProjectionRequest))]

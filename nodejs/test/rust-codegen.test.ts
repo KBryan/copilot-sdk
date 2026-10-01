@@ -30,6 +30,47 @@ describe("Rust codegen entrypoint", () => {
 });
 
 describe("Rust API type codegen", () => {
+    it.each([
+        {
+            sentinel: { type: "null" },
+            expectedAlias: "pub type SessionAccountResult = Option<SessionAccount>;",
+        },
+        // `{ "not": {} }` is the omission sentinel, not a wire null, so the
+        // alias must not become Option and accept/serialize a null.
+        { sentinel: { not: {} }, expectedAlias: "pub type SessionAccountResult = SessionAccount;" },
+    ])(
+        "aliases a named reference according to its null-like branch (%j)",
+        ({ sentinel, expectedAlias }) => {
+            const code = generateApiTypesCode({
+                definitions: {
+                    SessionAccount: {
+                        type: "object",
+                        title: "SessionAccount",
+                        properties: { accountId: { type: "string" } },
+                        required: ["accountId"],
+                    },
+                    SessionAccountResult: {
+                        title: "SessionAccountResult",
+                        anyOf: [{ $ref: "#/definitions/SessionAccount" }, sentinel],
+                    },
+                },
+                session: {
+                    accounts: {
+                        getCurrent: {
+                            rpcMethod: "session.accounts.getCurrent",
+                            params: null,
+                            result: { $ref: "#/definitions/SessionAccountResult" },
+                        },
+                    },
+                },
+            } as ApiSchema);
+
+            expect(code).toContain(expectedAlias);
+            expect(code).toContain("pub struct SessionAccount {");
+            expect(code).not.toContain("pub struct SessionAccountResult {");
+        }
+    );
+
     it.each(["anyOf", "oneOf"] as const)(
         "keeps required phase results typed through %s references",
         (keyword) => {

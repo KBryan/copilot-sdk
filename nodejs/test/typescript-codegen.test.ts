@@ -7,10 +7,39 @@ import {
     filterPublicSessionEventVariants,
     isTypeScriptCodegenEntrypoint,
     normalizeSchemaForTypeScript,
+    tsNullableResultTypeName,
 } from "../../scripts/codegen/typescript.ts";
 import type { DefinitionCollections } from "../../scripts/codegen/utils.ts";
 
 describe("typescript schema codegen", () => {
+    it("preserves an explicit nullable reference result's named union", () => {
+        expect(
+            tsNullableResultTypeName(
+                {
+                    rpcMethod: "session.accounts.getCurrent",
+                    params: null,
+                    result: { $ref: "#/definitions/SessionAccountResult" },
+                },
+                {
+                    title: "SessionAccountResult",
+                    anyOf: [{ $ref: "#/definitions/SessionAccount" }, { type: "null" }],
+                }
+            )
+        ).toBe("SessionAccountResult");
+    });
+
+    it("retains the existing undefined result type for omission sentinels", () => {
+        expect(
+            tsNullableResultTypeName({
+                rpcMethod: "session.accounts.getCurrent",
+                params: null,
+                result: {
+                    anyOf: [{ $ref: "#/definitions/SessionAccount" }, { not: {} }],
+                },
+            })
+        ).toBe("SessionAccount | undefined");
+    });
+
     it("recognizes Windows entrypoint paths case-insensitively", () => {
         expect(
             isTypeScriptCodegenEntrypoint(

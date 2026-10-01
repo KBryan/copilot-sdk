@@ -4044,6 +4044,15 @@ public sealed class SessionConfig : SessionConfigBase
     public SessionConfig Clone() => new(this);
 }
 
+/// <summary>Details of a transcript repair performed while resuming a session.</summary>
+/// <param name="PlannedBackupPath">Path planned for the original transcript backup.</param>
+/// <param name="InvalidLineNumbers">Invalid or torn-tail lines affected by repair.</param>
+/// <param name="SessionStartMoved">Whether the session start event was relocated.</param>
+public sealed record TranscriptRecoveryReport(
+    string PlannedBackupPath,
+    IList<int> InvalidLineNumbers,
+    bool SessionStartMoved);
+
 /// <summary>
 /// Configuration options for resuming an existing Copilot session.
 /// </summary>
@@ -4062,6 +4071,7 @@ public sealed class ResumeSessionConfig : SessionConfigBase
 
         SuppressResumeEvent = other.SuppressResumeEvent;
         ContinuePendingWork = other.ContinuePendingWork;
+        AllowTranscriptRecovery = other.AllowTranscriptRecovery;
         OpenCanvases = other.OpenCanvases is not null ? [.. other.OpenCanvases] : null;
     }
 
@@ -4075,7 +4085,8 @@ public sealed class ResumeSessionConfig : SessionConfigBase
     /// When <see langword="true"/>, instructs the runtime to continue any tool calls
     /// or permission prompts that were still pending when the session was last suspended.
     /// When <see langword="false"/> (the default), the runtime treats pending work as
-    /// interrupted on resume.
+    /// interrupted on resume. Completed tool results already durably recorded
+    /// by the runtime are preserved.
     /// <para>
     /// For permission requests, the runtime re-emits <c>permission.requested</c> so the
     /// registered <see cref="SessionConfigBase.OnPermissionRequest"/> handler can re-prompt;
@@ -4084,6 +4095,13 @@ public sealed class ResumeSessionConfig : SessionConfigBase
     /// </para>
     /// </summary>
     public bool? ContinuePendingWork { get; set; }
+
+    /// <summary>
+    /// Whether to repair a damaged transcript on resume. Defaults to true in
+    /// all modes. Set false to reject recovery. Recovery can discard a torn tail;
+    /// inspect <see cref="CopilotSession.TranscriptRecovery"/> after resume.
+    /// </summary>
+    public bool? AllowTranscriptRecovery { get; set; }
 
 #pragma warning disable GHCP001
     /// <summary>

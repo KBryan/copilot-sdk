@@ -315,6 +315,29 @@ function extractRefName(schema: JSONSchema7 | null | undefined): string | null {
     return schema.$ref.replace(/^#\/definitions\//, "");
 }
 
+function nullableResultReference(schema: JSONSchema7): JSONSchema7 | undefined {
+    if (schema.anyOf?.length !== 2) return undefined;
+    const [first, second] = schema.anyOf;
+    if (typeof first !== "object" || typeof second !== "object") return undefined;
+    if (first.type === "null" && second.$ref) return second;
+    if (second.type === "null" && first.$ref) return first;
+    return undefined;
+}
+
+/**
+ * Whether an RPC method's result schema permits `null`. Java has no nullable
+ * reference types, so the wrapper returns the non-null branch and the
+ * generated Javadoc must disclose the absent case instead.
+ */
+function methodResultAllowsNull(method: RpcMethodNode): boolean {
+    const original = method.result as JSONSchema7 | null | undefined;
+    if (!original || typeof original !== "object") return false;
+    const refName = extractRefName(original);
+    const resolved = refName ? currentDefinitions[refName] : original;
+    if (!resolved || typeof resolved !== "object") return false;
+    return !!nullableResultReference(resolved);
+}
+
 // ── Discriminated union support ─────────────────────────────────────────────
 
 interface DiscriminatorInfo {
@@ -2485,6 +2508,11 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
             const resultRefName = extractRefName(resultSchema);
             if (resultSchema?.$ref) resultSchema = resolveRef(resultSchema) as JSONSchema7;
             if (resultSchema && typeof resultSchema === "object") {
+                const nullableRef = nullableResultReference(resultSchema);
+                if (nullableRef) {
+                    schemaTypeToJava(nullableRef, false, `${className}Result`, "value", new Map());
+                    continue;
+                }
                 if (
                     resultSchema.properties &&
                     (Object.keys(resultSchema.properties).length > 0 ||
@@ -2722,6 +2750,10 @@ function wrapperResultClassName(method: RpcMethodNode): string {
     if (refName) {
         const resolved = currentDefinitions[refName];
         if (resolved) {
+            const nullableRef = nullableResultReference(resolved);
+            if (nullableRef) {
+                return schemaTypeToJava(nullableRef, false, refName, "value", new Map()).javaType;
+            }
             // String enum → use the definition name
             if (resolved.type === "string" && resolved.enum) {
                 return refName;
@@ -2848,7 +2880,7 @@ function methodParamsAreOptional(method: RpcMethodNode): boolean {
  * Generate the Java source for a single method in a wrapper API class.
  * Returns the Java source lines and whether an ObjectMapper is required.
  */
-function generateApiMethod(
+export function generateApiMethod(
     key: string,
     method: RpcMethodNode,
     isSession: boolean,
@@ -2859,6 +2891,7 @@ function generateApiMethod(
     const hasSessionId = methodHasSessionId(method);
     const hasExtraParams = paramsClass !== null;
     const paramsOptional = hasExtraParams && methodParamsAreOptional(method);
+    const resultAllowsNull = methodResultAllowsNull(method);
     // Supervised-participant host operations are not owner-client APIs. Keep this
     // scoped to hosting rather than changing unrelated existing Java API exposure.
     const access = method.visibility === "internal" && method.rpcMethod.startsWith("host.") ? "" : "public ";
@@ -2879,6 +2912,12 @@ function generateApiMethod(
             lines.push(`     * by the session-scoped wrapper; any value provided is ignored.`);
         }
         lines.push(...extraLines);
+        if (resultAllowsNull) {
+            lines.push(`     *`);
+            lines.push(`     * @return a future that completes with the {@code ${resultClass}} value,`);
+            lines.push(`     *     or {@code null} when the result is absent. Callers must handle the`);
+            lines.push(`     *     {@code null} completion value.`);
+        }
         if (method.stability === "experimental") {
             lines.push(`     *`);
             lines.push(`     * @apiNote This method is experimental and may change in a future version.`);

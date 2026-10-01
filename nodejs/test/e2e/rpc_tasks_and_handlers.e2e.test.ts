@@ -4,11 +4,12 @@
 
 import { describe, expect, it } from "vitest";
 import { approveAll } from "../../src/index.js";
+import type { SessionEvent } from "../../src/index.js";
 import { createSdkTestContext } from "./harness/sdkTestContext.js";
 import { waitForCondition } from "./harness/sdkTestHelper.js";
 
 describe("Session tasks RPC and pending handlers", async () => {
-    const { copilotClient: client } = await createSdkTestContext();
+    const { copilotClient: client, openAiEndpoint } = await createSdkTestContext();
 
     async function assertImplementedFailure(
         action: () => Promise<unknown>,
@@ -93,6 +94,97 @@ describe("Session tasks RPC and pending handlers", async () => {
 
         await session.disconnect();
     });
+
+    it(
+        "should start a general-purpose agent on the parent's model",
+        { timeout: 240_000 },
+        async () => {
+            const parentModel = "claude-sonnet-5";
+            const session = await client.createSession({
+                onPermissionRequest: approveAll,
+                model: parentModel,
+            });
+            const started: Extract<SessionEvent, { type: "subagent.started" }>[] = [];
+            const parentReplies: string[] = [];
+            const unsubscribe = session.on((event) => {
+                if (event.type === "subagent.started") {
+                    started.push(event);
+                } else if (event.type === "assistant.message" && !event.agentId) {
+                    parentReplies.push(event.data.content ?? "");
+                }
+            });
+            try {
+                // The token gives the parent's turn for the completion notification a reply to wait for.
+                expect(
+                    (
+                        await session.sendAndWait({
+                            prompt:
+                                "Reply with TASK_MODEL_READY exactly. When a background agent notification " +
+                                "arrives later, reply with TASK_MODEL_NOTIFIED exactly.",
+                        })
+                    )?.data.content
+                ).toContain("TASK_MODEL_READY");
+
+                const prompt = "Reply with TASK_MODEL_CHILD_DONE exactly.";
+                const { agentId } = await session.rpc.tasks.startAgent({
+                    agentType: "general-purpose",
+                    prompt,
+                    name: "sdk-inherited-model-agent",
+                    description: "SDK inherited model coverage",
+                });
+                const findTask = async () =>
+                    (await session.rpc.tasks.list()).tasks.find((entry) => entry.id === agentId);
+                let lastTask: Awaited<ReturnType<typeof findTask>>;
+                await waitForCondition(
+                    async () => {
+                        lastTask = await findTask();
+                        return (
+                            !!lastTask &&
+                            ["completed", "idle"].includes(lastTask.status) &&
+                            (lastTask.latestResponse ?? lastTask.result ?? "").includes(
+                                "TASK_MODEL_CHILD_DONE"
+                            )
+                        );
+                    },
+                    { timeoutMs: 60_000 }
+                ).catch((error: unknown) => {
+                    throw new Error(`Agent ${agentId} never settled: ${JSON.stringify(lastTask)}`, {
+                        cause: error,
+                    });
+                });
+                // The parent's reply to the notification ends the last turn this test records.
+                await waitForCondition(
+                    () => parentReplies.some((reply) => reply.includes("TASK_MODEL_NOTIFIED")),
+                    { timeoutMs: 60_000 }
+                ).catch((error: unknown) => {
+                    throw new Error(
+                        `Parent never answered the completion notification: ${JSON.stringify(parentReplies)}`,
+                        { cause: error }
+                    );
+                });
+
+                const task = await findTask();
+                // No model was requested; the wire reports that as `null`.
+                expect(task?.model ?? null).toBeNull();
+                expect(task?.resolvedModel).toBe(parentModel);
+                expect(started.map((event) => event.data.model)).toEqual([parentModel]);
+                // Raw requests, scoped by this test's prompts: an earlier test's late
+                // request can land here, and its error response is not parsable.
+                const requestModelsMentioning = async (text: string) =>
+                    (await openAiEndpoint.getRequests())
+                        .filter((request) => request.body.includes(text))
+                        .map((request) => (JSON.parse(request.body) as { model?: string }).model);
+                const childModels = await requestModelsMentioning(prompt);
+                const parentModels = await requestModelsMentioning("TASK_MODEL_READY");
+                expect(childModels.length).toBeGreaterThan(0);
+                expect(parentModels.length).toBeGreaterThan(0);
+                expect(new Set([...childModels, ...parentModels])).toEqual(new Set([parentModel]));
+            } finally {
+                unsubscribe();
+                await session.disconnect();
+            }
+        }
+    );
 
     it("should start background agent and report task details", { timeout: 240_000 }, async () => {
         const session = await client.createSession({ onPermissionRequest: approveAll });

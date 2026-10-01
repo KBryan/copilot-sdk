@@ -2622,6 +2622,71 @@ class TestSessionConfigForwarding:
             await client.force_stop()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("mode", "setting", "expected"),
+        [
+            ("copilot-cli", None, None),
+            ("empty", None, None),
+            ("copilot-cli", False, False),
+            ("copilot-cli", True, True),
+            ("empty", False, False),
+            ("empty", True, True),
+        ],
+    )
+    async def test_resume_transcript_recovery_wire_and_report(
+        self, mode, setting, expected, tmp_path
+    ):
+        client = CopilotClient(
+            connection=RuntimeConnection.for_stdio(path=CLI_PATH),
+            mode=mode,
+            base_directory=str(tmp_path),
+        )
+        await client.start()
+        try:
+            captured = {}
+
+            async def mock_request(method, params, **_kwargs):
+                captured[method] = params
+                if method == "session.resume":
+                    if params["sessionId"] == "transcript-unrepaired":
+                        return {"sessionId": params["sessionId"]}
+                    return {
+                        "sessionId": params["sessionId"],
+                        "transcriptRecovery": {
+                            "plannedBackupPath": "backup.jsonl",
+                            "invalidLineNumbers": [3, 4],
+                            "sessionStartMoved": True,
+                        },
+                    }
+                if method == "session.options.update":
+                    return {"success": True}
+                return {}
+
+            client._client.request = mock_request
+            session = await client.resume_session(
+                "transcript-test",
+                on_permission_request=PermissionHandler.approve_all,
+                available_tools=[],
+                allow_transcript_recovery=setting,
+            )
+            assert captured["session.resume"].get("allowTranscriptRecovery") is expected
+            assert ("allowTranscriptRecovery" in captured["session.resume"]) == (
+                expected is not None
+            )
+            assert session.transcript_recovery is not None
+            assert session.transcript_recovery.planned_backup_path == "backup.jsonl"
+            assert session.transcript_recovery.invalid_line_numbers == [3, 4]
+            assert session.transcript_recovery.session_start_moved is True
+            unrepaired = await client.resume_session(
+                "transcript-unrepaired",
+                on_permission_request=PermissionHandler.approve_all,
+                available_tools=[],
+            )
+            assert unrepaired.transcript_recovery is None
+        finally:
+            await client.force_stop()
+
+    @pytest.mark.asyncio
     async def test_resume_session_forwards_continue_pending_work(self):
         client = CopilotClient(connection=RuntimeConnection.for_stdio(path=CLI_PATH))
         await client.start()

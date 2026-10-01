@@ -313,7 +313,7 @@ describe("Generated RPC surface coverage", () => {
             ...collectRuntimeFunctions(session.rpc, "session"),
         ]);
 
-        expect(inventory).toHaveLength(380);
+        expect(inventory).toHaveLength(381);
         const boundInstallationMethods = [
             "mcp.prepareInstall",
             "mcp.applyInstall",

@@ -224,10 +224,13 @@ structured form-based `ask_user` tool when an elicitation handler is also set.
 The default is `AskUserVariant.LEGACY`. Re-supply the option and handler through
 `ResumeSessionConfig` on a cold resume.
 
-To continue a pending turn after resuming a session, pass
-`new ResumeSessionConfig().setContinuePendingWork(true)` to `resumeSession`.
-Set it to `false` to opt out explicitly, or leave it unset to use the runtime
-default.
+`ResumeSessionConfig.setContinuePendingWork(false)` interrupts work still in
+flight when resuming (the default), while preserving completed tool results
+already durably recorded by the runtime.
+Pass `new ResumeSessionConfig().setContinuePendingWork(true)` to
+`resumeSession` to keep waiting for pending tool calls and permission requests
+instead. Leave the option unset to use the runtime default. Re-register any
+external tools needed to handle continued work.
 
 For rotating per-session GitHub credentials, use
 `SessionConfig.setGitHubTokenProvider(...)` (or the equivalent
@@ -307,6 +310,17 @@ Inventory inventory = session.sendAndWait(
     Inventory.class
 ).get();
 ```
+
+On resume, transcript recovery defaults to true in all modes.
+Use `ResumeSessionConfig.setAllowTranscriptRecovery(false)` to reject recovery.
+A repaired session exposes
+`getTranscriptRecovery()` (or null), with `plannedBackupPath`,
+`invalidLineNumbers` (including discarded torn-tail lines), and
+`sessionStartMoved`. A rejected resume retains the existing error message;
+`JsonRpcException.getCode()` and `getData()` expose the server's code and
+`invalidLineNumbers` / `sessionStartMoved` data.
+Disabling recovery still permits adding a missing newline after an intact final
+record; it rejects torn tails.
 
 Enable annotation processing with `CopilotResponseProcessor` (automatically
 discoverable alongside the SDK's existing processors), and opt in to experimental
@@ -833,17 +847,18 @@ Each classifier JAR includes `runtime.node`, `platform.properties`, and `copilot
 
 ### Versioning and releases
 
-The Java SDK uses [Maven CI-friendly versions](https://maven.apache.org/maven-ci-friendly.html). Every module declares `<version>${revision}</version>`, and the single source of truth is the `<revision>` property in `java/pom.xml`. The committed value stays a `-SNAPSHOT` (for example `1.0.14-SNAPSHOT`) and is only used for local development and the daily snapshot publish.
+The Java SDK uses [Maven CI-friendly versions](https://maven.apache.org/maven-ci-friendly.html). Every module declares `<version>${revision}</version>`, and the single source of truth is the `<revision>` property in `java/pom.xml`. The committed value stays a `-SNAPSHOT` for local development. Published artifacts contain a concrete version rather than the unresolved `${revision}` property.
 
-Releasing is intentionally a **read-only** operation that never mutates the repository:
+Stable, prerelease, and public unstable releases include all six SDKs. SDK and runtime versions are numbered independently; each Java release contains the matching runtime artifacts in its native classifier JARs. Public unstable versions use `X.Y.Z-unstable.<run-id>.g<sha>`. Maven `-SNAPSHOT` builds are a separate development channel.
 
-- The release version is computed by the shared release pipeline (`.github/workflows/publish.yml`) — the same version used by every other language SDK — and injected at build time with `-Drevision=X.Y.Z`. The POM is **not** edited or committed.
-- `.github/workflows/java-publish-maven.yml` builds every native classifier and the primary artifact from a single immutable source commit and publishes to Maven Central. It creates no commits, no branch-protection bypass, and requires no elevated repository token.
-- The `java/vX.Y.Z` traceability tag and the cross-language `vX.Y.Z` GitHub Release are created by `publish.yml` **after** publication succeeds, pointing at the original release commit.
+Release artifacts and source references are public:
 
-For an independent Java publication retry, dispatch `java-publish-maven.yml` from `main` with the original `releaseVersion` and full `sourceSha`. The source must be a commit already in `main`'s history. Unmerged commits, branch names, and tag names are rejected before builds run.
+- Java packages are available from Maven Central.
+- The `java/v<SDK-version>` and `v<SDK-version>` tags identify the corresponding public SDK source snapshot in [`github/copilot-sdk`](https://github.com/github/copilot-sdk).
+- Stable/prerelease versions also have a combined `v<SDK-version>` [GitHub release](https://github.com/github/copilot-sdk/releases) and versioned Java documentation. Prerelease documentation does not replace the latest documentation.
+- Unstable releases create source tags without advancing SDK `main`, creating an SDK GitHub release announcement, or deploying Java documentation. Their runtime assets are available in the separate `runtime-<runtime-version>` release.
 
-Because there is no `maven-release-plugin` and no `release:prepare` ceremony, the POM deliberately does not track the "next" release version. To validate a build with an explicit version locally, without publishing:
+To validate a build with an explicit version locally, without changing the checked-in POM or publishing:
 
 ```bash
 # Build and verify with an explicit version, without touching the POM
@@ -855,7 +870,7 @@ cat sdk/.flattened-pom.xml copilot-native/.flattened-pom.xml
 
 These commands do not upload artifacts. Do not use `deploy` for local validation: the Central publishing plugin is configured with `autoPublish=true`.
 
-`flatten-maven-plugin` (ossrh mode) resolves `${revision}` into the installed and published POMs, so downstream consumers never see the unresolved property. Documentation version references are updated through a normal reviewed pull request (see `scripts/update-documentation-versions.sh`), not as a side effect of publishing.
+`flatten-maven-plugin` (ossrh mode) resolves `${revision}` into the installed and published POMs. Documentation version references are updated through a normal reviewed pull request (see `scripts/update-documentation-versions.sh`), not as a side effect of publishing.
 
 ## License
 

@@ -225,6 +225,16 @@ Resume an existing session. Returns the session with `WorkspacePath` populated i
 - `OnPermissionRequest` - Optional handler called before each tool execution to approve or deny it. See [Permission Handling](#permission-handling) section.
 - `GitHubTokenProvider` - Replaces the session-scoped token provider when resuming. Cannot be combined with `GitHubToken`.
 - `AskUserVariant` - Re-supplies the model-facing `ask_user` tool shape on cold resume.
+- `AllowTranscriptRecovery` - Repairs a damaged transcript when true. The default
+  is true in all modes; set false to reject recovery. `session.TranscriptRecovery` contains
+  `PlannedBackupPath`, `InvalidLineNumbers` (including torn-tail loss), and
+  `SessionStartMoved` when repair is reported; otherwise it is null. On rejection,
+  `ResumeSessionAsync` throws an `IOException` whose `InnerException` is a
+  `RemoteRpcException`. Read `ErrorCode` (`-32075`) and `ErrorData` from that inner
+  exception for the server's typed error and its `invalidLineNumbers` /
+  `sessionStartMoved` fields. The outer message retains the existing communication-error
+  prefix. Disabling recovery still permits adding a missing newline after an intact
+  final record; it rejects torn tails.
 
 ```csharp
 await using var session = await client.CreateSessionAsync(new SessionConfig

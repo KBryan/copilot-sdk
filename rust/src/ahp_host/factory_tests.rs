@@ -601,7 +601,10 @@ fn host_settings_round_trip_without_callbacks_or_losing_constraints() {
         Some(false)
     );
     assert_eq!(config_for_host(&config).unwrap(), value);
-    let resume = resume_config_from_host(&serde_json::from_value(value.clone()).unwrap()).unwrap();
+    let mut resume_value = value.clone();
+    resume_value["allowTranscriptRecovery"] = json!(false);
+    let resume =
+        resume_config_from_host(&serde_json::from_value(resume_value.clone()).unwrap()).unwrap();
     assert!(resume.permission_handler.is_none());
     assert_eq!(resume.config_directory, Some(PathBuf::from("/config")));
     assert_eq!(resume.enable_experimental_mode, Some(true));
@@ -609,7 +612,14 @@ fn host_settings_round_trip_without_callbacks_or_losing_constraints() {
         resume.infinite_sessions.as_ref().unwrap().enabled,
         Some(false)
     );
-    assert_eq!(resume_config_for_host(&resume).unwrap(), value);
+    assert_eq!(resume_config_for_host(&resume).unwrap(), resume_value);
+    assert_eq!(resume.allow_transcript_recovery, Some(false));
+    let explicit_true = crate::ResumeSessionConfig::new(crate::SessionId::from("id"))
+        .with_allow_transcript_recovery(true);
+    assert_eq!(
+        resume_config_for_host(&explicit_true).unwrap()["allowTranscriptRecovery"],
+        true
+    );
     assert!(config_from_host(&serde_json::from_value(json!({"unknown":true})).unwrap()).is_err());
     assert!(contains_settings(
         Some(&json!({"a":{"b":true,"c":1}})),

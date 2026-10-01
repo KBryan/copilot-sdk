@@ -36,6 +36,7 @@ import com.github.copilot.rpc.LargeToolOutputConfig;
 import com.github.copilot.rpc.MemoryConfiguration;
 import com.github.copilot.rpc.ResumeSessionConfig;
 import com.github.copilot.rpc.ResumeSessionRequest;
+import com.github.copilot.rpc.ResumeSessionResponse;
 import com.github.copilot.rpc.SessionConfig;
 import com.github.copilot.rpc.SessionHooks;
 import com.github.copilot.rpc.ToolDefinition;
@@ -48,6 +49,56 @@ import com.github.copilot.rpc.UserInputResponse;
  * configureSession that are not reached by E2E tests.
  */
 public class SessionRequestBuilderTest {
+
+    @Test
+    void transcriptRecoveryOverridesAndResponseInAllModes() throws Exception {
+        var mapper = JsonRpcClient.getObjectMapper();
+        for (var mode : new CopilotClientMode[]{CopilotClientMode.COPILOT_CLI, CopilotClientMode.EMPTY}) {
+            for (Boolean choice : new Boolean[]{null, false, true}) {
+                var config = new ResumeSessionConfig();
+                if (choice != null) {
+                    config.setAllowTranscriptRecovery(choice);
+                }
+                var request = SessionRequestBuilder.buildResumeRequest("s1", config.clone(), mode);
+                var requestJson = mapper.readTree(mapper.writeValueAsBytes(request));
+                if (choice == null) {
+                    assertFalse(requestJson.has("allowTranscriptRecovery"));
+                } else {
+                    assertTrue(requestJson.has("allowTranscriptRecovery"));
+                    assertEquals(choice.booleanValue(), requestJson.path("allowTranscriptRecovery").asBoolean());
+                }
+            }
+        }
+
+        var response = mapper
+                .readValue(
+                        "{\"sessionId\":\"s1\",\"transcriptRecovery\":{\"plannedBackupPath\":\"backup.jsonl\","
+                                + "\"invalidLineNumbers\":[3,4],\"sessionStartMoved\":true}}",
+                        ResumeSessionResponse.class);
+        assertNotNull(response.transcriptRecovery());
+        assertEquals("backup.jsonl", response.transcriptRecovery().plannedBackupPath());
+        assertEquals(List.of(3, 4), response.transcriptRecovery().invalidLineNumbers());
+        assertTrue(response.transcriptRecovery().sessionStartMoved());
+        assertNull(mapper.readValue("{\"sessionId\":\"s1\"}", ResumeSessionResponse.class).transcriptRecovery());
+        assertNull(new ResumeSessionResponse("s1", null, null, null).transcriptRecovery());
+    }
+
+    @Test
+    void clearingTranscriptRecoveryRestoresRuntimeDefaultInAllModes() throws Exception {
+        var mapper = JsonRpcClient.getObjectMapper();
+        for (boolean choice : new boolean[]{false, true}) {
+            var config = new ResumeSessionConfig().setAllowTranscriptRecovery(choice);
+            assertEquals(choice, config.getAllowTranscriptRecovery().orElseThrow());
+            assertSame(config, config.clearAllowTranscriptRecovery());
+            assertTrue(config.getAllowTranscriptRecovery().isEmpty());
+            assertFalse(mapper.readTree(mapper.writeValueAsBytes(config)).has("allowTranscriptRecovery"));
+
+            var cli = SessionRequestBuilder.buildResumeRequest("s1", config.clone(), CopilotClientMode.COPILOT_CLI);
+            var empty = SessionRequestBuilder.buildResumeRequest("s1", config.clone(), CopilotClientMode.EMPTY);
+            assertFalse(mapper.readTree(mapper.writeValueAsBytes(cli)).has("allowTranscriptRecovery"));
+            assertFalse(mapper.readTree(mapper.writeValueAsBytes(empty)).has("allowTranscriptRecovery"));
+        }
+    }
 
     // =========================================================================
     // buildCreateRequest
@@ -359,8 +410,9 @@ public class SessionRequestBuilderTest {
 
             var request = SessionRequestBuilder.buildResumeRequest("sid-pending", config.clone());
             assertEquals(enabled, request.getContinuePendingWork());
-            assertEquals(enabled,
-                    mapper.readTree(mapper.writeValueAsBytes(request)).path("continuePendingWork").booleanValue());
+            var serialized = mapper.readTree(mapper.writeValueAsBytes(request));
+            assertTrue(serialized.has("continuePendingWork"));
+            assertEquals(enabled, serialized.get("continuePendingWork").booleanValue());
         }
     }
 

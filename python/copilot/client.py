@@ -131,6 +131,7 @@ from .session import (
     SessionLimitsConfig,
     SystemMessageConfig,
     ToolSearchConfig,
+    TranscriptRecoveryReport,
     UserInputHandler,
     _capabilities_to_dict,
     _PermissionHandlerFn,
@@ -3190,6 +3191,7 @@ class CopilotClient:
         remote_session: RemoteSessionMode | None = None,
         continue_pending_work: bool | None = None,
         suppress_resume_event: bool | None = None,
+        allow_transcript_recovery: bool | None = None,
         canvases: list[CanvasDeclaration] | None = None,
         request_canvas_renderer: bool | None = None,
         request_extensions: bool | None = None,
@@ -3349,9 +3351,14 @@ class CopilotClient:
             continue_pending_work: When True, instructs the runtime to continue any
                 tool calls or permission prompts that were still pending when the
                 session was last suspended. When False (the default), the runtime
-                treats pending work as interrupted on resume.
+                treats pending work as interrupted on resume. Completed tool results
+                already durably recorded by the runtime are preserved.
             suppress_resume_event: When True, skips emitting the session.resume
                 event when attaching to an existing session. Defaults to False.
+            allow_transcript_recovery: Whether to repair a damaged transcript on
+                resume. Defaults to True in all modes. Set False to reject
+                recovery. Recovery can discard a torn tail; inspect
+                ``session.transcript_recovery`` for the reported affected lines.
             feature_flags: Feature-flag values resolved by the host to apply
                 on resume. Sent on the wire as ``featureFlags``.
             exp_assignments: ExP assignment ("flight") data injected by a
@@ -3592,6 +3599,8 @@ class CopilotClient:
 
         if continue_pending_work is not None:
             payload["continuePendingWork"] = continue_pending_work
+        if allow_transcript_recovery is not None:
+            payload["allowTranscriptRecovery"] = allow_transcript_recovery
 
         if suppress_resume_event is not None:
             payload["disableResume"] = suppress_resume_event
@@ -3762,6 +3771,13 @@ class CopilotClient:
                 session_id=session_id,
             )
             session._workspace_path = response.get("workspacePath")
+            recovery = response.get("transcriptRecovery")
+            if recovery is not None:
+                session.transcript_recovery = TranscriptRecoveryReport(
+                    planned_backup_path=recovery["plannedBackupPath"],
+                    invalid_line_numbers=recovery["invalidLineNumbers"],
+                    session_start_moved=recovery["sessionStartMoved"],
+                )
             capabilities = response.get("capabilities")
             session._set_capabilities(capabilities)
             open_canvases_raw = response.get("openCanvases")

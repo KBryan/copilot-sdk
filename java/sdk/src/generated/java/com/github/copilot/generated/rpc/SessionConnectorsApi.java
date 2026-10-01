@@ -8,6 +8,7 @@
 package com.github.copilot.generated.rpc;
 
 import com.github.copilot.CopilotExperimental;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import javax.annotation.processing.Generated;
 
@@ -39,6 +40,21 @@ public final class SessionConnectorsApi {
     @CopilotExperimental
     public CompletableFuture<SessionConnectorsGetCapabilitiesResult> getCapabilities() {
         return caller.invoke("session.connectors.getCapabilities", java.util.Map.of("sessionId", this.sessionId), SessionConnectorsGetCapabilitiesResult.class);
+    }
+
+    /**
+     * Identifies the target session.
+     *
+     * @return a future that completes with the {@code ConnectorSessionAccount} value,
+     *     or {@code null} when the result is absent. Callers must handle the
+     *     {@code null} completion value.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    public CompletableFuture<ConnectorSessionAccount> getAccount() {
+        return caller.invoke("session.connectors.getAccount", java.util.Map.of("sessionId", this.sessionId), ConnectorSessionAccount.class);
     }
 
     /**
@@ -160,6 +176,21 @@ public final class SessionConnectorsApi {
     @CopilotExperimental
     public CompletableFuture<SessionConnectorsReconcileResult> reconcile(SessionConnectorsReconcileParams params) {
         com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(params);
+        _p.put("sessionId", this.sessionId);
+        return caller.invoke("session.connectors.reconcile", _p, SessionConnectorsReconcileResult.class);
+    }
+
+    /**
+     * Requests authoritative Connector-to-MCP reconciliation for the pinned account.
+     * <p>
+     * Accepts the extensible request, including inputs added after the params record.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    public CompletableFuture<SessionConnectorsReconcileResult> reconcile(SessionConnectorsReconcileRequest request) {
+        com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(Objects.requireNonNull(request, "request"));
         _p.put("sessionId", this.sessionId);
         return caller.invoke("session.connectors.reconcile", _p, SessionConnectorsReconcileResult.class);
     }

@@ -4,8 +4,10 @@
 #![allow(clippy::unwrap_used)]
 
 use github_copilot_sdk::rpc::{
-    AcceptedEnqueueCommandResult, ConnectorAccountRequest, ConnectorCatalogStatus,
-    ConnectorConnectRequest, ConnectorContinueRequest, ConnectorReconcileRequest,
+    AcceptedEnqueueCommandResult, AuthIdentityMetadata, AuthInfoType, ConnectorAccountRequest,
+    ConnectorCapabilities, ConnectorCatalogEntry, ConnectorCatalogStatus, ConnectorConnectRequest,
+    ConnectorConnectResult, ConnectorContinueRequest, ConnectorReconcileOptions,
+    ConnectorReconcileRequest, ConnectorSessionAccount, ConnectorSessionAccountResult,
     EnqueueCommandResult, Extension, ExtensionList, ExtensionSource, ExtensionStatus,
     ExtensionsDisableRequest, ExtensionsEnableRequest, FleetStartRequest, FleetStartResult,
     McpDisableRequest, McpEnableOptions, McpEnableRequest, McpInstallationOperationStatus,
@@ -363,6 +365,99 @@ fn connector_request_dtos_use_public_camel_case_wire_fields() {
             "refreshCatalog": true,
         })
     );
+
+    let targeted = ConnectorReconcileOptions::new("account-1").force_connector_name("github");
+    assert_eq!(
+        serde_json::to_value(targeted).unwrap(),
+        serde_json::json!({
+            "accountId": "account-1",
+            "forceConnectorName": "github",
+        })
+    );
+}
+
+#[test]
+fn connector_session_account_is_nullable_and_credential_free() {
+    let account = ConnectorSessionAccount {
+        account_id: "session-account-1".to_string(),
+        auth_info: AuthIdentityMetadata {
+            r#type: AuthInfoType::Token,
+            host: "github.com".to_string(),
+            login: "alice".to_string(),
+        },
+    };
+    let expected = serde_json::json!({
+        "accountId": "session-account-1",
+        "authInfo": { "type": "token", "host": "github.com", "login": "alice" },
+    });
+    assert_eq!(serde_json::to_value(&account).unwrap(), expected);
+    let decoded: ConnectorSessionAccountResult = serde_json::from_value(expected).unwrap();
+    assert_eq!(decoded.unwrap().account_id, account.account_id);
+    let unavailable: ConnectorSessionAccountResult =
+        serde_json::from_value(serde_json::Value::Null).unwrap();
+    assert!(unavailable.is_none());
+    assert_eq!(
+        serde_json::to_value(unavailable).unwrap(),
+        serde_json::Value::Null
+    );
+}
+
+#[test]
+fn connector_optional_capabilities_are_not_enabled_by_older_runtimes() {
+    for flag in [None, Some(false), Some(true)] {
+        let mut value = serde_json::json!({
+            "apiVersion": 1,
+            "availability": "enabled",
+            "consentContinuation": true,
+            "opaqueAccountSelection": true,
+            "maxPollAttempts": 10,
+            "maxPollIntervalMs": 5_000,
+            "maxDeadlineMs": 60_000,
+        });
+        if let Some(flag) = flag {
+            value["sessionAccountSelection"] = serde_json::json!(flag);
+            value["targetedReconcile"] = serde_json::json!(flag);
+        }
+        let capabilities: ConnectorCapabilities = serde_json::from_value(value).unwrap();
+        assert_eq!(capabilities.session_account_selection, flag);
+        assert_eq!(capabilities.targeted_reconcile, flag);
+        assert_eq!(
+            capabilities.session_account_selection == Some(true),
+            flag == Some(true)
+        );
+        assert_eq!(
+            capabilities.targeted_reconcile == Some(true),
+            flag == Some(true)
+        );
+    }
+}
+
+#[test]
+fn connector_catalog_presentation_metadata_is_optional() {
+    let legacy = serde_json::json!({
+        "name": "github",
+        "displayName": "GitHub",
+        "status": "connected",
+        "runtimeServerIds": ["connector-github"],
+    });
+    let entry: ConnectorCatalogEntry = serde_json::from_value(legacy.clone()).unwrap();
+    assert!(entry.logo.is_none());
+    assert!(entry.tier.is_none());
+    assert!(entry.release_tag.is_none());
+    assert_eq!(serde_json::to_value(entry).unwrap(), legacy);
+
+    let mut decorated = legacy;
+    decorated["logo"] = serde_json::json!("https://example.com/github.svg");
+    decorated["tier"] = serde_json::json!("standard");
+    decorated["releaseTag"] = serde_json::json!("preview");
+    let entry: ConnectorCatalogEntry = serde_json::from_value(decorated.clone()).unwrap();
+    assert_eq!(
+        entry.logo.as_deref(),
+        Some("https://example.com/github.svg")
+    );
+    assert_eq!(entry.tier.as_deref(), Some("standard"));
+    assert_eq!(entry.release_tag.as_deref(), Some("preview"));
+    assert_eq!(serde_json::to_value(entry).unwrap(), decorated);
 }
 
 #[test]
@@ -374,6 +469,23 @@ fn connector_catalog_unknown_wire_value_has_a_distinct_variant() {
 
     assert_eq!(service_unknown, ConnectorCatalogStatus::UnknownValue);
     assert_eq!(future_status, ConnectorCatalogStatus::Unknown);
+}
+
+#[test]
+fn connector_connect_results_do_not_treat_unknown_outcomes_as_connected() {
+    let future_result = serde_json::json!({
+        "kind": "future_outcome",
+        "continuationId": "continuation-1",
+        "consentUrl": "https://example.com/consent",
+        "status": {
+            "apiVersion": 1,
+            "availability": "enabled",
+            "runtimeServers": [],
+            "pendingConnections": 0
+        }
+    });
+
+    assert!(serde_json::from_value::<ConnectorConnectResult>(future_result).is_err());
 }
 
 #[test]

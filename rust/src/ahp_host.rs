@@ -958,6 +958,7 @@ fn resume_config_from_host(
                     "sessionId" => {},
                     "continuePendingWork" => config.continue_pending_work = serde_json::from_value(value.clone())?,
                     "suppressResumeEvent" => config.suppress_resume_event = serde_json::from_value(value.clone())?,
+                    "allowTranscriptRecovery" => config.allow_transcript_recovery = serde_json::from_value(value.clone())?,
                     $($name => config.$field = serde_json::from_value(value.clone())?,)*
                     _ => return Err(handoff_error("Unsupported AHP resume configuration setting")),
                 }
@@ -987,6 +988,9 @@ pub(crate) fn resume_config_for_host(config: &ResumeSessionConfig) -> Result<Val
     }
     if let Some(value) = config.suppress_resume_event {
         settings.insert("suppressResumeEvent".into(), Value::Bool(value));
+    }
+    if let Some(value) = config.allow_transcript_recovery {
+        settings.insert("allowTranscriptRecovery".into(), Value::Bool(value));
     }
     Ok(Value::Object(settings))
 }

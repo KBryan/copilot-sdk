@@ -2150,13 +2150,18 @@ type ResumeSessionConfig struct {
 	// ContinuePendingWork, when non-nil, controls whether the runtime continues any
 	// tool calls or permission prompts that were still pending when the session was
 	// last suspended. Nil leaves the runtime default unchanged; use Bool(false) to
-	// explicitly treat pending work as interrupted on resume.
+	// explicitly treat pending work as interrupted on resume. Completed tool results
+	// already durably recorded by the runtime are preserved.
 	//
 	// For permission requests, the runtime re-emits permission.requested so the
 	// registered OnPermissionRequest handler can re-prompt; for external tool calls,
 	// the consumer is expected to supply the result via the corresponding low-level
 	// RPC method.
 	ContinuePendingWork *bool
+	// AllowTranscriptRecovery controls whether resume repairs a damaged transcript.
+	// Nil uses the runtime default (true) in all modes. Set false to reject recovery.
+	// Recovery may discard a torn tail; inspect Session.TranscriptRecovery().
+	AllowTranscriptRecovery *bool
 	// OnEvent is an optional event handler registered before the session.resume RPC
 	// is issued, ensuring early events are delivered. See SessionConfig.OnEvent.
 	OnEvent SessionEventHandler
@@ -2806,6 +2811,7 @@ type resumeSessionRequest struct {
 	EnableSkills                       *bool                                  `json:"enableSkills,omitempty"`
 	DisableResume                      *bool                                  `json:"disableResume,omitempty"`
 	ContinuePendingWork                *bool                                  `json:"continuePendingWork,omitempty"`
+	AllowTranscriptRecovery            *bool                                  `json:"allowTranscriptRecovery,omitempty"`
 	Streaming                          *bool                                  `json:"streaming,omitempty"`
 	IncludeSubAgentStreamingEvents     *bool                                  `json:"includeSubAgentStreamingEvents,omitempty"`
 	EnableGitHubTelemetryForwarding    *bool                                  `json:"enableGitHubTelemetryForwarding,omitempty"`
@@ -2850,10 +2856,18 @@ type resumeSessionRequest struct {
 
 // resumeSessionResponse is the response from session.resume
 type resumeSessionResponse struct {
-	SessionID     string                   `json:"sessionId"`
-	WorkspacePath string                   `json:"workspacePath"`
-	Capabilities  *SessionCapabilities     `json:"capabilities,omitempty"`
-	OpenCanvases  []rpc.OpenCanvasInstance `json:"openCanvases,omitempty"`
+	SessionID          string                    `json:"sessionId"`
+	WorkspacePath      string                    `json:"workspacePath"`
+	Capabilities       *SessionCapabilities      `json:"capabilities,omitempty"`
+	OpenCanvases       []rpc.OpenCanvasInstance  `json:"openCanvases,omitempty"`
+	TranscriptRecovery *TranscriptRecoveryReport `json:"transcriptRecovery,omitempty"`
+}
+
+// TranscriptRecoveryReport describes the repair performed while resuming a session.
+type TranscriptRecoveryReport struct {
+	PlannedBackupPath  string `json:"plannedBackupPath"`
+	InvalidLineNumbers []int  `json:"invalidLineNumbers"`
+	SessionStartMoved  bool   `json:"sessionStartMoved"`
 }
 
 type hooksInvokeRequest struct {

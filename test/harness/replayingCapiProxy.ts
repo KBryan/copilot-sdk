@@ -1135,6 +1135,7 @@ function normalizeToolCalls(
     const precedingMessages: NormalizedMessage[] = [];
     let counter = 0;
     let unnamedBackgroundAgentCounter = 0;
+    let unnamedAgentCounter = 0;
     for (const msg of conv.messages) {
       for (const tc of msg.tool_calls ?? []) {
         // Normalize ID in tool calls
@@ -1163,6 +1164,16 @@ function normalizeToolCalls(
           tc.function?.name === "read_agent" ||
           tc.function?.name === "write_agent"
         ) {
+          for (const runtimeId of getUnnamedRuntimeAgentIds(
+            tc.function.name,
+            tc.function.arguments,
+            (id) => backgroundAgentNamesByRuntimeId.has(id),
+          )) {
+            backgroundAgentNamesByRuntimeId.set(
+              runtimeId,
+              unnamedAgentName(unnamedAgentCounter++),
+            );
+          }
           tc.function.arguments = normalizeBackgroundAgentArguments(
             tc.function.arguments,
             backgroundAgentNamesByRuntimeId,
@@ -1666,6 +1677,51 @@ function replaceBackgroundAgentIds(
   return normalized;
 }
 
+const runtimeAgentIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Runtime-generated agent IDs a `read_agent` or `write_agent` call names that
+ * no `task` result introduced, such as the synthetic read the runtime adds when
+ * an SDK-started agent goes idle. `isKnown` reports IDs that already have a
+ * stable name.
+ */
+function getUnnamedRuntimeAgentIds(
+  toolName: string | undefined,
+  argumentsJson: string | undefined,
+  isKnown: (runtimeId: string) => boolean,
+): string[] {
+  if (
+    (toolName !== "read_agent" && toolName !== "write_agent") ||
+    !argumentsJson
+  ) {
+    return [];
+  }
+  try {
+    const args = JSON.parse(argumentsJson) as {
+      agent_id?: unknown;
+      agent_ids?: unknown;
+    };
+    const agentIds = new Set([
+      args.agent_id,
+      ...(Array.isArray(args.agent_ids) ? args.agent_ids : []),
+    ]);
+    return [...agentIds].filter(
+      (agentId): agentId is string =>
+        typeof agentId === "string" &&
+        runtimeAgentIdPattern.test(agentId) &&
+        !isKnown(agentId),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Stable name for the Nth agent a conversation reads but did not start. */
+function unnamedAgentName(index: number): string {
+  return index === 0 ? "api-agent" : `api-agent-${index}`;
+}
+
 function rewriteBackgroundAgentArguments(
   argumentsJson: string,
   replacements: Map<string, string>,
@@ -1728,8 +1784,16 @@ function extractBackgroundAgentIds(
     };
     const backgroundAgentNamesByToolCallId = new Map<string, string>();
     let unnamedBackgroundAgentCounter = 0;
+    let unnamedAgentCounter = 0;
     for (const message of request.messages ?? []) {
       for (const toolCall of message.tool_calls ?? []) {
+        for (const runtimeId of getUnnamedRuntimeAgentIds(
+          toolCall.function?.name,
+          toolCall.function?.arguments,
+          (id) => [...result.values()].includes(id),
+        )) {
+          result.set(unnamedAgentName(unnamedAgentCounter++), runtimeId);
+        }
         if (
           toolCall.id &&
           toolCall.function?.name === "task" &&

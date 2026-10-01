@@ -24,6 +24,49 @@ public sealed partial class ClientSessionLifetimeTests
     private sealed record RpcRequestRecord(string Method, JsonElement Params);
 
     [Theory]
+    [InlineData(CopilotClientMode.CopilotCli, null, null)]
+    [InlineData(CopilotClientMode.Empty, null, null)]
+    [InlineData(CopilotClientMode.CopilotCli, false, false)]
+    [InlineData(CopilotClientMode.CopilotCli, true, true)]
+    [InlineData(CopilotClientMode.Empty, false, false)]
+    [InlineData(CopilotClientMode.Empty, true, true)]
+    public async Task ResumeTranscriptRecovery_PreservesOverridesAndProjectsReport(CopilotClientMode mode, bool? setting, bool? expected)
+    {
+        await using var server = await FakeCopilotServer.StartAsync();
+        server.IncludeTranscriptRecovery = true;
+        await using var client = new CopilotClient(new CopilotClientOptions { Connection = RuntimeConnection.ForUri(server.Url), Mode = mode });
+        var session = await client.ResumeSessionAsync("transcript-test", new ResumeSessionConfig
+        {
+            OnPermissionRequest = PermissionHandler.ApproveAll,
+            AvailableTools = [],
+            AllowTranscriptRecovery = setting
+        });
+        var request = Assert.Single(server.Requests, request => request.Method == "session.resume").Params;
+        if (expected is null)
+        {
+            Assert.False(request.TryGetProperty("allowTranscriptRecovery", out _), request.ToString());
+        }
+        else
+        {
+            Assert.Equal(expected.Value, request.GetProperty("allowTranscriptRecovery").GetBoolean());
+        }
+        Assert.NotNull(session.TranscriptRecovery);
+        Assert.Equal("backup.jsonl", session.TranscriptRecovery.PlannedBackupPath);
+        Assert.Collection(session.TranscriptRecovery.InvalidLineNumbers,
+            line => Assert.Equal(3, line),
+            line => Assert.Equal(4, line));
+        Assert.True(session.TranscriptRecovery.SessionStartMoved);
+        await session.DisposeAsync();
+        server.IncludeTranscriptRecovery = false;
+        await using var unrepaired = await client.ResumeSessionAsync("transcript-unrepaired", new ResumeSessionConfig
+        {
+            OnPermissionRequest = PermissionHandler.ApproveAll,
+            AvailableTools = []
+        });
+        Assert.Null(unrepaired.TranscriptRecovery);
+    }
+
+    [Theory]
     [InlineData("static")]
     [InlineData("")]
     public async Task GitHubTokenProvider_Is_Mutually_Exclusive_With_Static_Token(string staticToken)
@@ -2694,6 +2737,7 @@ public sealed partial class ClientSessionLifetimeTests
         private bool _failSessionCreate;
         private bool _failSessionSend;
         private int _nextMessageId;
+        public bool IncludeTranscriptRecovery { get; set; }
 
         public bool UniqueMessageIds { get; set; }
 
@@ -2996,7 +3040,7 @@ public sealed partial class ClientSessionLifetimeTests
                     ["version"] = "test"
                 },
                 "session.create" => CreateSessionResult(request),
-                "session.resume" => CreateSessionResult(request),
+                "session.resume" => ResumeSessionResult(request),
                 "host.start" => CreateAhpHostResult(paramsElement),
                 "host.dispose" => new Dictionary<string, object?>(),
                 "host.publishSession" => new Dictionary<string, object?>
@@ -3078,6 +3122,7 @@ public sealed partial class ClientSessionLifetimeTests
             {
                 sessionId = sidProp.GetString();
             }
+
             if (string.IsNullOrEmpty(sessionId))
             {
                 sessionId = Guid.NewGuid().ToString();
@@ -3090,6 +3135,21 @@ public sealed partial class ClientSessionLifetimeTests
                 ["workspacePath"] = null,
                 ["capabilities"] = null
             };
+        }
+
+        private Dictionary<string, object?> ResumeSessionResult(JsonElement request)
+        {
+            var result = CreateSessionResult(request);
+            if (IncludeTranscriptRecovery)
+            {
+                result["transcriptRecovery"] = new Dictionary<string, object?>
+                {
+                    ["plannedBackupPath"] = "backup.jsonl",
+                    ["invalidLineNumbers"] = new object?[] { 3, 4 },
+                    ["sessionStartMoved"] = true
+                };
+            }
+            return result;
         }
 
         private async Task<Dictionary<string, object?>> DetachSessionAsync(CancellationToken cancellationToken)

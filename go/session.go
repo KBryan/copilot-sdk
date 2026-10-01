@@ -59,6 +59,7 @@ type Session struct {
 	// SessionID is the unique identifier for this session.
 	SessionID                   string
 	workspacePath               string
+	transcriptRecovery          *TranscriptRecoveryReport
 	client                      *jsonrpc2.Client
 	clientSessionAPIs           *rpc.ClientSessionAPIHandlers
 	handlers                    []sessionHandler
@@ -121,6 +122,17 @@ type pendingExternalTool struct {
 // Returns empty string if infinite sessions are disabled.
 func (s *Session) WorkspacePath() string {
 	return s.workspacePath
+}
+
+// TranscriptRecovery returns the report from session.resume, or nil if no
+// transcript repair was reported. The returned value is independent of session state.
+func (s *Session) TranscriptRecovery() *TranscriptRecoveryReport {
+	if s.transcriptRecovery == nil {
+		return nil
+	}
+	report := *s.transcriptRecovery
+	report.InvalidLineNumbers = append([]int(nil), report.InvalidLineNumbers...)
+	return &report
 }
 
 // OpenCanvases returns the open-canvas snapshot last reported by the runtime.

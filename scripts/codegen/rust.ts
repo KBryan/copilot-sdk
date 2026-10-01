@@ -2003,8 +2003,18 @@ export function generateApiTypesCode(
 		const current = inlineMethodParamSchemas.get(name) ?? (def as JSONSchema7);
 		const legacyRequest = legacyRequests.get(name);
 		const schema = legacyRequest ? rustLegacyStructSchema(current, legacyRequest, name) : current;
+		const nullableRef = getNullableInner(schema)?.$ref;
 
-		if (schema.enum && Array.isArray(schema.enum)) {
+		if (nullableRef) {
+			recordExternalRustTypeRef(nullableRef, ctx);
+			const innerType = rustRefTypeName(nullableRef, defCollections);
+			emitRustTypeAlias(
+				name,
+				schema,
+				hasWireNullBranch(schema) ? `Option<${innerType}>` : innerType,
+				ctx,
+			);
+		} else if (schema.enum && Array.isArray(schema.enum)) {
 			emitRustStringEnum(
 				name,
 				schema.enum as string[],
@@ -2373,6 +2383,23 @@ function getResultTypeName(
 	}
 	if (typeof result.title === "string") return result.title;
 	return `${toPascalCase(method.rpcMethod)}Result`;
+}
+
+/**
+ * A named alias is wire-nullable only when its `anyOf` carries a real
+ * `type: "null"` branch. `getNullableInner` also accepts the `{ "not": {} }`
+ * omission sentinel, which means "absent", not "may be null on the wire", so
+ * aliasing it to `Option<T>` would accept and serialize a null the schema
+ * does not permit.
+ */
+function hasWireNullBranch(schema: JSONSchema7): boolean {
+	if (!Array.isArray(schema.anyOf)) return false;
+	return schema.anyOf.some(
+		(branch) =>
+			typeof branch === "object" &&
+			branch !== null &&
+			(branch as JSONSchema7).type === "null",
+	);
 }
 
 function methodUsesInternalSchema(

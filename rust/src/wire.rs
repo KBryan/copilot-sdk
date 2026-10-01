@@ -374,6 +374,8 @@ pub(crate) struct SessionResumeWire {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continue_pending_work: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_transcript_recovery: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub feature_flags: Option<HashMap<String, bool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exp_assignments: Option<crate::types::CopilotExpAssignmentResponse>,

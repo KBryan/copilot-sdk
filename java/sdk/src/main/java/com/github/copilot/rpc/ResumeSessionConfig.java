@@ -58,6 +58,7 @@ public class ResumeSessionConfig {
     private SessionLimitsConfig sessionLimits;
     private Boolean enableExperimentalMode;
     private Boolean continuePendingWork;
+    private Boolean allowTranscriptRecovery;
     private Boolean skipCustomInstructions;
     private Boolean customAgentsLocalOnly;
     private Boolean coauthorEnabled;
@@ -171,6 +172,40 @@ public class ResumeSessionConfig {
      */
     public ResumeSessionConfig clearContinuePendingWork() {
         this.continuePendingWork = null;
+        return this;
+    }
+
+    /**
+     * Gets the explicit transcript repair choice on resume.
+     *
+     * @return the choice, or empty for the runtime default (true in all modes)
+     */
+    @JsonIgnore
+    public Optional<Boolean> getAllowTranscriptRecovery() {
+        return Optional.ofNullable(allowTranscriptRecovery);
+    }
+
+    /**
+     * Sets whether to repair a damaged transcript on resume. Defaults to true in
+     * all modes. Set false to reject recovery. Recovery can discard a torn tail;
+     * inspect the returned session's report.
+     *
+     * @param allowTranscriptRecovery
+     *            whether repair is allowed
+     * @return this config
+     */
+    public ResumeSessionConfig setAllowTranscriptRecovery(boolean allowTranscriptRecovery) {
+        this.allowTranscriptRecovery = allowTranscriptRecovery;
+        return this;
+    }
+
+    /**
+     * Clears the transcript repair choice so the runtime default (true) applies.
+     *
+     * @return this config for method chaining
+     */
+    public ResumeSessionConfig clearAllowTranscriptRecovery() {
+        this.allowTranscriptRecovery = null;
         return this;
     }
 
@@ -2187,6 +2222,7 @@ public class ResumeSessionConfig {
         copy.sessionLimits = this.sessionLimits;
         copy.enableExperimentalMode = this.enableExperimentalMode;
         copy.continuePendingWork = this.continuePendingWork;
+        copy.allowTranscriptRecovery = this.allowTranscriptRecovery;
         copy.reasoningEffort = this.reasoningEffort;
         copy.reasoningSummary = this.reasoningSummary;
         copy.contextTier = this.contextTier;

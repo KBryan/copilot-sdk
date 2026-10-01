@@ -98,6 +98,7 @@ import type {
     SystemMessageCustomizeConfig,
     TelemetryConfig,
     TraceContextProvider,
+    TranscriptRecovery,
     TypedSessionLifecycleHandler,
 } from "./types.js";
 import { defaultJoinSessionPermissionHandler } from "./types.js";
@@ -2049,6 +2050,7 @@ export class CopilotClient {
                 allowedModels: config.allowedModels,
                 ...(await getTraceContext(this.onGetTraceContext)),
                 sessionId,
+                allowTranscriptRecovery: config.allowTranscriptRecovery,
                 clientName: config.clientName,
                 model: config.model,
                 reasoningEffort: config.reasoningEffort,
@@ -2172,15 +2174,17 @@ export class CopilotClient {
                 }
             }
 
-            const { workspacePath, capabilities, openCanvases } = response as {
+            const { workspacePath, capabilities, openCanvases, transcriptRecovery } = response as {
                 sessionId: string;
                 workspacePath?: string;
                 capabilities?: SessionCapabilities;
                 openCanvases?: OpenCanvasInstance[];
+                transcriptRecovery?: TranscriptRecovery;
             };
             session["_workspacePath"] = workspacePath;
             session.setCapabilities(capabilities);
             session.setOpenCanvases(openCanvases ?? []);
+            session.setTranscriptRecovery(transcriptRecovery);
             if (config.onMcpAuthRequest) {
                 await this.connection!.sendRequest("session.eventLog.registerInterest", {
                     sessionId,

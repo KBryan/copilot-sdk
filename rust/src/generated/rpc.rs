@@ -5961,6 +5961,34 @@ impl<'a> SessionRpcConnectors<'a> {
         Ok(serde_json::from_value(_value)?)
     }
 
+    /// Returns the session account selection, or null.
+    ///
+    /// Wire method: `session.connectors.getAccount`.
+    ///
+    /// # Returns
+    ///
+    /// Session account selection, or null.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn get_account(&self) -> Result<ConnectorSessionAccountResult, Error> {
+        let wire_params = serde_json::json!({ "sessionId": self.session.id() });
+        let _value = self
+            .session
+            .client()
+            .call(
+                rpc_methods::SESSION_CONNECTORS_GETACCOUNT,
+                Some(wire_params),
+            )
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
     /// Returns authoritative session Connector state from current availability, pinned account selection, cached catalog, and live MCP projection without performing a Connector service request.
     ///
     /// Wire method: `session.connectors.getStatus`.
@@ -6212,6 +6240,41 @@ impl<'a> SessionRpcConnectors<'a> {
     pub async fn reconcile(
         &self,
         params: ConnectorReconcileRequest,
+    ) -> Result<ConnectorStatus, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_CONNECTORS_RECONCILE, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Reconciles the authoritative cached or freshly requested Connector catalog into the session Connector MCP projection and returns live status.
+    ///
+    /// Wire method: `session.connectors.reconcile`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Requests authoritative Connector-to-MCP reconciliation for the pinned account.
+    ///
+    /// # Returns
+    ///
+    /// Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    ///
+    /// Accepts [`ConnectorReconcileOptions`], including inputs added after [`ConnectorReconcileRequest`].
+    pub async fn reconcile_with_options(
+        &self,
+        params: ConnectorReconcileOptions,
     ) -> Result<ConnectorStatus, Error> {
         let mut wire_params = serde_json::to_value(params)?;
         wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());

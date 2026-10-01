@@ -42,6 +42,9 @@ public final class ResumeSessionRequest {
     @JsonProperty("continuePendingWork")
     private Boolean continuePendingWork;
 
+    @JsonProperty("allowTranscriptRecovery")
+    private Boolean allowTranscriptRecovery;
+
     @JsonProperty("reasoningEffort")
     private String reasoningEffort;
 
@@ -314,6 +317,19 @@ public final class ResumeSessionRequest {
     /** Restores the runtime's default pending-work continuation behavior. */
     public void clearContinuePendingWork() {
         continuePendingWork = null;
+    }
+
+    /** @return whether transcript repair was requested, or null if omitted */
+    public Boolean getAllowTranscriptRecovery() {
+        return allowTranscriptRecovery;
+    }
+
+    /**
+     * @param allowTranscriptRecovery
+     *            whether transcript repair is allowed
+     */
+    public void setAllowTranscriptRecovery(boolean allowTranscriptRecovery) {
+        this.allowTranscriptRecovery = allowTranscriptRecovery;
     }
 
     /** Gets the reasoning effort. @return the reasoning effort level */

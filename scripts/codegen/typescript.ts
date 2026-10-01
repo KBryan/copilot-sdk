@@ -671,13 +671,22 @@ function resultTypeName(method: RpcMethod): string {
     return externalRef?.definitionName ?? getRpcSchemaTypeName(schema, method.rpcMethod.split(".").map(toPascalCase).join("") + "Result");
 }
 
-function tsNullableResultTypeName(method: RpcMethod): string | undefined {
-    const resultSchema = getMethodResultSchema(method);
+export function tsNullableResultTypeName(
+    method: RpcMethod,
+    resultSchema = getMethodResultSchema(method),
+): string | undefined {
     if (!resultSchema) return undefined;
     const inner = getNullableInner(resultSchema);
     if (!inner) return undefined;
     // Resolve $ref to a type name
     if (inner.$ref) {
+        if (
+            method.result?.$ref &&
+            resultSchema.title &&
+            resultSchema.anyOf?.some((variant) => typeof variant === "object" && variant.type === "null")
+        ) {
+            return resultSchema.title;
+        }
         const refName = inner.$ref.split("/").pop();
         if (refName) return `${toPascalCase(refName)} | undefined`;
     }

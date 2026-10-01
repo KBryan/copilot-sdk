@@ -7,6 +7,7 @@ import type { JSONSchema7 } from "json-schema";
 
 import {
     collectNestedDiscriminatedUnionTypeNames,
+    generateApiMethod,
     generateRpcClass,
     isMainModule,
     renderEventVariantClass,
@@ -459,6 +460,51 @@ test("static OAuth config preserves the legacy four-argument constructor", () =>
     );
 });
 
+test("nullable referenced RPC results retain their object DTO and typed wrapper", async () => {
+    const method = {
+        rpcMethod: "session.accounts.getCurrent",
+        stability: "experimental",
+        params: {
+            type: "object",
+            properties: { sessionId: { type: "string" } },
+            required: ["sessionId"],
+        } as JSONSchema7,
+        result: { $ref: "#/definitions/SessionAccountResult" },
+    };
+    const files = await renderRpcTypes({
+        session: { accounts: { getCurrent: method } },
+        definitions: {
+            SessionAccountResult: {
+                title: "SessionAccountResult",
+                anyOf: [{ $ref: "#/definitions/SessionAccount" }, { type: "null" }],
+            },
+            SessionAccount: {
+                type: "object",
+                title: "SessionAccount",
+                additionalProperties: false,
+                properties: {
+                    accountId: { type: "string" },
+                    identity: { $ref: "#/definitions/Identity" },
+                },
+                required: ["accountId", "identity"],
+                stability: "experimental",
+            } as JSONSchema7,
+            Identity: {
+                type: "object",
+                title: "Identity",
+                properties: { login: { type: "string" } },
+                required: ["login"],
+            },
+        },
+    }, {});
+    assert.match(rpcSource(files, "SessionAccount"), /public record SessionAccount\(/);
+    assert.match(rpcSource(files, "SessionAccount"), /@JsonProperty\("identity"\) Identity identity/);
+    assert.match(rpcSource(files, "Identity"), /@JsonProperty\("login"\) String login/);
+    const wrapper = generateApiMethod("getCurrent", method, true, "this.sessionId").lines.join("\n");
+    assert.match(wrapper, /CompletableFuture<SessionAccount> getCurrent\(\)/);
+    assert.match(wrapper, /caller\.invoke\("session\.accounts\.getCurrent", .*SessionAccount\.class\)/);
+    assert.doesNotMatch(wrapper, /Void/);
+});
 for (const roots of [
     ["FirstResult", "HistoricalResult"],
     ["FirstResult", "HistoricalResult", "LastResult"],

@@ -3693,9 +3693,15 @@ pub struct ResumeSessionConfig {
     /// was dropped. Use this together with [`Client::force_stop`] to hand
     /// off a session from one process to another without losing in-flight
     /// work.
+    /// When omitted or `false` (the default), work still pending on resume
+    /// is treated as interrupted; completed tool results already recorded by
+    /// the runtime are preserved.
     ///
     /// [`Client::force_stop`]: crate::Client::force_stop
     pub continue_pending_work: Option<bool>,
+    /// Permit recovery of a damaged transcript on resume. Defaults to `true`
+    /// in all modes when unset. Set `false` to reject recovery.
+    pub allow_transcript_recovery: Option<bool>,
     /// Optional permission-request handler. See
     /// [`SessionConfig::permission_handler`].
     pub permission_handler: Option<Arc<dyn PermissionHandler>>,
@@ -4013,6 +4019,7 @@ impl ResumeSessionConfig {
             managed_settings: self.managed_settings,
             suppress_resume_event: self.suppress_resume_event,
             continue_pending_work: self.continue_pending_work,
+            allow_transcript_recovery: self.allow_transcript_recovery,
         };
 
         let runtime = SessionConfigRuntime {
@@ -4117,6 +4124,7 @@ impl ResumeSessionConfig {
             session_fs_provider: None,
             suppress_resume_event: None,
             continue_pending_work: None,
+            allow_transcript_recovery: None,
             permission_handler: None,
             elicitation_handler: None,
             mcp_auth_handler: None,
@@ -4727,8 +4735,16 @@ impl ResumeSessionConfig {
     /// was dropped. Use this together with
     /// [`Client::force_stop`](crate::Client::force_stop) to hand off a
     /// session from one process to another without losing in-flight work.
+    /// When `false` (the default), pending work is treated as interrupted on
+    /// resume; already-recorded tool results are preserved.
     pub fn with_continue_pending_work(mut self, continue_pending: bool) -> Self {
         self.continue_pending_work = Some(continue_pending);
+        self
+    }
+
+    /// Set [`Self::allow_transcript_recovery`].
+    pub fn with_allow_transcript_recovery(mut self, allow: bool) -> Self {
+        self.allow_transcript_recovery = Some(allow);
         self
     }
 
@@ -4887,6 +4903,18 @@ pub struct CreateSessionResult {
     pub capabilities: Option<SessionCapabilities>,
 }
 
+/// Details of transcript repair planned during resume.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptRecovery {
+    /// Planned backup path; the backup is written on the next append.
+    pub planned_backup_path: String,
+    /// One-based physical line numbers removed from the transcript.
+    pub invalid_line_numbers: Vec<u32>,
+    /// Whether a valid session.start event was moved to the beginning.
+    pub session_start_moved: bool,
+}
+
 /// Response from `session.resume`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -4910,6 +4938,9 @@ pub(crate) struct ResumeSessionResult {
         skip_serializing_if = "Option::is_none"
     )]
     pub open_canvases: Option<Vec<OpenCanvasInstance>>,
+    /// Recovery performed in memory while loading the session.
+    #[serde(default)]
+    pub transcript_recovery: Option<TranscriptRecovery>,
 }
 
 /// Severity level for [`Session::log`](crate::session::Session::log) messages.
@@ -7485,6 +7516,38 @@ mod tests {
             .expect("no duplicate handlers");
         let json = serde_json::to_value(&wire).unwrap();
         assert!(json.get("continuePendingWork").is_none());
+    }
+
+    #[test]
+    fn resume_policy_and_recovery_report_round_trip() {
+        let config = ResumeSessionConfig::new(SessionId::from("sess-1"))
+            .with_allow_transcript_recovery(false);
+        let (wire, _) = config.into_wire().unwrap();
+        let value = serde_json::to_value(&wire).unwrap();
+        assert_eq!(value["allowTranscriptRecovery"], false);
+
+        let (wire, _) = ResumeSessionConfig::new(SessionId::from("sess-2"))
+            .into_wire()
+            .unwrap();
+        assert!(
+            serde_json::to_value(&wire)
+                .unwrap()
+                .get("allowTranscriptRecovery")
+                .is_none()
+        );
+
+        let result: crate::types::ResumeSessionResult = serde_json::from_value(serde_json::json!({
+            "sessionId": "sess-1",
+            "transcriptRecovery": {
+                "plannedBackupPath": "events.jsonl.backup",
+                "invalidLineNumbers": [2],
+                "sessionStartMoved": false
+            }
+        }))
+        .unwrap();
+        let recovery = result.transcript_recovery.unwrap();
+        assert_eq!(recovery.invalid_line_numbers, vec![2]);
+        assert_eq!(recovery.planned_backup_path, "events.jsonl.backup");
     }
 
     #[test]

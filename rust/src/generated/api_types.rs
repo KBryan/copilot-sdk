@@ -599,6 +599,8 @@ pub mod rpc_methods {
     pub const SESSION_DIAGNOSTICS_READ: &str = "session.diagnostics.read";
     /// `session.connectors.getCapabilities`
     pub const SESSION_CONNECTORS_GETCAPABILITIES: &str = "session.connectors.getCapabilities";
+    /// `session.connectors.getAccount`
+    pub const SESSION_CONNECTORS_GETACCOUNT: &str = "session.connectors.getAccount";
     /// `session.connectors.getStatus`
     pub const SESSION_CONNECTORS_GETSTATUS: &str = "session.connectors.getStatus";
     /// `session.connectors.list`
@@ -2949,6 +2951,25 @@ pub struct AuthIdentity {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registration_id: Option<String>,
     /// Authentication type
+    pub r#type: AuthInfoType,
+}
+
+/// Credential-free identity metadata.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthIdentityMetadata {
+    /// Identity host.
+    pub host: String,
+    /// User login.
+    pub login: String,
+    /// Authentication type.
     pub r#type: AuthInfoType,
 }
 
@@ -5626,6 +5647,12 @@ pub struct ConnectorCapabilities {
     pub max_poll_interval_ms: i64,
     /// Whether callers select a host-owned GitHub account through an opaque selection ID rather than supplying a provider token.
     pub opaque_account_selection: bool,
+    /// Whether getAccount is supported. Absence means false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_account_selection: Option<bool>,
+    /// Whether reconcile accepts forceConnectorName. Absence means false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub targeted_reconcile: Option<bool>,
 }
 
 /// Credential-free Connector catalog entry.
@@ -5644,12 +5671,21 @@ pub struct ConnectorCatalogEntry {
     pub description: Option<String>,
     /// Untrusted display label from the service.
     pub display_name: String,
+    /// Optional catalog logo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
     /// Canonical Connector name used by lifecycle methods.
     pub name: String,
+    /// Optional catalog release tag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_tag: Option<String>,
     /// Opaque stable runtime IDs currently projected into the session for this Connector.
     pub runtime_server_ids: Vec<String>,
     /// Current authoritative service connection state.
     pub status: ConnectorCatalogStatus,
+    /// Optional catalog tier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
 }
 
 /// Validated Connector catalog snapshot cached by the session.
@@ -5844,6 +5880,68 @@ pub struct ConnectorReconcileRequest {
     /// When true, refresh the catalog before reconciling. A disabled Connector API performs no service request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refresh_catalog: Option<bool>,
+}
+
+/// Extensible [`ConnectorReconcileRequest`], including inputs added after it was published.
+///
+/// Required inputs are [`ConnectorReconcileOptions::new`] arguments; optional inputs have fluent setters.
+/// Input-only: it serialises to the flat wire request and is not deserialisable.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorReconcileOptions {
+    #[serde(flatten)]
+    legacy: ConnectorReconcileRequest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    force_connector_name: Option<String>,
+}
+
+impl ConnectorReconcileOptions {
+    /// Creates options with the required inputs.
+    pub fn new(account_id: impl Into<String>) -> Self {
+        Self {
+            legacy: ConnectorReconcileRequest {
+                account_id: account_id.into(),
+                refresh_catalog: None,
+            },
+            force_connector_name: None,
+        }
+    }
+
+    /// When true, refresh the catalog before reconciling. A disabled Connector API performs no service request.
+    pub fn refresh_catalog(mut self, value: bool) -> Self {
+        self.legacy.refresh_catalog = Some(value);
+        self
+    }
+
+    /// Optional Connector name to reinitialize. Requires the targetedReconcile capability.
+    pub fn force_connector_name(mut self, value: impl Into<String>) -> Self {
+        self.force_connector_name = Some(value.into());
+        self
+    }
+}
+
+/// Session account selection.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorSessionAccount {
+    /// Opaque session-scoped account selection ID.
+    pub account_id: String,
+    /// Credential-free identity metadata.
+    pub auth_info: AuthIdentityMetadata,
 }
 
 /// Remote session connection parameters.
@@ -19698,35 +19796,6 @@ pub struct SessionActivity {
     pub has_active_work: bool,
 }
 
-/// Current authentication information, or null when no authentication is active.
-///
-/// <div class="warning">
-///
-/// **Experimental.** This type is part of an experimental wire-protocol surface
-/// and may change or be removed in future SDK or CLI releases.
-///
-/// </div>
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionAuthInfoResult {
-    /// Snapshot of the authenticated user's Copilot subscription info, if known
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub copilot_user: Option<CopilotUserResponse>,
-    /// Name of the environment variable that supplied the credential, when applicable
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub env_var: Option<String>,
-    /// Authentication host
-    pub host: String,
-    /// Authenticated login, when available
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub login: Option<String>,
-    /// Opaque SDK GitHub credential registration backing this identity. Routing metadata only; never a credential.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub registration_id: Option<String>,
-    /// Authentication type
-    pub r#type: AuthInfoType,
-}
-
 /// Internal GitHub login parameters.
 ///
 /// <div class="warning">
@@ -31682,6 +31751,27 @@ pub struct SessionConnectorsGetCapabilitiesResult {
     pub max_poll_interval_ms: i64,
     /// Whether callers select a host-owned GitHub account through an opaque selection ID rather than supplying a provider token.
     pub opaque_account_selection: bool,
+    /// Whether getAccount is supported. Absence means false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_account_selection: Option<bool>,
+    /// Whether reconcile accepts forceConnectorName. Absence means false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub targeted_reconcile: Option<bool>,
+}
+
+/// Identifies the target session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConnectorsGetAccountParams {
+    /// Target session identifier
+    pub session_id: SessionId,
 }
 
 /// Identifies the target session.
@@ -34722,6 +34812,16 @@ pub type CatalogResourceVersion = String;
 /// </div>
 pub type ClientMetadata = HashMap<String, String>;
 
+/// Session account selection, or null.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+pub type ConnectorSessionAccountResult = Option<ConnectorSessionAccount>;
+
 /// HTTP headers as a map from lowercased header name to a list of values. Multi-valued headers (e.g. Set-Cookie) preserve all values.
 ///
 /// <div class="warning">
@@ -34761,6 +34861,16 @@ pub type McpPlanSecretReference = String;
 ///
 /// </div>
 pub type SandboxHostCapabilityName = String;
+
+/// Current authentication information, or null when no authentication is active.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+pub type SessionAuthInfoResult = Option<AuthIdentity>;
 
 /// Ordered client metadata outcomes for the requested local sessions.
 ///

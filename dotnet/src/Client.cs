@@ -1569,7 +1569,8 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
                 GitHubMcpToolConfig: config.GitHubMcpToolConfig,
                 ManagedSettings: config.ManagedSettings,
                 EnableGitHubTelemetryForwarding: _options.OnGitHubTelemetry != null ? true : null,
-                AdditionalDirectories: config.AdditionalDirectories);
+                AdditionalDirectories: config.AdditionalDirectories,
+                AllowTranscriptRecovery: config.AllowTranscriptRecovery);
 
             var rpcTimestamp = Stopwatch.GetTimestamp();
             var response = await InvokeRpcAsync<ResumeSessionResponse>(
@@ -1580,6 +1581,7 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
                 sessionId);
 
             session.WorkspacePath = response.WorkspacePath;
+            session.TranscriptRecovery = response.TranscriptRecovery;
             session.SetCapabilities(response.Capabilities);
             session.SetOpenCanvases(response.OpenCanvases);
 
@@ -3286,7 +3288,8 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
         [property: JsonPropertyName("managedSettings")] ManagedSettings? ManagedSettings = null,
         bool? EnableGitHubTelemetryForwarding = null,
         [property: JsonPropertyName("githubMcpToolConfig")] GitHubMcpToolConfig? GitHubMcpToolConfig = null,
-        IList<string>? AdditionalDirectories = null);
+        IList<string>? AdditionalDirectories = null,
+        bool? AllowTranscriptRecovery = null);
 #pragma warning restore GHCP001
 
     internal record ResumeSessionResponse(
@@ -3294,7 +3297,8 @@ public sealed partial class CopilotClient : IDisposable, IAsyncDisposable
         string? WorkspacePath,
         SessionCapabilities? Capabilities = null,
 #pragma warning disable GHCP001
-        IList<OpenCanvasInstance>? OpenCanvases = null);
+        IList<OpenCanvasInstance>? OpenCanvases = null,
+        TranscriptRecoveryReport? TranscriptRecovery = null);
 #pragma warning restore GHCP001
 
     internal record CommandWireDefinition(

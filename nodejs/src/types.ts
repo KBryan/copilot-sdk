@@ -40,6 +40,8 @@ export type { RemoteSessionMode } from "./generated/rpc.js";
 export type { CurrentToolMetadata } from "./generated/rpc.js";
 export type { SandboxConfigSource } from "./generated/rpc.js";
 export type {
+    AuthIdentityMetadata,
+    AuthInfoType,
     ConnectorAccountRequest,
     ConnectorAvailability,
     ConnectorCapabilities,
@@ -53,6 +55,8 @@ export type {
     ConnectorMcpStatus,
     ConnectorReconcileRequest,
     ConnectorRuntimeStatus,
+    ConnectorSessionAccount,
+    ConnectorSessionAccountResult,
     ConnectorStatus,
     ExtensionLaunchProfile,
     ExtensionLaunchProviderResolveRequest,
@@ -3016,6 +3020,11 @@ export interface SessionConfig extends SessionConfigBase {
  */
 export interface ResumeSessionConfig extends SessionConfigBase {
     /**
+     * Allow the runtime to recover a damaged transcript during resume.
+     * Defaults to true in all modes. Set false to reject recovery.
+     */
+    allowTranscriptRecovery?: boolean;
+    /**
      * When true, skips emitting the session.resume event.
      * Useful for reconnecting to a session without triggering resume-related side effects.
      * @default false
@@ -3024,7 +3033,8 @@ export interface ResumeSessionConfig extends SessionConfigBase {
     /**
      * When true, the runtime continues any tool calls or permission prompts that were
      * still pending when the session was last suspended. When false (the default), the
-     * runtime treats pending work as interrupted on resume.
+     * runtime treats pending work as interrupted on resume. Completed tool results
+     * already durably recorded by the runtime are preserved.
      *
      * For permission requests, the runtime re-emits `permission.requested` so the
      * registered `onPermissionRequest` handler can re-prompt; for external tool calls,
@@ -3039,6 +3049,16 @@ export interface ResumeSessionConfig extends SessionConfigBase {
      * do not need to re-open canvases that were active before the previous shutdown.
      */
     openCanvases?: OpenCanvasInstance[];
+}
+
+/** Transcript repair proposed during the most recent resume. */
+export interface TranscriptRecovery {
+    /** Planned backup path; the backup is written on the next append. */
+    plannedBackupPath: string;
+    /** One-based physical line numbers removed from the transcript. */
+    invalidLineNumbers: number[];
+    /** Whether an existing session.start event was moved to the beginning. */
+    sessionStartMoved: boolean;
 }
 
 /**

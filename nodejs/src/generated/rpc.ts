@@ -1437,6 +1437,14 @@ export type ConnectorMcpStatus =
   /** The Connector currently has no live server configuration. */
   | "not_configured";
 /**
+ * Session account selection, or null.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ConnectorSessionAccountResult".
+ */
+/** @experimental */
+export type ConnectorSessionAccountResult = ConnectorSessionAccount | null;
+/**
  * Closed set of public task kinds a connection can negotiate.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -7351,6 +7359,24 @@ export interface AuthIdentity {
   copilotUser?: CopilotUserResponse;
 }
 /**
+ * Credential-free identity metadata.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AuthIdentityMetadata".
+ */
+/** @experimental */
+export interface AuthIdentityMetadata {
+  type: AuthInfoType;
+  /**
+   * Identity host.
+   */
+  host: string;
+  /**
+   * User login.
+   */
+  login: string;
+}
+/**
  * Advance an in-flight login flow, optionally fulfilling an input-required step.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -9511,6 +9537,14 @@ export interface ConnectorCapabilities {
    */
   opaqueAccountSelection: boolean;
   /**
+   * Whether getAccount is supported. Absence means false.
+   */
+  sessionAccountSelection?: boolean;
+  /**
+   * Whether reconcile accepts forceConnectorName. Absence means false.
+   */
+  targetedReconcile?: boolean;
+  /**
    * Maximum accepted polling attempts for one continuation call.
    */
   maxPollAttempts: number;
@@ -9543,6 +9577,18 @@ export interface ConnectorCatalogEntry {
    * Untrusted service description, when present.
    */
   description?: string;
+  /**
+   * Optional catalog logo.
+   */
+  logo?: string;
+  /**
+   * Optional catalog tier.
+   */
+  tier?: string;
+  /**
+   * Optional catalog release tag.
+   */
+  releaseTag?: string;
   status: ConnectorCatalogStatus;
   /**
    * Opaque stable runtime IDs currently projected into the session for this Connector.
@@ -9688,6 +9734,24 @@ export interface ConnectorReconcileRequest {
    * When true, refresh the catalog before reconciling. A disabled Connector API performs no service request.
    */
   refreshCatalog?: boolean;
+  /**
+   * Optional Connector name to reinitialize. Requires the targetedReconcile capability.
+   */
+  forceConnectorName?: string;
+}
+/**
+ * Session account selection.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ConnectorSessionAccount".
+ */
+/** @experimental */
+export interface ConnectorSessionAccount {
+  /**
+   * Opaque session-scoped account selection ID.
+   */
+  accountId: string;
+  authInfo: AuthIdentityMetadata;
 }
 /**
  * Remote session connection parameters.
@@ -31949,6 +32013,13 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
             getCapabilities: async (): Promise<ConnectorCapabilities> =>
                 connection.sendRequest("session.connectors.getCapabilities", { sessionId }),
             /**
+             * Returns the session account selection, or null.
+             *
+             * @returns Session account selection, or null.
+             */
+            getAccount: async (): Promise<ConnectorSessionAccountResult> =>
+                connection.sendRequest("session.connectors.getAccount", { sessionId }),
+            /**
              * Returns authoritative session Connector state from current availability, pinned account selection, cached catalog, and live MCP projection without performing a Connector service request.
              *
              * @returns Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.
@@ -33142,7 +33213,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              *
              * @returns Current authentication information, or null when no authentication is active.
              */
-            getCurrentAuthInfo: async (): Promise<AuthIdentity | undefined> =>
+            getCurrentAuthInfo: async (): Promise<SessionAuthInfoResult> =>
                 connection.sendRequest("session.gitHubAuth.getCurrentAuthInfo", { sessionId }),
             /**
              * Gets all authentication accounts available to the internal session host.
@@ -33156,7 +33227,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              *
              * @returns Current authentication information, or null when no authentication is active.
              */
-            refreshCopilotUser: async (): Promise<AuthIdentity | undefined> =>
+            refreshCopilotUser: async (): Promise<SessionAuthInfoResult> =>
                 connection.sendRequest("session.gitHubAuth.refreshCopilotUser", { sessionId }),
             /**
              * Logs in a GitHub user through the internal session host.

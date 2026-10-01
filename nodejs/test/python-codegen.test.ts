@@ -2,11 +2,40 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+    appendLastPythonRpcConstructorFields,
     applyPythonLegacyParameters,
     emitMethod,
     generatePythonSessionEventsCode,
+    isPythonObjectResultSchema,
+    pythonAppendLastFieldsPresentIn,
 } from "../../scripts/codegen/python.ts";
 import { legacyRequestSchema } from "./legacy-parameters-fixture.ts";
+
+describe("Python referenced RPC results", () => {
+    it("uses record deserialization for nullable object references, but not enums", () => {
+        const definitions = {
+            definitions: {
+                Account: {
+                    type: "object" as const,
+                    properties: { accountId: { type: "string" as const } },
+                    required: ["accountId"],
+                },
+                AccountResult: {
+                    anyOf: [{ $ref: "#/definitions/Account" }, { type: "null" as const }],
+                },
+                Mode: { type: "string" as const, enum: ["token"] },
+            },
+        };
+
+        expect(isPythonObjectResultSchema({ $ref: "#/definitions/Account" }, definitions)).toBe(
+            true
+        );
+        expect(
+            isPythonObjectResultSchema({ $ref: "#/definitions/AccountResult" }, definitions)
+        ).toBe(true);
+        expect(isPythonObjectResultSchema({ $ref: "#/definitions/Mode" }, definitions)).toBe(false);
+    });
+});
 
 describe("Python RPC projection compatibility", () => {
     const code = readFileSync(
@@ -179,5 +208,76 @@ describe("Python x-legacy-parameters", () => {
                 SamplePlanRequest: legacyRequestSchema(0).params,
             })
         ).toBe(snippet);
+    });
+});
+
+describe("Python append-last RPC fields", () => {
+    const fields = [["Request", "addedField"]] as const;
+    const request = (docstring: string) =>
+        [
+            "@dataclass",
+            "class Request:",
+            `    """${docstring}"""`,
+            "",
+            "    added_field: str | None = None",
+            "    stable_field: str | None = None",
+            "",
+            "    @staticmethod",
+            "    def from_dict(obj: Any) -> 'Request':",
+            '        added_field = from_str(obj.get("addedField"))',
+            '        stable_field = from_str(obj.get("stableField"))',
+            "        return Request(added_field, stable_field)",
+            "",
+        ].join("\n");
+
+    it("reorders a dataclass that is the last block in the file", () => {
+        const updated = appendLastPythonRpcConstructorFields(request("Request."), fields);
+
+        expect(updated.indexOf("stable_field: str")).toBeLessThan(
+            updated.indexOf("added_field: str")
+        );
+        expect(updated).toContain("return Request(stable_field, added_field)");
+    });
+
+    it("does not end the dataclass block at a capital Z before its constructor", () => {
+        const updated = appendLastPythonRpcConstructorFields(
+            `${request("Zone request.")}\n@dataclass\nclass Next:\n    pass\n`,
+            fields
+        );
+
+        expect(updated.indexOf("stable_field: str")).toBeLessThan(
+            updated.indexOf("added_field: str")
+        );
+        expect(updated).toContain("return Request(stable_field, added_field)");
+        expect(updated).toContain("class Next:");
+    });
+
+    it("fails generation instead of skipping a missing dataclass", () => {
+        expect(() =>
+            appendLastPythonRpcConstructorFields("@dataclass\nclass Other:\n    pass\n", fields)
+        ).toThrow("Missing dataclass Request");
+    });
+});
+
+describe("Python append-last fields for a selected schema", () => {
+    const fields = [["Request", "addedField"]] as const;
+
+    it("keeps an entry whose property the schema declares", () => {
+        expect(
+            pythonAppendLastFieldsPresentIn(
+                { Request: { type: "object", properties: { addedField: { type: "string" } } } },
+                fields
+            )
+        ).toEqual(fields);
+    });
+
+    it("skips an entry for a legacy request or a schema without the definition", () => {
+        expect(
+            pythonAppendLastFieldsPresentIn(
+                { Request: { type: "object", properties: { stableField: { type: "string" } } } },
+                fields
+            )
+        ).toEqual([]);
+        expect(pythonAppendLastFieldsPresentIn({}, fields)).toEqual([]);
     });
 });

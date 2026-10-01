@@ -955,6 +955,17 @@ session, err := client.ResumeSession(context.Background(), sessionID, &copilot.R
 })
 ```
 
+`AllowTranscriptRecovery` controls transcript repair on resume. A nil value omits
+the wire field and uses the runtime default (true) in all modes.
+Set `copilot.Bool(false)` to reject recovery.
+`session.TranscriptRecovery()` returns repair details or nil. The report's
+`InvalidLineNumbers` includes any discarded torn-tail lines. On rejection,
+use `errors.As(err, &rpcErr)` with `var rpcErr *copilot.RPCError` to inspect
+`rpcErr.Code` and `rpcErr.Data` (`invalidLineNumbers`, `sessionStartMoved`);
+the original error message remains available.
+Disabling recovery still permits adding a missing newline after an intact final
+record; it rejects torn tails.
+
 ### Per-Tool Skip Permission
 
 To let a specific custom tool bypass the permission prompt entirely, set `SkipPermission = true` on the tool. See [Skipping Permission Prompts](#skipping-permission-prompts) under Tools.

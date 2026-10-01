@@ -6,15 +6,30 @@ package com.github.copilot;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.lang.reflect.RecordComponent;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
+import com.github.copilot.generated.rpc.AuthIdentityMetadata;
+import com.github.copilot.generated.rpc.AuthInfoType;
+import com.github.copilot.generated.rpc.ConnectorAvailability;
+import com.github.copilot.generated.rpc.ConnectorSessionAccount;
 import com.github.copilot.generated.rpc.McpConfigAddParams;
 import com.github.copilot.generated.rpc.McpDiscoverParams;
 import com.github.copilot.generated.rpc.RpcCaller;
@@ -29,6 +44,7 @@ import com.github.copilot.generated.rpc.SessionConnectorsGetStatusResult;
 import com.github.copilot.generated.rpc.SessionConnectorsListParams;
 import com.github.copilot.generated.rpc.SessionConnectorsListResult;
 import com.github.copilot.generated.rpc.SessionConnectorsReconcileParams;
+import com.github.copilot.generated.rpc.SessionConnectorsReconcileRequest;
 import com.github.copilot.generated.rpc.SessionConnectorsReconcileResult;
 import com.github.copilot.generated.rpc.SessionConnectorsReconnectParams;
 import com.github.copilot.generated.rpc.SessionConnectorsRefreshParams;
@@ -249,6 +265,159 @@ class RpcWrappersTest {
         var reconcileParams = assertConnectorCall(stub.calls.get(8), "session.connectors.reconcile",
                 SessionConnectorsReconcileResult.class);
         assertTrue(reconcileParams.get("refreshCatalog").asBoolean());
+        assertFalse(reconcileParams.has("forceConnectorName"));
+        assertEquals(3, reconcileParams.size());
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"enabled, missing, missing, false, false", "enabled, false, false, false, false",
+            "enabled, true, missing, true, false", "enabled, missing, true, false, true",
+            "enabled, true, false, true, false", "enabled, false, true, false, true", "enabled, true, true, true, true",
+            "disabled, true, true, false, false", "unavailable, true, true, false, false"}, nullValues = "missing")
+    @AllowCopilotExperimental
+    void sessionRpc_connectors_capability_gates_preserve_legacy_requests(String availability,
+            Boolean sessionAccountSelection, Boolean targetedReconcile, boolean expectAccount, boolean expectTarget)
+            throws Exception {
+        var mapper = new ObjectMapper();
+        var capabilitiesJson = mapper.createObjectNode().put("apiVersion", 1).put("availability", availability)
+                .put("consentContinuation", true).put("opaqueAccountSelection", true).put("maxPollAttempts", 5)
+                .put("maxPollIntervalMs", 2_000).put("maxDeadlineMs", 30_000);
+        if (sessionAccountSelection != null) {
+            capabilitiesJson.put("sessionAccountSelection", sessionAccountSelection);
+        }
+        if (targetedReconcile != null) {
+            capabilitiesJson.put("targetedReconcile", targetedReconcile);
+        }
+        var stub = new StubCaller();
+        stub.nextResult = mapper.treeToValue(capabilitiesJson, SessionConnectorsGetCapabilitiesResult.class);
+        var session = new SessionRpc(stub, "sess-connectors");
+
+        var capabilities = session.connectors.getCapabilities().get();
+        assertEquals(sessionAccountSelection, capabilities.sessionAccountSelection());
+        assertEquals(targetedReconcile, capabilities.targetedReconcile());
+        stub.nextResult = null;
+
+        if (capabilities.availability() == ConnectorAvailability.ENABLED
+                && Boolean.TRUE.equals(capabilities.sessionAccountSelection())) {
+            session.connectors.getAccount();
+        }
+        if (capabilities.availability() == ConnectorAvailability.ENABLED) {
+            session.connectors.reconcile(new SessionConnectorsReconcileRequest("account-1").setRefreshCatalog(false)
+                    .setForceConnectorName(Boolean.TRUE.equals(capabilities.targetedReconcile()) ? "outlook" : null));
+        }
+
+        boolean enabled = "enabled".equals(availability);
+        assertEquals(1 + (expectAccount ? 1 : 0) + (enabled ? 1 : 0), stub.calls.size());
+        var capabilityParams = assertConnectorCall(stub.calls.get(0), "session.connectors.getCapabilities",
+                SessionConnectorsGetCapabilitiesResult.class);
+        assertEquals(1, capabilityParams.size());
+        int nextCall = 1;
+        if (expectAccount) {
+            var params = assertConnectorCall(stub.calls.get(nextCall++), "session.connectors.getAccount",
+                    ConnectorSessionAccount.class);
+            assertEquals(mapper.valueToTree(Map.of("sessionId", "sess-connectors")), params);
+        }
+        if (enabled) {
+            var params = assertConnectorCall(stub.calls.get(nextCall), "session.connectors.reconcile",
+                    SessionConnectorsReconcileResult.class);
+            assertEquals("account-1", params.get("accountId").asText());
+            assertFalse(params.get("refreshCatalog").asBoolean());
+            assertEquals(expectTarget, params.has("forceConnectorName"));
+            assertEquals(expectTarget ? 4 : 3, params.size());
+            if (expectTarget) {
+                assertEquals("outlook", params.get("forceConnectorName").asText());
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"token", "token-provider"})
+    @AllowCopilotExperimental
+    void sessionRpc_connectors_getAccount_preserves_present_and_null_results(String authType) throws Exception {
+        var mapper = new ObjectMapper();
+        try (var sockets = new SocketPair()) {
+            var stub = sockets.stubServer();
+            var session = new SessionRpc(sockets.client()::invoke, "sess-connectors");
+            var capabilitiesFuture = session.connectors.getCapabilities();
+            var capabilitiesRequest = stub.readOneMessage();
+            assertEquals("session.connectors.getCapabilities", capabilitiesRequest.get("method").asText());
+            stub.respond(capabilitiesRequest, mapper.readTree("""
+                    {
+                      "apiVersion": 1,
+                      "availability": "enabled",
+                      "consentContinuation": true,
+                      "opaqueAccountSelection": true,
+                      "sessionAccountSelection": true,
+                      "maxPollAttempts": 5,
+                      "maxPollIntervalMs": 2000,
+                      "maxDeadlineMs": 30000
+                    }
+                    """));
+            var capabilities = capabilitiesFuture.get(3, TimeUnit.SECONDS);
+            assertEquals(ConnectorAvailability.ENABLED, capabilities.availability());
+            assertTrue(Boolean.TRUE.equals(capabilities.sessionAccountSelection()));
+
+            var future = session.connectors.getAccount();
+            var request = stub.readOneMessage();
+            assertEquals("session.connectors.getAccount", request.get("method").asText());
+            assertEquals(mapper.valueToTree(Map.of("sessionId", "sess-connectors")), request.get("params"));
+            var expected = authType == null ? mapper.getNodeFactory().nullNode() : mapper.readTree("""
+                    {
+                      "accountId": "account-1",
+                      "authInfo": {"type":"%s","host":"github.com","login":"octocat"}
+                    }
+                    """.formatted(authType));
+            stub.respond(request, expected);
+            ConnectorSessionAccount account = future.get(3, TimeUnit.SECONDS);
+
+            if (authType == null) {
+                assertNull(account);
+            } else {
+                assertNotNull(account);
+                assertEquals("account-1", account.accountId());
+                AuthIdentityMetadata authInfo = account.authInfo();
+                assertEquals(AuthInfoType.fromValue(authType), authInfo.type());
+                assertEquals("github.com", authInfo.host());
+                assertEquals("octocat", authInfo.login());
+                assertEquals(expected, mapper.valueToTree(account));
+                assertEquals(List.of("accountId", "authInfo"),
+                        Arrays.stream(ConnectorSessionAccount.class.getRecordComponents()).map(RecordComponent::getName)
+                                .sorted().toList());
+                assertEquals(List.of("host", "login", "type"),
+                        Arrays.stream(AuthIdentityMetadata.class.getRecordComponents()).map(RecordComponent::getName)
+                                .sorted().toList());
+            }
+        }
+    }
+
+    @Test
+    @AllowCopilotExperimental
+    void sessionRpc_connectors_unknown_continuation_outcome_is_a_decode_error() throws Exception {
+        try (var sockets = new SocketPair()) {
+            var stub = sockets.stubServer();
+            var session = new SessionRpc(sockets.client()::invoke, "sess-connectors");
+            var future = session.connectors.continueConnection(new SessionConnectorsContinueConnectionParams(
+                    "ignored-session", "continuation-1", 3L, 1_000L, 10_000L));
+            var request = stub.readOneMessage();
+            assertEquals("session.connectors.continueConnection", request.get("method").asText());
+            assertEquals(new ObjectMapper().readTree("""
+                    {
+                      "sessionId":"sess-connectors",
+                      "continuationId":"continuation-1",
+                      "maxAttempts":3,
+                      "pollIntervalMs":1000,
+                      "deadlineMs":10000
+                    }
+                    """), request.get("params"));
+            stub.respond(request, new ObjectMapper().readTree("""
+                    {"kind":"verification_required","continuationId":"continuation-1"}
+                    """));
+
+            var failure = assertThrows(ExecutionException.class, () -> future.get(3, TimeUnit.SECONDS));
+            var decodeError = assertInstanceOf(InvalidTypeIdException.class, failure.getCause());
+            assertEquals("verification_required", decodeError.getTypeId());
+        }
     }
 
     @Test
@@ -580,20 +749,33 @@ class RpcWrappersTest {
     }
 
     /**
-     * Reads raw JSON-RPC messages written to the server side of the socket.
+     * Exchanges raw JSON-RPC messages on the server side of the socket.
      */
     private static final class StubServer {
 
         private static final ObjectMapper MAPPER = JsonRpcClient.getObjectMapper();
 
         private final java.io.InputStream in;
+        private final java.io.OutputStream out;
 
         StubServer(java.net.Socket socket) {
             try {
                 this.in = socket.getInputStream();
+                this.out = socket.getOutputStream();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        void respond(JsonNode request, JsonNode result) throws Exception {
+            var response = MAPPER.createObjectNode();
+            response.put("jsonrpc", "2.0");
+            response.set("id", request.get("id"));
+            response.set("result", result);
+            byte[] body = MAPPER.writeValueAsBytes(response);
+            out.write(("Content-Length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.write(body);
+            out.flush();
         }
 
         /**

@@ -64,6 +64,7 @@ import type {
     ToolResult,
     ToolResultObject,
     TraceContextProvider,
+    TranscriptRecovery,
     TypedSessionEventHandler,
     UserInputHandler,
     UserInputRequest,
@@ -425,6 +426,7 @@ const TOOL_SEARCH_TOOL_NAME = "tool_search_tool";
  */
 
 export class CopilotSession {
+    private _transcriptRecovery?: TranscriptRecovery;
     private eventHandlers: Set<SessionEventHandler> = new Set();
     private typedEventHandlers: Map<SessionEventType, Set<(event: SessionEvent) => void>> =
         new Map();
@@ -668,6 +670,16 @@ export class CopilotSession {
      */
     get workspacePath(): string | undefined {
         return this._workspacePath;
+    }
+
+    /** Recovery observed while loading this session; undefined on a clean resume. */
+    get transcriptRecovery(): TranscriptRecovery | undefined {
+        return this._transcriptRecovery;
+    }
+
+    /** @internal */
+    setTranscriptRecovery(recovery: TranscriptRecovery | undefined): void {
+        this._transcriptRecovery = recovery;
     }
 
     /**

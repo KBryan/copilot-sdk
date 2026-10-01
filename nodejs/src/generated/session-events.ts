@@ -12651,7 +12651,7 @@ export interface McpServerStatusChangedEvent {
  */
 export interface McpServerStatusChangedData {
   /**
-   * Runtime configuration provenance for a failed connection, or unknown when unavailable. Additional string values may be introduced.
+   * Runtime configuration provenance for a connected or failed server, or unknown when unavailable. Additional string values may be introduced.
    */
   configSource?: string;
   /**

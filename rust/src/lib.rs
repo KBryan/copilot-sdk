@@ -11,10 +11,17 @@ pub use ahp_host::{
     AhpSessionResumeRequest,
 };
 
+// Outside tests, `cache_paths`'s only caller is `resolve::extracted_program`, which
+// needs the build script to have extracted a CLI (`has_extracted_cli`). Without it the
+// module is compiled only for its own unit tests, which exercise the pure path helpers;
+// `extracted_runtime_install_dir` and `platform_cache_dir` then have no caller in the
+// lib test unit (the build script reaches them through its own `#[path]` include).
+#[cfg_attr(all(test, not(has_extracted_cli)), expect(dead_code))]
 #[cfg(all(
     feature = "runtime",
     not(feature = "bundled-cli"),
-    not(feature = "local-runtime")
+    not(feature = "local-runtime"),
+    any(test, has_extracted_cli)
 ))]
 mod cache_paths;
 /// Canvas declarations, provider callbacks, and host-side canvas RPC types.

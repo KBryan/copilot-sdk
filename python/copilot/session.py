@@ -1590,6 +1590,15 @@ class _BearerTokenProviderAdapter:
         return ProviderTokenAcquireResult(token=cast(str, result))
 
 
+@dataclass(frozen=True)
+class TranscriptRecoveryReport:
+    """Repair details returned by ``session.resume`` when transcript recovery ran."""
+
+    planned_backup_path: str
+    invalid_line_numbers: list[int]
+    session_start_moved: bool
+
+
 class CopilotSession:
     """
     Represents a single conversation session with the Copilot CLI.
@@ -1642,6 +1651,7 @@ class CopilotSession:
                 creating or resuming the session.
         """
         self.session_id = session_id
+        self.transcript_recovery: TranscriptRecoveryReport | None = None
         self._managed_settings_enabled = managed_settings_enabled
         self._client = client
         self._workspace_path = os.fsdecode(workspace_path) if workspace_path is not None else None

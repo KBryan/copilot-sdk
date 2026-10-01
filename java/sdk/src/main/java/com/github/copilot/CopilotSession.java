@@ -112,6 +112,7 @@ import com.github.copilot.rpc.SessionUiApi;
 import com.github.copilot.rpc.SessionUiCapabilities;
 import com.github.copilot.rpc.ToolDefinition;
 import com.github.copilot.rpc.ToolResultObject;
+import com.github.copilot.rpc.TranscriptRecoveryReport;
 import com.github.copilot.rpc.UserInputHandler;
 import com.github.copilot.rpc.UserInputInvocation;
 import com.github.copilot.rpc.UserInputRequest;
@@ -183,6 +184,7 @@ public final class CopilotSession implements AutoCloseable {
      */
     private volatile String sessionId;
     private volatile String workspacePath;
+    private volatile TranscriptRecoveryReport transcriptRecovery;
     private volatile SessionCapabilities capabilities = new SessionCapabilities();
     private final Object openCanvasesLock = new Object();
     private final List<OpenCanvasInstance> openCanvases = new ArrayList<>();
@@ -359,6 +361,19 @@ public final class CopilotSession implements AutoCloseable {
      */
     void setWorkspacePath(String workspacePath) {
         this.workspacePath = workspacePath;
+    }
+
+    /**
+     * Gets the transcript repair details reported when this session was resumed.
+     *
+     * @return repair details, or {@code null} when no repair was reported
+     */
+    public TranscriptRecoveryReport getTranscriptRecovery() {
+        return transcriptRecovery;
+    }
+
+    void setTranscriptRecovery(TranscriptRecoveryReport transcriptRecovery) {
+        this.transcriptRecovery = transcriptRecovery;
     }
 
     /**

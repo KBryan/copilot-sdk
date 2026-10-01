@@ -1286,6 +1286,7 @@ public final class CopilotClient implements AutoCloseable {
                         session.setWorkspacePath(response.workspacePath());
                         session.setCapabilities(response.capabilities());
                         session.setOpenCanvases(response.openCanvases());
+                        session.setTranscriptRecovery(response.transcriptRecovery());
                         // If the server returned a different sessionId than what was requested,
                         // re-key.
                         String returnedId = response.sessionId();

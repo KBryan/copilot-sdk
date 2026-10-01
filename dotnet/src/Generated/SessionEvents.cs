@@ -6695,7 +6695,7 @@ public sealed partial class SessionMcpServersLoadedData
 /// <summary>Payload of `session.mcp_server_status_changed` for one MCP server's status and optional failure error.</summary>
 public sealed partial class SessionMcpServerStatusChangedData
 {
-    /// <summary>Runtime configuration provenance for a failed connection, or unknown when unavailable. Additional string values may be introduced.</summary>
+    /// <summary>Runtime configuration provenance for a connected or failed server, or unknown when unavailable. Additional string values may be introduced.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("configSource")]
     public string? ConfigSource { get; set; }

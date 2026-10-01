@@ -9,10 +9,10 @@ use github_copilot_sdk::session_events::{
 };
 use github_copilot_sdk::{
     AgentMode, Attachment, AttachmentLineRange, AttachmentSelectionPosition,
-    AttachmentSelectionRange, CliProgram, Client, ClientOptions, CloudSessionOptions,
+    AttachmentSelectionRange, CliProgram, Client, ClientMode, ClientOptions, CloudSessionOptions,
     CloudSessionRepository, CopilotExpAssignmentResponse, DeliveryMode, ExtensionInfo,
     GitHubReferenceType, MessageOptions, MessageSource, ProviderConfig, ResumeSessionConfig,
-    SessionConfig, SessionId, Transport,
+    SessionConfig, SessionId, TranscriptRecovery, Transport,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -213,6 +213,50 @@ async fn should_forward_singular_provider_configuration_on_session_creation() {
         ],
     );
     assert_eq!(provider["headers"]["x-provider"], json!("rust"));
+}
+
+#[tokio::test]
+async fn resume_transcript_recovery_defaults_overrides_and_projection() {
+    for mode in [ClientMode::Empty, ClientMode::CopilotCli] {
+        for choice in [None, Some(false), Some(true)] {
+            let fake = FakeCli::new();
+            let reports_recovery = choice.unwrap_or(true);
+            let behavior = if reports_recovery {
+                "transcript-recovery"
+            } else {
+                "normal"
+            };
+            let client = Client::start(
+                fake.client_options_with_behavior("recovery-client-token", behavior)
+                    .with_mode(mode)
+                    .with_base_directory(fake.path("state")),
+            )
+            .await
+            .expect("start fake CLI client");
+            let mut config = ResumeSessionConfig::new("recovery-session".into())
+                .with_available_tools(Vec::<String>::new());
+            if let Some(allow) = choice {
+                config = config.with_allow_transcript_recovery(allow);
+            }
+            let session = client.resume_session(config).await.expect("resume session");
+            session.disconnect().await.expect("disconnect session");
+            client.stop().await.expect("stop client");
+
+            let request = fake.captured_request("session.resume");
+            let expected = choice.map(Value::Bool);
+            assert_eq!(
+                request.params.get("allowTranscriptRecovery"),
+                expected.as_ref(),
+                "mode: {mode:?}, choice: {choice:?}"
+            );
+            let recovery = reports_recovery.then(|| TranscriptRecovery {
+                planned_backup_path: "recovery-backup.jsonl".into(),
+                invalid_line_numbers: vec![3, 5],
+                session_start_moved: true,
+            });
+            assert_eq!(session.transcript_recovery(), recovery.as_ref());
+        }
+    }
 }
 
 #[tokio::test]
@@ -1138,7 +1182,15 @@ function handleMessage(message) {
   }
   if (message.method === "session.resume") {
     const sessionId = (message.params && message.params.sessionId) || "fake-session";
-    writeResponse(message.id, { sessionId, workspacePath: null, capabilities: null, openCanvases: [] });
+    const result = { sessionId, workspacePath: null, capabilities: null, openCanvases: [] };
+    if (behavior === "transcript-recovery") {
+      result.transcriptRecovery = {
+        plannedBackupPath: "recovery-backup.jsonl",
+        invalidLineNumbers: [3, 5],
+        sessionStartMoved: true,
+      };
+    }
+    writeResponse(message.id, result);
     return;
   }
   if (message.method === "session.options.update") {

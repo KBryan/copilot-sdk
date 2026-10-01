@@ -7,6 +7,7 @@
  */
 
 import fs from "fs/promises";
+import { realpathSync } from "node:fs";
 import path from "path";
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 import { fileURLToPath } from "url";
@@ -288,6 +289,30 @@ function preservePythonSessionEventConstructorOrder(schema: JSONSchema7): void {
             }
         }
     }
+}
+
+/**
+ * Optional RPC fields added after a type was first published. Python dataclasses expose
+ * their field order as a positional constructor contract, so these must stay last instead
+ * of being sorted in among the pre-existing optional fields.
+ */
+const PY_RPC_APPEND_LAST_FIELDS: ReadonlyArray<readonly [string, string]> = [
+    ["ConnectorReconcileRequest", "forceConnectorName"],
+];
+
+/**
+ * Append-last entries whose property exists in this schema. An older or narrower schema
+ * selected for generation may predate the field, which is not an error; a field the
+ * schema declares but the generated dataclass lacks still fails generation.
+ */
+export function pythonAppendLastFieldsPresentIn(
+    definitions: Record<string, JSONSchema7Definition>,
+    fields: ReadonlyArray<readonly [string, string]> = PY_RPC_APPEND_LAST_FIELDS
+): ReadonlyArray<readonly [string, string]> {
+    return fields.filter(([className, propertyName]) => {
+        const definition = definitions[className];
+        return typeof definition === "object" && Object.hasOwn(definition.properties ?? {}, propertyName);
+    });
 }
 
 function preservePythonRpcStringDateFields(definitions: Record<string, JSONSchema7>): void {
@@ -1521,6 +1546,96 @@ function makePythonDataclassFieldKeywordOnly(
     return updated;
 }
 
+/**
+ * Move optional fields listed in {@link PY_RPC_APPEND_LAST_FIELDS} to the end of their
+ * dataclass so a field added after publication cannot shift the positional constructor
+ * contract of the fields that were already there.
+ */
+export function appendLastPythonRpcConstructorFields(
+    code: string,
+    fields: ReadonlyArray<readonly [string, string]> = PY_RPC_APPEND_LAST_FIELDS
+): string {
+    const fieldRe = /^    (\w+): .* = .*$/;
+    const methodRe = /^    (?:@(?:staticmethod|classmethod|property)|(?:async\s+)?def\s+)/;
+
+    let updated = code;
+    for (const [className, propertyName] of fields) {
+        const targetField = toSnakeCase(propertyName);
+        const classBlockRe = new RegExp(
+            `(@dataclass\\r?\\nclass\\s+${escapeRegExp(className)}:[\\s\\S]*?)(?=^@dataclass|^class\\s+\\w|^def\\s+\\w|(?![\\s\\S]))`,
+            "m"
+        );
+        let foundClass = false;
+        updated = updated.replace(classBlockRe, (block: string) => {
+            foundClass = true;
+            const lines = block.split("\n");
+            const memberStart = lines.findIndex((line, index) => index >= 2 && methodRe.test(line));
+            if (memberStart < 0) {
+                throw new Error(`Missing from_dict constructor for ${className}`);
+            }
+
+            const groups: string[][] = [];
+            const preamble: string[] = [];
+            let current: string[] | undefined;
+            for (const line of lines.slice(2, memberStart)) {
+                if (/^    \w+:/.test(line)) {
+                    current = [line];
+                    groups.push(current);
+                } else if (current) {
+                    current.push(line);
+                } else {
+                    preamble.push(line);
+                }
+            }
+
+            const targetIndex = groups.findIndex((group) => fieldRe.exec(group[0])?.[1] === targetField);
+            if (targetIndex < 0) {
+                throw new Error(`Missing dataclass field ${className}.${targetField}`);
+            }
+            if (targetIndex === groups.length - 1) return block;
+
+            const reordered = [
+                ...groups.slice(0, targetIndex),
+                ...groups.slice(targetIndex + 1),
+                groups[targetIndex],
+            ].map((group) => {
+                const trimmed = [...group];
+                while (trimmed.length > 1 && trimmed[trimmed.length - 1].trim() === "") trimmed.pop();
+                return trimmed;
+            });
+            const fieldOrder = reordered
+                .map((group) => group[0].match(/^    (\w+):/)?.[1])
+                .filter((name): name is string => Boolean(name));
+            let foundConstructor = false;
+            const members = lines
+                .slice(memberStart)
+                .join("\n")
+                .replace(
+                    new RegExp(`return ${escapeRegExp(className)}\\(([^()\\n]*)\\)`),
+                    (_call: string, args: string) => {
+                        const parsed = args.split(",").map((arg) => arg.trim());
+                        if (parsed.length !== fieldOrder.length || !parsed.every((arg) => fieldOrder.includes(arg))) {
+                            throw new Error(`Unexpected from_dict constructor arguments for ${className}`);
+                        }
+                        foundConstructor = true;
+                        return `return ${className}(${fieldOrder.join(", ")})`;
+                    }
+                );
+            // Reordering fields without rewriting the positional constructor call would
+            // silently bind every later argument to the wrong field.
+            if (!foundConstructor) {
+                throw new Error(`Missing from_dict constructor for ${className}`);
+            }
+
+            return [...lines.slice(0, 2), ...preamble, ...reordered.flat(), "", members].join("\n");
+        });
+        if (!foundClass) {
+            throw new Error(`Missing dataclass ${className}`);
+        }
+    }
+    return updated;
+}
+
 function reorderPythonDataclassFields(code: string): string {
     const fieldRe =
         /^    \w+: (?:Any|bool|int|float|str|dict|list|ClassVar|[A-Z_]\w*|['"][A-Z_]\w*)(?:[^=]*)?(?: = .*)?$/;
@@ -1627,8 +1742,12 @@ function getMethodResultSchema(method: RpcMethod): JSONSchema7 | undefined {
     return resolveSchema(method.result, rpcDefinitions) ?? method.result ?? undefined;
 }
 
-function isPythonObjectResultSchema(schema: JSONSchema7 | undefined): boolean {
+export function isPythonObjectResultSchema(
+    schema: JSONSchema7 | undefined,
+    definitions: DefinitionCollections = rpcDefinitions,
+): boolean {
     if (!schema) return false;
+    schema = resolveSchema(schema, definitions) ?? schema;
     if (isObjectSchema(schema)) return true;
 
     const variants = schema.anyOf ?? schema.oneOf;
@@ -1636,7 +1755,7 @@ function isPythonObjectResultSchema(schema: JSONSchema7 | undefined): boolean {
 
     const nonNullVariants = variants
         .filter((variant): variant is JSONSchema7 => typeof variant === "object" && variant !== null)
-        .map((variant) => resolveObjectSchema(variant, rpcDefinitions) ?? resolveSchema(variant, rpcDefinitions) ?? variant)
+        .map((variant) => resolveObjectSchema(variant, definitions) ?? resolveSchema(variant, definitions) ?? variant)
         .filter(
             (variant) =>
                 variant.type !== "null" &&
@@ -1648,7 +1767,7 @@ function isPythonObjectResultSchema(schema: JSONSchema7 | undefined): boolean {
         );
 
     if (nonNullVariants.length === 1) {
-        return isPythonObjectResultSchema(nonNullVariants[0]);
+        return isPythonObjectResultSchema(nonNullVariants[0], definitions);
     }
 
     return nonNullVariants.length > 1 && findPyDiscriminator(nonNullVariants) !== null;
@@ -3296,6 +3415,10 @@ async function generateRpc(schemaPath?: string, sessionEventsSchema?: JSONSchema
     );
     typesCode = removeRequiredAnyDefaultsForPython(typesCode, allDefinitions, allDefinitionCollections);
     typesCode = reorderPythonDataclassFields(typesCode);
+    typesCode = appendLastPythonRpcConstructorFields(
+        typesCode,
+        pythonAppendLastFieldsPresentIn(allDefinitions)
+    );
     // Fix bare except: to use Exception (required by ruff/pylint)
     typesCode = typesCode.replace(/except:/g, "except Exception:");
     // Remove unnecessary pass when class has methods (quicktype generates pass for empty schemas)
@@ -3432,12 +3555,25 @@ async function generateRpc(schemaPath?: string, sessionEventsSchema?: JSONSchema
             rootFieldTypes.set(match[1], match[2]);
         }
     }
+    const nullableAliasTargets = new Map<string, string>();
+    for (const [defName, definition] of Object.entries(allDefinitions)) {
+        if (!definition || typeof definition !== "object" || !Array.isArray(definition.anyOf)) continue;
+        const branches = definition.anyOf.filter((branch): branch is JSONSchema7 => typeof branch === "object");
+        // Require a real `type: "null"` branch; the `{ "not": {} }` omission sentinel is not a wire null.
+        if (!branches.some((branch) => branch.type === "null")) continue;
+        const refBranches = branches.filter((branch) => typeof branch.$ref === "string");
+        if (refBranches.length !== 1) continue;
+        nullableAliasTargets.set(defName, refBranches[0].$ref!.split("/").pop()!);
+    }
     for (const defName of Object.keys(allDefinitions)) {
         const actualName = rootFieldTypes.get(toSnakeCase(defName));
         if (actualName) {
             definitionAliases.set(defName.toLowerCase(), actualName);
             if (actualName !== defName && !actualTypeNames.has(defName.toLowerCase()) && /^[A-Za-z_]\w*$/.test(defName)) {
-                publicTypeAliases.set(defName, actualName);
+                publicTypeAliases.set(
+                    defName,
+                    nullableAliasTargets.get(defName) === actualName ? `${actualName} | None` : actualName
+                );
             }
         }
     }
@@ -4249,7 +4385,7 @@ async function generate(sessionSchemaPath?: string, apiSchemaPath?: string): Pro
 
 const __filename = fileURLToPath(import.meta.url);
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(__filename)) {
     const sessionArg = process.argv[2] || undefined;
     const apiArg = process.argv[3] || undefined;
     generate(sessionArg, apiArg).catch((err) => {

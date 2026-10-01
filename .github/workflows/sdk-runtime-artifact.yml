@@ -70,6 +70,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # Capture identity before caches, dependency setup, or downloaded addons
+      # can make the checkout appear dirty to metadata verification.
+      - uses: actions/setup-node@v6
+        if: inputs.runtime-source == 'checkout'
+        with:
+          node-version-file: .nvmrc
+
+      - name: Capture verified addon source identity
+        if: inputs.runtime-source == 'checkout'
+        run: node --experimental-strip-types script/resolve-cli-build-identity.ts --github-env
+
       # Restore/save paths must match shared-cli-build.yml in the same order:
       # Actions includes the path list in the cache version, independently of the key.
       - name: Restore completed runtime build

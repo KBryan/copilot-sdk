@@ -125,6 +125,9 @@ public sealed partial class CopilotSession : IAsyncDisposable
     /// </value>
     public string? WorkspacePath { get; internal set; }
 
+    /// <summary>Details of transcript repair reported by session.resume, if any.</summary>
+    public TranscriptRecoveryReport? TranscriptRecovery { get; internal set; }
+
     /// <summary>
     /// Gets the capabilities reported by the host for this session.
     /// </summary>

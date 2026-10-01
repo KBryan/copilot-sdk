@@ -18,11 +18,12 @@ use github_copilot_sdk::handler::{
     PermissionHandler, PermissionResult, UserInputHandler, UserInputResponse,
 };
 use github_copilot_sdk::rpc::{
-    CanvasProviderInvokeActionRequest, CanvasProviderOpenRequest, CanvasProviderOpenResult,
-    ConnectorAccountRequest, ConnectorAvailability, ConnectorCapabilities, ConnectorCatalogResult,
-    ConnectorCatalogStatus, ConnectorConnectRequest, ConnectorConnectResult,
-    ConnectorContinueRequest, ConnectorDisconnectResult, ConnectorMcpStatus,
-    ConnectorReconcileRequest, ConnectorStatus, ModelSetAllowedModelsRequest, OpenCanvasInstance,
+    AuthInfoType, CanvasProviderInvokeActionRequest, CanvasProviderOpenRequest,
+    CanvasProviderOpenResult, ConnectorAccountRequest, ConnectorAvailability,
+    ConnectorCapabilities, ConnectorCatalogResult, ConnectorCatalogStatus, ConnectorConnectRequest,
+    ConnectorConnectResult, ConnectorContinueRequest, ConnectorDisconnectResult,
+    ConnectorMcpStatus, ConnectorReconcileOptions, ConnectorReconcileRequest,
+    ConnectorSessionAccount, ConnectorStatus, ModelSetAllowedModelsRequest, OpenCanvasInstance,
     SendAgentMode, SendMode, SendRequest, SessionRpcConnectors,
 };
 use github_copilot_sdk::session_events::{
@@ -6655,7 +6656,9 @@ async fn rpc_namespace_session_connectors_dispatches_all_methods() {
         "maxDeadlineMs": 60_000,
         "maxPollAttempts": 10,
         "maxPollIntervalMs": 5_000,
-        "opaqueAccountSelection": true
+        "opaqueAccountSelection": true,
+        "sessionAccountSelection": true,
+        "targetedReconcile": true
     });
 
     let server_handle = tokio::spawn(async move {
@@ -6664,6 +6667,19 @@ async fn rpc_namespace_session_connectors_dispatches_all_methods() {
                 "session.connectors.getCapabilities",
                 serde_json::json!({ "sessionId": session_id }),
                 capabilities,
+            ),
+            (
+                "session.connectors.getAccount",
+                serde_json::json!({ "sessionId": session_id }),
+                serde_json::json!({
+                    "accountId": "account-1",
+                    "authInfo": { "type": "token", "host": "github.com", "login": "alice" },
+                }),
+            ),
+            (
+                "session.connectors.getAccount",
+                serde_json::json!({ "sessionId": session_id }),
+                serde_json::Value::Null,
             ),
             (
                 "session.connectors.getStatus",
@@ -6744,6 +6760,15 @@ async fn rpc_namespace_session_connectors_dispatches_all_methods() {
                     "refreshCatalog": true,
                     "sessionId": session_id
                 }),
+                status.clone(),
+            ),
+            (
+                "session.connectors.reconcile",
+                serde_json::json!({
+                    "accountId": "account-1",
+                    "forceConnectorName": "github",
+                    "sessionId": session_id
+                }),
                 status,
             ),
         ];
@@ -6761,6 +6786,16 @@ async fn rpc_namespace_session_connectors_dispatches_all_methods() {
     let capabilities: ConnectorCapabilities = connectors.get_capabilities().await.unwrap();
     assert_eq!(capabilities.availability, ConnectorAvailability::Enabled);
     assert_eq!(capabilities.max_poll_attempts, 10);
+    assert_eq!(capabilities.session_account_selection, Some(true));
+    assert_eq!(capabilities.targeted_reconcile, Some(true));
+
+    let account: Option<ConnectorSessionAccount> = connectors.get_account().await.unwrap();
+    let account = account.unwrap();
+    assert_eq!(account.account_id, "account-1");
+    assert_eq!(account.auth_info.r#type, AuthInfoType::Token);
+    assert_eq!(account.auth_info.host, "github.com");
+    assert_eq!(account.auth_info.login, "alice");
+    assert!(connectors.get_account().await.unwrap().is_none());
 
     let status: ConnectorStatus = connectors.get_status().await.unwrap();
     assert_eq!(status.account_id.as_deref(), Some("account-1"));
@@ -6846,6 +6881,14 @@ async fn rpc_namespace_session_connectors_dispatches_all_methods() {
         .await
         .unwrap();
     assert_eq!(reconciled.catalog.unwrap().revision, 4);
+
+    let targeted = connectors
+        .reconcile_with_options(
+            ConnectorReconcileOptions::new("account-1").force_connector_name("github"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(targeted.catalog.unwrap().revision, 4);
 
     timeout(TIMEOUT, server_handle).await.unwrap().unwrap();
 }

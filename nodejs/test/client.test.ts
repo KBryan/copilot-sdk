@@ -969,6 +969,48 @@ describe("CopilotClient", () => {
         expect(cliResumePayload.isExperimentalMode).toBeUndefined();
     });
 
+    it.each(["empty", "copilot-cli"] as const)(
+        "preserves transcript recovery overrides in %s mode and exposes the resume report",
+        async (mode) => {
+            const baseDirectory = mkdtempSync(join(tmpdir(), "copilot-sdk-node-recovery-"));
+            const client = new CopilotClient({ mode, baseDirectory });
+            await client.start();
+            onTestFinished(() => client.forceStop());
+
+            const recovery = {
+                plannedBackupPath: "events.jsonl.backup",
+                invalidLineNumbers: [2],
+                sessionStartMoved: false,
+            };
+            const spy = vi
+                .spyOn((client as any).connection!, "sendRequest")
+                .mockImplementation(async (method: string, params: any) => {
+                    if (method === "session.create") return { sessionId: params.sessionId };
+                    if (method === "session.resume") {
+                        return { sessionId: params.sessionId, transcriptRecovery: recovery };
+                    }
+                    if (method === "session.options.update") return {};
+                    throw new Error(`Unexpected method: ${method}`);
+                });
+
+            const created = await client.createSession({
+                onPermissionRequest: approveAll,
+                availableTools: [],
+            });
+            for (const setting of [undefined, false, true]) {
+                const resumed = await client.resumeSession(created.sessionId, {
+                    onPermissionRequest: approveAll,
+                    availableTools: [],
+                    allowTranscriptRecovery: setting,
+                });
+                expect(resumed.transcriptRecovery).toEqual(recovery);
+                expect(
+                    spy.mock.calls.filter(([method]) => method === "session.resume").at(-1)?.[1]
+                ).toMatchObject({ allowTranscriptRecovery: setting });
+            }
+        }
+    );
+
     it("forwards contextTier in session.create and session.resume", async () => {
         const client = new CopilotClient();
         await client.start();

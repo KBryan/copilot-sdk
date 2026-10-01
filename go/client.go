@@ -1366,6 +1366,7 @@ func (c *Client) ResumeSessionWithOptions(ctx context.Context, sessionID string,
 		req.DisableResume = Bool(true)
 	}
 	req.ContinuePendingWork = config.ContinuePendingWork
+	req.AllowTranscriptRecovery = config.AllowTranscriptRecovery
 	req.MCPServers = config.MCPServers
 	req.Diagnostics = config.Diagnostics
 	req.MCPOAuthTokenStorage = config.MCPOAuthTokenStorage
@@ -1537,6 +1538,7 @@ func (c *Client) ResumeSessionWithOptions(ctx context.Context, sessionID string,
 	}
 
 	session.workspacePath = response.WorkspacePath
+	session.transcriptRecovery = response.TranscriptRecovery
 	session.setCapabilities(response.Capabilities)
 	session.setOpenCanvases(response.OpenCanvases)
 

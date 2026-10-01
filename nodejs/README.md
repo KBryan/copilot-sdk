@@ -9,8 +9,8 @@ To use the SDK, you'll need:
 - Node.js ^20.19.0 or >=22.12.0
 
 The SDK uses an optional `@github/copilot-sdk-<platform>` package containing the
-Copilot CLI runtime for the host platform. These packages are built from
-verified `github/copilot-cli` release assets when the SDK is published, so
+Copilot CLI runtime for the host platform. These packages contain the verified
+runtime artifacts for that SDK release, so
 starting the SDK performs no runtime download. Set `COPILOT_CLI_PATH` to use an
 existing installation instead.
 
@@ -20,6 +20,10 @@ replaces both with the CLI version published for that snapshot.
 
 `npm run pack:release` builds the main package and all platform packages. Set
 `COPILOT_CLI_DOWNLOAD_BASE_URL` to use a release mirror while packaging.
+Standalone source builds acquire stable/prerelease runtime assets from
+`github/copilot-cli` at `v<runtime-version>`, and canonical unstable assets from
+`github/copilot-sdk` at `runtime-<runtime-version>`. Both checksum and package
+downloads use that release location; mirror overrides retain the same tag scheme.
 Release workflows instead set `COPILOT_SDK_RUNTIME_PACKAGE_DIR` to a directory
 containing validated runtime npm package roots named for all eight platforms.
 This keeps `COPILOT_CLI_USE_NPM_PACKAGE` false and embeds those runtime files in
@@ -368,6 +372,12 @@ Initial acquisition runs during session creation or resume. Cancellation, provid
 ##### `resumeSession(sessionId: string, config?: ResumeSessionConfig): Promise<CopilotSession>`
 
 Resume an existing session. Returns the session with `workspacePath` populated if infinite sessions were enabled.
+`allowTranscriptRecovery` controls whether the runtime may repair a damaged transcript during
+resume. It defaults to `true` in all modes; set it to `false` to reject recovery.
+When repair occurs, inspect `session.transcriptRecovery` for the planned backup path,
+invalid line numbers, and whether `session.start` was moved. The backup
+is written when the repaired transcript is next appended, not during resume. Disabling recovery
+still permits adding a missing newline after an intact final record; it rejects torn tails.
 
 ##### `ping(message?: string): Promise<{ message: string; timestamp: string }>`
 

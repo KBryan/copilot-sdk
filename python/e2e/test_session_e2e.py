@@ -1003,15 +1003,23 @@ class TestSessions:
             events.append(event)
 
         unsubscribe = session.on(on_event)
-        idle_task = get_next_event_of_type(session, "session.idle", timeout=10.0)
+        idle_task = get_next_event_of_type(session, "session.idle")
+        started = asyncio.get_running_loop().time()
         try:
             # Use a slow command so we can verify send() returns before completion
             await session.send("Run 'sleep 2 && echo done'")
+            send_duration = asyncio.get_running_loop().time() - started
 
             # send() should return before turn completes (no session.idle yet)
             assert not any(event.type.value == "session.idle" for event in events)
 
-            await idle_task
+            try:
+                await idle_task
+            except TimeoutError as exc:
+                raise AssertionError(
+                    f"session.idle did not arrive after send() returned in {send_duration:.1f}s; "
+                    f"observed events: {[event.type.value for event in events]}"
+                ) from exc
             messages = [event for event in events if event.type.value == "assistant.message"]
             assert messages
             assert "done" in messages[-1].data.content

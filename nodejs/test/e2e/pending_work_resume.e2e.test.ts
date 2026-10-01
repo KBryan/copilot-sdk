@@ -181,6 +181,52 @@ describe("Pending work resume", async () => {
         return `localhost:${port}`;
     }
 
+    async function forceStopAfterSessionLockObserved(
+        suspendedClient: CopilotClient,
+        sessionId: string
+    ): Promise<void> {
+        const lockObserver = new CopilotClient({
+            workingDirectory: workDir,
+            env,
+            gitHubToken: DEFAULT_GITHUB_TOKEN,
+            connection: RuntimeConnection.forStdio({
+                path: process.env.COPILOT_CLI_PATH,
+            }),
+        });
+        try {
+            await lockObserver.start();
+            await waitForCondition(
+                async () => {
+                    const result = await lockObserver.rpc.sessions.checkInUse({
+                        sessionIds: [sessionId],
+                    });
+                    return result.inUse.includes(sessionId);
+                },
+                {
+                    timeoutMs: PENDING_WORK_TIMEOUT_MS,
+                    timeoutMessage: `Timed out waiting for session '${sessionId}' to acquire its lock.`,
+                }
+            );
+
+            await suspendedClient.forceStop();
+
+            await waitForCondition(
+                async () => {
+                    const result = await lockObserver.rpc.sessions.checkInUse({
+                        sessionIds: [sessionId],
+                    });
+                    return !result.inUse.includes(sessionId);
+                },
+                {
+                    timeoutMs: PENDING_WORK_TIMEOUT_MS,
+                    timeoutMessage: `Timed out waiting for session '${sessionId}' to release its lock.`,
+                }
+            );
+        } finally {
+            await lockObserver.forceStop();
+        }
+    }
+
     it(
         "should continue pending permission request after resume",
         { timeout: TEST_TIMEOUT_MS },
@@ -223,7 +269,7 @@ describe("Pending work resume", async () => {
                 await permissionRequestedP;
                 expect(initialRequest.kind).toBe("custom-tool");
 
-                await suspendedClient.forceStop();
+                await forceStopAfterSessionLockObserved(suspendedClient, sessionId);
 
                 const resumedTcpClient = createConnectingClient(cliUrl);
                 const session2 = await resumedTcpClient.resumeSession(sessionId, {
@@ -301,7 +347,7 @@ describe("Pending work resume", async () => {
                     )
                 ).toBe("beta");
 
-                await suspendedClient.forceStop();
+                await forceStopAfterSessionLockObserved(suspendedClient, sessionId);
 
                 const resumedClient = createConnectingClient(cliUrl);
                 const session2 = await resumedClient.resumeSession(sessionId, {
@@ -380,7 +426,7 @@ describe("Pending work resume", async () => {
                 expect(await originalToolAStarted.promise).toBe("alpha");
                 expect(await originalToolBStarted.promise).toBe("beta");
 
-                await suspendedClient.forceStop();
+                await forceStopAfterSessionLockObserved(suspendedClient, sessionId);
 
                 const resumedClient = createConnectingClient(cliUrl);
                 const session2 = await resumedClient.resumeSession(sessionId, {
@@ -545,46 +591,7 @@ describe("Pending work resume", async () => {
                     }
 
                     if (scenario.disconnectOriginalClient) {
-                        const lockObserver = new CopilotClient({
-                            workingDirectory: workDir,
-                            env,
-                            gitHubToken: DEFAULT_GITHUB_TOKEN,
-                            connection: RuntimeConnection.forStdio({
-                                path: process.env.COPILOT_CLI_PATH,
-                            }),
-                        });
-                        try {
-                            await lockObserver.start();
-                            await waitForCondition(
-                                async () => {
-                                    const result = await lockObserver.rpc.sessions.checkInUse({
-                                        sessionIds: [sessionId],
-                                    });
-                                    return result.inUse.includes(sessionId);
-                                },
-                                {
-                                    timeoutMs: PENDING_WORK_TIMEOUT_MS,
-                                    timeoutMessage: `Timed out waiting for session '${sessionId}' to acquire its lock.`,
-                                }
-                            );
-
-                            await suspendedClient.forceStop();
-
-                            await waitForCondition(
-                                async () => {
-                                    const result = await lockObserver.rpc.sessions.checkInUse({
-                                        sessionIds: [sessionId],
-                                    });
-                                    return !result.inUse.includes(sessionId);
-                                },
-                                {
-                                    timeoutMs: PENDING_WORK_TIMEOUT_MS,
-                                    timeoutMessage: `Timed out waiting for session '${sessionId}' to release its lock.`,
-                                }
-                            );
-                        } finally {
-                            await lockObserver.forceStop();
-                        }
+                        await forceStopAfterSessionLockObserved(suspendedClient, sessionId);
                     }
 
                     const resumedClient = createConnectingClient(cliUrl);

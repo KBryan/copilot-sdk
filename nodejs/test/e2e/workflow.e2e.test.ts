@@ -26,7 +26,7 @@ const workflowTestContext = await createSdkTestContext({
     copilotClientOptions: {
         connection: RuntimeConnection.forStdio({ path: cliPath }),
         env: {
-            COPILOT_CLI_ENABLED_FEATURE_FLAGS: "EXTENSIONS,AGENT_FACTORIES",
+            COPILOT_CLI_ENABLED_FEATURE_FLAGS: "EXTENSIONS",
         },
         extensionLaunchProvider: {
             resolve: async (request) => ({

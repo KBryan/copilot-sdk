@@ -494,6 +494,7 @@ export class CopilotClient {
     private requestAdapter: ReturnType<typeof createCopilotRequestAdapter> | null = null;
     private messageWriter: TeardownResilientStreamMessageWriter | null = null;
     private connectionClosed: boolean = false;
+    private connectionEpoch = 0;
     private socket: Socket | null = null;
     private runtimePort: number | null = null;
     private actualHost: string = "localhost";
@@ -1027,6 +1028,7 @@ export class CopilotClient {
 
     private async doStart(): Promise<void> {
         this.forceStopping = false;
+        this.connectionEpoch++;
         this.connectionClosed = false;
         this.processTransportError = null;
         this.state = "connecting";
@@ -1077,6 +1079,9 @@ export class CopilotClient {
                 await this.connection!.sendRequest("llmInference.setProvider", {});
             }
 
+            if (this.connectionClosed) {
+                throw new Error("CLI server connection closed during startup");
+            }
             this.state = "connected";
         } catch (error) {
             const startupError = this.processTransportError ?? error;
@@ -1233,10 +1238,24 @@ export class CopilotClient {
             this.socket = null;
             try {
                 if (!socket.destroyed) {
-                    await new Promise<void>((resolve) => {
-                        socket.once("close", () => resolve());
-                        socket.end();
-                    });
+                    let timeout: ReturnType<typeof setTimeout> | undefined;
+                    try {
+                        await new Promise<void>((resolve) => {
+                            socket.once("close", () => resolve());
+                            if (this.connectionClosed) {
+                                // An exited child may leave a TCP peer that never finishes closing.
+                                socket.destroy();
+                            } else {
+                                timeout = setTimeout(
+                                    () => socket.destroy(),
+                                    RUNTIME_SHUTDOWN_TIMEOUT_MS
+                                );
+                                socket.end();
+                            }
+                        });
+                    } finally {
+                        if (timeout !== undefined) clearTimeout(timeout);
+                    }
                 }
             } catch (error) {
                 errors.push(
@@ -3466,8 +3485,16 @@ export class CopilotClient {
 
         const connection = this.connection;
         const messageWriter = this.messageWriter;
+        const cliProcess = this.isExternalServer ? null : this.cliProcess;
+        const connectionEpoch = this.connectionEpoch;
+        const isCurrentConnection = () =>
+            connectionEpoch === this.connectionEpoch &&
+            this.connection === connection &&
+            (cliProcess === null || this.cliProcess === cliProcess);
+        let disconnecting = false;
+        let exitFallback: ReturnType<typeof setTimeout> | undefined;
         const markDisconnected = () => {
-            if (this.connection !== connection) {
+            if (!isCurrentConnection()) {
                 connection.dispose();
                 return;
             }
@@ -3488,18 +3515,47 @@ export class CopilotClient {
             this._internalRpc = null;
             this.modelsCache = null;
         };
-        const drainAndDisconnect = () => {
+        const disconnectAfterDrain = () => {
+            if (exitFallback !== undefined) {
+                clearTimeout(exitFallback);
+                exitFallback = undefined;
+            }
+            if (!isCurrentConnection()) {
+                connection.dispose();
+                return;
+            }
+            if (disconnecting) return;
+            disconnecting = true;
+            this.connectionClosed = true;
             if (messageWriter) messageWriter.suppressWriteErrors = true;
             // jsonrpc dispatches parsed messages asynchronously, one per event-loop
             // turn. Drain them before clearing callbacks and rejecting unanswered RPCs.
             void connection.drain().then(markDisconnected);
         };
-        this.connection.onClose(drainAndDisconnect);
+        this.connection.onClose(disconnectAfterDrain);
         // Descendants can retain inherited output pipes after the runtime exits.
         // Observe the owned process without waiting for those pipes to reach EOF.
-        this.cliProcess?.once("exit", drainAndDisconnect);
+        if (cliProcess) {
+            cliProcess.once("exit", () => {
+                if (!isCurrentConnection()) {
+                    connection.dispose();
+                    return;
+                }
+                if (disconnecting) return;
+                if (this.socket) {
+                    disconnectAfterDrain();
+                    return;
+                }
+                this.connectionClosed = true;
+                if (messageWriter) messageWriter.suppressWriteErrors = true;
+                // Reader EOF is authoritative for messages still buffered after process exit.
+                // A descendant can keep stdout open, so bound the fallback.
+                exitFallback = setTimeout(disconnectAfterDrain, RUNTIME_SHUTDOWN_TIMEOUT_MS);
+                exitFallback.unref();
+            });
+        }
         this.connection.onError(() => {
-            if (this.connection === connection) {
+            if (connectionEpoch === this.connectionEpoch && this.connection === connection) {
                 this.state = "disconnected";
             }
         });

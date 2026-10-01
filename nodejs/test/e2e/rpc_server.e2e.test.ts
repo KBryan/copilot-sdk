@@ -278,7 +278,15 @@ describe("Server-scoped RPC", async () => {
         const host = await client.rpc.sandbox.getHostSupport();
         expect(host.reason === undefined).toBe(host.supported);
         expect(host.capabilities.map((capability) => capability.name).sort()).toEqual(
-            host.supported ? ["denied_paths", "network", "network_filtering", "shell"] : []
+            host.supported
+                ? [
+                      "denied_paths",
+                      "filesystem_enumeration",
+                      "network",
+                      "network_filtering",
+                      "shell",
+                  ]
+                : []
         );
         for (const capability of host.capabilities) {
             expect(capability.reason === undefined).toBe(capability.supported);

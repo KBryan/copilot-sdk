@@ -13378,7 +13378,9 @@ type SandboxGrantPathForRequestResult struct {
 }
 
 // Whether this host can run one sandbox policy feature. A session whose effective policy
-// uses an unsupported feature fails each sandboxed command with `reason`.
+// uses an unsupported feature fails each sandboxed command with `reason`, except
+// `filesystem_enumeration`, whose absence degrades sandboxed PowerShell instead of failing
+// it.
 // Experimental: SandboxHostCapability is part of an experimental API and may change or be
 // removed.
 type SandboxHostCapability struct {
@@ -13388,9 +13390,11 @@ type SandboxHostCapability struct {
 	// `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same
 	// tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback
 	// support, and a policy that uses it must also set `network.allowLocalNetwork`),
-	// `denied_paths` (native enforcement of `filesystem.deniedPaths`), and `shell` (shell
-	// commands inside the sandbox; on Windows this needs Process Security Environment 1.1
-	// filesystem enumeration support).
+	// `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands
+	// inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on
+	// Windows this needs Process Security Environment 1.1 filesystem enumeration support, and
+	// without it sandboxed PowerShell still runs but cannot resolve its current location; other
+	// platforms always report it).
 	Name string `json:"name"`
 	// Human-readable reason and remedy when the feature is unsupported, such as a package to
 	// install or an OS update. Present only when `supported` is false.
@@ -13411,8 +13415,12 @@ type SandboxHostCapability struct {
 // proxy only together with private-network access. `denied_paths` — native enforcement of
 // `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports
 // denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and
-// Linux, PowerShell on Windows; on Windows this needs a version with Process Security
-// Environment 1.1 filesystem enumeration support.
+// Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem
+// grants, which PowerShell's drive roots use on Windows; this needs a version with Process
+// Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell
+// still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and
+// relative paths may resolve against the drive root; the session also receives a
+// `session.warning` with `warningType` `sandbox`. Other platforms always report it.
 // Experimental: SandboxHostCapabilityName is part of an experimental API and may change or
 // be removed.
 type SandboxHostCapabilityName string

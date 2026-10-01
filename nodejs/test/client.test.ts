@@ -3,7 +3,7 @@ import { EventEmitter, once } from "node:events";
 import { PassThrough } from "stream";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { createServer, type Socket } from "node:net";
+import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -4595,6 +4595,321 @@ connection.listen();
                 expect(stopped).toBe(true);
             }
         );
+
+        it("disconnects when the owned CLI exits before its connection closes", async () => {
+            const client = new CopilotClient();
+            const oldChild = new EventEmitter();
+            const child = new EventEmitter();
+            const createConnection = () => ({
+                onNotification: vi.fn(),
+                onRequest: vi.fn(),
+                onClose: vi.fn(),
+                onError: vi.fn(),
+                drain: vi.fn(async () => {}),
+                dispose: vi.fn(),
+            });
+            const oldConnection = createConnection();
+            const connection = createConnection();
+            const finishDrain = Promise.withResolvers<void>();
+            connection.drain.mockImplementation(() => finishDrain.promise);
+            const sessionDisconnected = vi.fn();
+
+            (client as any).connection = oldConnection;
+            (client as any).cliProcess = oldChild;
+            (client as any).attachConnectionHandlers();
+
+            (client as any).connection = connection;
+            (client as any).cliProcess = child;
+            (client as any).connectionClosed = false;
+            (client as any).state = "connected";
+            (client as any).sessions.set("session-1", {
+                _markDisconnected: sessionDisconnected,
+            });
+            (client as any).attachConnectionHandlers();
+
+            oldChild.emit("exit", null, "SIGKILL");
+            expect((client as any).state).toBe("connected");
+            expect(sessionDisconnected).not.toHaveBeenCalled();
+
+            child.emit("exit", null, "SIGKILL");
+            expect((client as any).connectionClosed).toBe(true);
+            expect(connection.drain).not.toHaveBeenCalled();
+            expect(sessionDisconnected).not.toHaveBeenCalled();
+
+            const onClose = connection.onClose.mock.calls[0]?.[0];
+            expect(onClose).toBeDefined();
+            onClose();
+            expect(connection.drain).toHaveBeenCalledOnce();
+            finishDrain.resolve();
+            await vi.waitFor(() => {
+                expect((client as any).state).toBe("disconnected");
+                expect(sessionDisconnected).toHaveBeenCalledTimes(1);
+            });
+            expect((client as any).sessions.size).toBe(0);
+            onClose();
+            expect(sessionDisconnected).toHaveBeenCalledTimes(1);
+        });
+
+        it("disconnects after a bounded wait if an exited CLI leaves its reader open", async () => {
+            const client = new CopilotClient();
+            const child = new EventEmitter();
+            const connection = {
+                onNotification: vi.fn(),
+                onRequest: vi.fn(),
+                onClose: vi.fn(),
+                onError: vi.fn(),
+                drain: vi.fn(async () => {}),
+                dispose: vi.fn(),
+            };
+            (client as any).connection = connection;
+            (client as any).cliProcess = child;
+            (client as any).state = "connected";
+            (client as any).attachConnectionHandlers();
+
+            vi.useFakeTimers();
+            try {
+                child.emit("exit", null, "SIGKILL");
+                expect(connection.drain).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(10_000);
+                expect(connection.drain).toHaveBeenCalledOnce();
+                expect((client as any).state).toBe("disconnected");
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("does not keep the host alive while waiting for an exited CLI's reader", () => {
+            const client = new CopilotClient();
+            const child = new EventEmitter();
+            const connection = {
+                onNotification: vi.fn(),
+                onRequest: vi.fn(),
+                onClose: vi.fn(),
+                onError: vi.fn(),
+                drain: vi.fn(async () => {}),
+                dispose: vi.fn(),
+            };
+            (client as any).connection = connection;
+            (client as any).cliProcess = child;
+            (client as any).attachConnectionHandlers();
+
+            const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+            try {
+                child.emit("exit", null, "SIGKILL");
+                const fallback = timeoutSpy.mock.results[0]?.value as NodeJS.Timeout | undefined;
+                expect(fallback).toBeDefined();
+                expect(fallback?.hasRef()).toBe(false);
+            } finally {
+                for (const call of timeoutSpy.mock.results) {
+                    clearTimeout(call.value as NodeJS.Timeout);
+                }
+                timeoutSpy.mockRestore();
+            }
+        });
+
+        it("finishes stopping when an exited CLI leaves its TCP peer open", async () => {
+            const server = createServer({ allowHalfOpen: true });
+            let peer: Socket | undefined;
+            let socket: Socket | undefined;
+            let timeout: NodeJS.Timeout | undefined;
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    server.once("error", reject);
+                    server.listen(0, "127.0.0.1", () => {
+                        server.off("error", reject);
+                        resolve();
+                    });
+                });
+                const address = server.address();
+                if (!address || typeof address === "string") {
+                    throw new Error("Expected a TCP server address");
+                }
+                const accepted = new Promise<Socket>((resolve) => {
+                    server.once("connection", resolve);
+                });
+                const connectedSocket = createConnection(address.port, "127.0.0.1");
+                socket = connectedSocket;
+                await new Promise<void>((resolve, reject) => {
+                    connectedSocket.once("connect", resolve);
+                    connectedSocket.once("error", reject);
+                });
+                peer = await accepted;
+                expect(peer.destroyed).toBe(false);
+                expect(socket.destroyed).toBe(false);
+                const client = new CopilotClient({
+                    autoStart: false,
+                    connection: RuntimeConnection.forTcp(),
+                });
+                (client as any).socket = socket;
+                (client as any).connectionClosed = true;
+                (client as any).cliProcess = { exitCode: null, signalCode: "SIGKILL" };
+
+                const errors = await Promise.race([
+                    client.stop(),
+                    new Promise<never>((_, reject) => {
+                        timeout = setTimeout(
+                            () => reject(new Error("stop() waited for an exited CLI's TCP peer")),
+                            5_000
+                        );
+                    }),
+                ]);
+                expect(errors).toEqual([]);
+                expect(socket.destroyed).toBe(true);
+            } finally {
+                if (timeout) clearTimeout(timeout);
+                socket?.destroy();
+                peer?.destroy();
+                if (server.listening) {
+                    await new Promise<void>((resolve, reject) => {
+                        server.close((error) => (error ? reject(error) : resolve()));
+                    });
+                }
+            }
+        });
+
+        it("tears down an owned CLI when its connected TCP peer holds the socket open", async () => {
+            const server = createServer({ allowHalfOpen: true });
+            let peer: Socket | undefined;
+            let socket: Socket | undefined;
+            let stopping: Promise<Error[]> | undefined;
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    server.once("error", reject);
+                    server.listen(0, "127.0.0.1", () => {
+                        server.off("error", reject);
+                        resolve();
+                    });
+                });
+                const address = server.address();
+                if (!address || typeof address === "string") {
+                    throw new Error("Expected a TCP server address");
+                }
+                const accepted = new Promise<Socket>((resolve) =>
+                    server.once("connection", resolve)
+                );
+                socket = createConnection(address.port, "127.0.0.1");
+                await new Promise<void>((resolve, reject) => {
+                    socket?.once("connect", resolve);
+                    socket?.once("error", reject);
+                });
+                peer = await accepted;
+
+                const client = new CopilotClient({
+                    autoStart: false,
+                    connection: RuntimeConnection.forTcp(),
+                });
+                const child = Object.assign(new EventEmitter(), {
+                    exitCode: null as number | null,
+                    signalCode: null as string | null,
+                    kill: vi.fn(() => {
+                        child.exitCode = 0;
+                        child.emit("exit", 0, null);
+                        return true;
+                    }),
+                });
+                (client as any).socket = socket;
+                (client as any).connectionClosed = false;
+                (client as any).cliProcess = child;
+
+                vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+                stopping = client.stop();
+                expect(socket.destroyed).toBe(false);
+                await vi.advanceTimersByTimeAsync(10_000);
+                expect(socket.destroyed).toBe(true);
+                expect(await stopping).toEqual([]);
+                expect(child.kill).toHaveBeenCalledOnce();
+            } finally {
+                socket?.destroy();
+                peer?.destroy();
+                if (stopping) await stopping;
+                vi.useRealTimers();
+                if (server.listening) {
+                    await new Promise<void>((resolve, reject) => {
+                        server.close((error) => (error ? reject(error) : resolve()));
+                    });
+                }
+            }
+        });
+
+        it("does not finish starting after the owned CLI exits before a buffered reply arrives", async () => {
+            const paths = [resolve("plugins/core")];
+            const client = new CopilotClient({ builtinPluginDirectories: paths });
+            onTestFinished(() => client.forceStop());
+            const child = Object.assign(new EventEmitter(), { kill: vi.fn() });
+            const registration = Promise.withResolvers<object>();
+            const sendRequest = vi.fn((method: string) => {
+                if (method !== "plugins.builtin.set")
+                    throw new Error(`Unexpected request: ${method}`);
+                return registration.promise;
+            });
+            const connection = {
+                onNotification: vi.fn(),
+                onRequest: vi.fn(),
+                onClose: vi.fn(),
+                onError: vi.fn(),
+                sendRequest,
+                drain: vi.fn(async () => {}),
+                dispose: vi.fn(),
+            };
+            vi.spyOn(client as any, "startCLIServer").mockImplementation(async () => {
+                (client as any).cliProcess = child;
+            });
+            vi.spyOn(client as any, "connectToServer").mockImplementation(async () => {
+                (client as any).connection = connection;
+                (client as any).attachConnectionHandlers();
+            });
+            vi.spyOn(client as any, "verifyProtocolVersion").mockResolvedValue(undefined);
+
+            const starting = client.start();
+            await vi.waitFor(() =>
+                expect(sendRequest).toHaveBeenCalledWith("plugins.builtin.set", { paths })
+            );
+            child.emit("exit", 1, null);
+            expect((client as any).connectionClosed).toBe(true);
+            registration.resolve({});
+
+            await expect(starting).rejects.toThrow("CLI server connection closed during startup");
+            expect((client as any).state).not.toBe("connected");
+            expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+        });
+
+        it("ignores a previous connection's late close while starting a replacement", async () => {
+            const client = new CopilotClient();
+            onTestFinished(() => client.forceStop());
+            const oldChild = Object.assign(new EventEmitter(), { kill: vi.fn() });
+            const child = Object.assign(new EventEmitter(), { kill: vi.fn() });
+            const createConnection = () => ({
+                onNotification: vi.fn(),
+                onRequest: vi.fn(),
+                onClose: vi.fn(),
+                onError: vi.fn(),
+                drain: vi.fn(async () => {}),
+                dispose: vi.fn(),
+            });
+            const oldConnection = createConnection();
+            const connection = createConnection();
+            (client as any).connection = oldConnection;
+            (client as any).cliProcess = oldChild;
+            (client as any).attachConnectionHandlers();
+            oldChild.emit("exit", 1, null);
+            await vi.waitFor(() => expect((client as any).state).toBe("disconnected"));
+            const oldClose = oldConnection.onClose.mock.calls[0]?.[0];
+            expect(oldClose).toBeTypeOf("function");
+
+            vi.spyOn(client as any, "startCLIServer").mockImplementation(async () => {
+                oldClose();
+                (client as any).cliProcess = child;
+            });
+            vi.spyOn(client as any, "connectToServer").mockImplementation(async () => {
+                (client as any).connection = connection;
+                (client as any).attachConnectionHandlers();
+            });
+            vi.spyOn(client as any, "verifyProtocolVersion").mockResolvedValue(undefined);
+
+            await client.start();
+            expect((client as any).state).toBe("connected");
+            expect((client as any).connectionClosed).toBe(false);
+        });
 
         it("requests runtime shutdown when stopping an SDK-owned process", async () => {
             const client = new CopilotClient();

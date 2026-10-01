@@ -127,6 +127,21 @@ public class JsonRpcTests
     }
 
     [Fact]
+    public async Task JsonRpc_Awaits_Declared_Task_Handler_With_Generic_Runtime_Task()
+    {
+        using var pair = JsonRpcReflectionPair.Create();
+        pair.Server.SetLocalRpcMethod(
+            "genericRuntimeTask",
+            (Func<SingleObjectRequest, Task>)(_ => Task.FromResult(1)),
+            singleObjectParam: true);
+        pair.StartListening();
+
+        Assert.Null(await pair.Client.InvokeAsync<object?>(
+            "genericRuntimeTask",
+            [new SingleObjectRequest { Value = "value" }]));
+    }
+
+    [Fact]
     public async Task JsonRpc_Dispose_Completes_Cleanup_When_Cancellation_Callback_Throws()
     {
         using var pair = JsonRpcReflectionPair.Create(startServer: false);

@@ -3,6 +3,8 @@ use std::future::Future;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::ops::Deref;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -1299,14 +1301,20 @@ struct CapiProxy {
 
 impl CapiProxy {
     fn start(repo_root: &Path) -> std::io::Result<Self> {
-        let mut child = Command::new(npx_program())
-            .args(["tsx", "server.ts"])
+        let mut command = Command::new(node_program());
+        command
+            .args(["--import", "tsx", "server.ts"])
             .current_dir(repo_root.join("test").join("harness"))
             .env("GITHUB_ACTIONS", "true")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+            .stderr(Stdio::inherit());
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = command.spawn()?;
 
         let stdout = child.stdout.take().expect("proxy stdout");
         let (line_tx, line_rx) = std::sync::mpsc::channel();
@@ -1561,10 +1569,6 @@ fn parse_http_url(url: &str) -> std::io::Result<(String, u16)> {
 
 fn node_program() -> &'static str {
     if cfg!(windows) { "node.exe" } else { "node" }
-}
-
-fn npx_program() -> &'static str {
-    if cfg!(windows) { "npx.cmd" } else { "npx" }
 }
 
 #[test]

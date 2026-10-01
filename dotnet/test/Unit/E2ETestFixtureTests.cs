@@ -5,6 +5,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
+using GitHub.Copilot.Test.E2E;
 using GitHub.Copilot.Test.Harness;
 using Xunit;
 
@@ -115,5 +116,30 @@ public class E2ETestFixtureTests
             E2ETestFixture.CreateSharedConnection(useInProcessTransport: false));
 
         Assert.Equal(E2ETestFixture.SharedTcpConnectionToken, connection.ConnectionToken);
+    }
+
+    [Fact]
+    public async Task Dispose_Derived_Fixtures_Without_Initialized_Context_Does_Not_Throw()
+    {
+        await new MultiClientTestFixture().DisposeAsync();
+        await new MultiClientCommandsElicitationFixture().DisposeAsync();
+        await new ConnectionTokenTestFixture().DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Replay_Proxy_Starts_With_Connect_Metadata_And_Stops()
+    {
+        var proxy = new ReplayProxy();
+        try
+        {
+            var url = await proxy.StartAsync();
+            Assert.StartsWith("http://", url);
+            Assert.False(string.IsNullOrWhiteSpace(proxy.ConnectProxyUrl));
+            Assert.False(string.IsNullOrWhiteSpace(proxy.CaFilePath));
+        }
+        finally
+        {
+            await proxy.StopAsync(skipWritingCache: true);
+        }
     }
 }

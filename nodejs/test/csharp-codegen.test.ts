@@ -177,6 +177,73 @@ describe("C# root event payload unions", () => {
     });
 });
 
+describe("C# session event dispatch", () => {
+    it.each([
+        ["sample.\u00E9", 9],
+        ["sample.\u{1F600}", 11],
+        ["sample.'\\", 9],
+    ])("groups and compares UTF-8 discriminators for %s", (discriminator, byteLength) => {
+        const code = generateSessionEventsCode({
+            definitions: {
+                SessionEvent: {
+                    anyOf: [
+                        {
+                            type: "object",
+                            properties: {
+                                type: { const: discriminator },
+                                data: { type: "object", properties: {} },
+                            },
+                            required: ["type", "data"],
+                        },
+                    ],
+                },
+            },
+        });
+
+        expect(code).toContain(`case ${byteLength}:`);
+        expect(code).toContain(`type.SequenceEqual(${JSON.stringify(discriminator)}u8)`);
+        expect(code).toContain("switch (type.Length)");
+        expect(code).not.toContain("switch (type)");
+    });
+
+    it("generates concrete dispatch and a schema-derived fallback envelope", () => {
+        const code = generateSessionEventsCode({
+            definitions: {
+                SessionEvent: {
+                    anyOf: ["sample.first", "sample.second"].map((type) => ({
+                        type: "object",
+                        properties: {
+                            id: { type: "string", format: "uuid" },
+                            futureEnvelopeField: { type: "string" },
+                            type: { const: type },
+                            data: { type: "object", properties: {} },
+                        },
+                        required: ["id", "type", "data"],
+                    })),
+                },
+            },
+        });
+
+        for (const suffix of ["First", "Second"]) {
+            expect(code).toContain(`type.SequenceEqual("sample.${suffix.toLowerCase()}"u8)`);
+            expect(code).toContain(`return SessionEventsJsonContext.Default.Sample${suffix}Event;`);
+            expect(code).toContain(`[JsonSerializable(typeof(Sample${suffix}Event))]`);
+        }
+        expect(code).toContain("switch (type.Length)");
+        expect(code).toContain("SessionEventJsonConverter.Deserialize(json)");
+        expect(code).toContain("ReadEventTypeInfo(ref probe)");
+        expect(code).toContain('reader.ValueTextEquals("type"u8)');
+        expect(code).toContain("internal sealed class SessionEventEnvelope");
+        expect(code).toContain("[JsonSerializable(typeof(SessionEventEnvelope))]");
+        expect(code).toContain("Id = Id,");
+        expect(code).toContain("FutureEnvelopeField = FutureEnvelopeField,");
+        expect(code.match(/public string\? FutureEnvelopeField \{ get; set; \}/g)).toHaveLength(2);
+        expect(code).toContain(
+            "JsonSerializer.Serialize(this, SessionEventsJsonContext.Default.SessionEvent)"
+        );
+    });
+});
+
 describe("C# RPC codegen", () => {
     it("preserves arbitrary JSON handoff settings instead of emitting an empty DTO", () => {
         const code = generateRpcCode({

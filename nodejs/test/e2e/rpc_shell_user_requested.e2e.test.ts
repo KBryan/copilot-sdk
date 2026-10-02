@@ -3,10 +3,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { randomUUID } from "node:crypto";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { approveAll } from "../../src/index.js";
+import { approveAll, type SessionEvent } from "../../src/index.js";
 import { createSdkTestContext } from "./harness/sdkTestContext.js";
 import { waitForCondition } from "./harness/sdkTestHelper.js";
 
@@ -87,6 +87,95 @@ describe("User-requested shell RPC", async () => {
             await session.disconnect();
         }
     });
+
+    it.for([0, 7])(
+        "dispatches queued exit after user shell completes with code %i",
+        { timeout: 120_000 },
+        async (exitCode, { onTestFinished }) => {
+            const session = await client.createSession({ onPermissionRequest: approveAll });
+            const markerPath = join(homeDir, `shell-started-${compactUuid()}`);
+            const releasePath = join(homeDir, `shell-release-${compactUuid()}`);
+            let executeTask: ReturnType<typeof session.rpc.shell.executeUserRequested> | undefined;
+            let interestHandle: string | undefined;
+            let unsubscribe: (() => void) | undefined;
+            onTestFinished(async () => {
+                writeFileSync(releasePath, "release");
+                try {
+                    if (executeTask) {
+                        await withTimeout(executeTask, 30_000, "Shell completion did not drain.");
+                    }
+                } finally {
+                    unsubscribe?.();
+                    try {
+                        if (interestHandle !== undefined) {
+                            await session.rpc.eventLog.releaseInterest({ handle: interestHandle });
+                        }
+                    } finally {
+                        await session.disconnect();
+                    }
+                }
+            });
+
+            const interest = await session.rpc.eventLog.registerInterest({
+                eventType: "command.queued",
+            });
+            interestHandle = interest.handle;
+            const queued =
+                Promise.withResolvers<Extract<SessionEvent, { type: "command.queued" }>>();
+            const idle = Promise.withResolvers<void>();
+            let commandDispatched = false;
+            let dispatchedBeforeRelease = false;
+            unsubscribe = session.on((event) => {
+                if (event.type === "command.queued" && event.data.command === "/exit") {
+                    commandDispatched = true;
+                    dispatchedBeforeRelease ||= !existsSync(releasePath);
+                    queued.resolve(event);
+                } else if (event.type === "session.idle" && commandDispatched) {
+                    idle.resolve();
+                }
+            });
+            const handled = queued.promise.then((event) =>
+                session.rpc.commands.respondToQueuedCommand({
+                    requestId: event.data.requestId,
+                    result: { handled: true },
+                })
+            );
+            handled.catch(() => {});
+
+            const command =
+                process.platform === "win32"
+                    ? `Set-Content -LiteralPath ${quotePowerShell(markerPath)} -Value 'running'; while (-not (Test-Path -LiteralPath ${quotePowerShell(releasePath)})) { Start-Sleep -Milliseconds 50 }; exit ${exitCode}`
+                    : `echo running > ${quoteSh(markerPath)}; while [ ! -f ${quoteSh(releasePath)} ]; do sleep 0.05; done; exit ${exitCode}`;
+            executeTask = session.rpc.shell.executeUserRequested({
+                requestId: `req-${compactUuid()}`,
+                command,
+            });
+            executeTask.catch(() => {});
+            await waitForFileExists(markerPath);
+            expect((await session.rpc.commands.enqueue({ command: "/exit" })).queued).toBe(true);
+
+            // Enqueue has acknowledged the command while the real subprocess is
+            // held; inspect the queue rather than using a delay to prove parking.
+            expect((await session.rpc.queue.pendingItems()).items).toEqual([
+                expect.objectContaining({ kind: "command", displayText: "/exit" }),
+            ]);
+
+            writeFileSync(releasePath, "release");
+            const result = await withTimeout(
+                executeTask,
+                30_000,
+                "Shell completion did not resume the queued exit."
+            );
+            expect(result.exitCode).toBe(exitCode);
+            expect(result.success).toBe(exitCode === 0);
+            expect(await withTimeout(handled, 30_000, "Queued exit was not dispatched.")).toEqual({
+                success: true,
+            });
+            expect(dispatchedBeforeRelease).toBe(false);
+            await withTimeout(idle.promise, 30_000, "Session did not settle after queued exit.");
+            expect((await session.rpc.queue.pendingItems()).items).toEqual([]);
+        }
+    );
 
     it("should cancel user requested shell command", { timeout: 120_000 }, async () => {
         const session = await client.createSession({ onPermissionRequest: approveAll });

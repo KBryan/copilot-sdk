@@ -14,6 +14,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace GitHub.Copilot;
 
@@ -206,7 +207,7 @@ public partial class SessionEvent
 
     /// <summary>Deserializes a JSON string into a <see cref="SessionEvent"/>.</summary>
     public static SessionEvent FromJson(string json) =>
-        JsonSerializer.Deserialize(json, SessionEventsJsonContext.Default.SessionEvent)!;
+        SessionEventJsonConverter.Deserialize(json);
 
     /// <summary>Serializes this event to a JSON string.</summary>
     public string ToJson() =>
@@ -214,6 +215,515 @@ public partial class SessionEvent
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private string DebuggerDisplay => ToJson();
+}
+
+internal sealed partial class SessionEventJsonConverter : JsonConverter<SessionEvent>
+{
+    internal static SessionEventJsonConverter Default { get; } = new();
+
+    public override SessionEvent? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        // Preserve the reader's position for deserialization.
+        var probe = reader;
+        JsonTypeInfo typeInfo = ReadEventTypeInfo(ref probe);
+        return ToSessionEvent(JsonSerializer.Deserialize(ref reader, typeInfo));
+    }
+
+    private static JsonTypeInfo? GetEventTypeInfo(ReadOnlySpan<byte> type)
+    {
+        switch (type.Length)
+        {
+            case 5:
+                if (type.SequenceEqual("abort"u8))
+                    return SessionEventsJsonContext.Default.AbortEvent;
+                break;
+            case 8:
+                if (type.SequenceEqual("hook.end"u8))
+                    return SessionEventsJsonContext.Default.HookEndEvent;
+                break;
+            case 10:
+                if (type.SequenceEqual("hook.start"u8))
+                    return SessionEventsJsonContext.Default.HookStartEvent;
+                break;
+            case 12:
+                if (type.SequenceEqual("session.idle"u8))
+                    return SessionEventsJsonContext.Default.SessionIdleEvent;
+                if (type.SequenceEqual("session.info"u8))
+                    return SessionEventsJsonContext.Default.SessionInfoEvent;
+                if (type.SequenceEqual("user.message"u8))
+                    return SessionEventsJsonContext.Default.UserMessageEvent;
+                break;
+            case 13:
+                if (type.SequenceEqual("hook.progress"u8))
+                    return SessionEventsJsonContext.Default.HookProgressEvent;
+                if (type.SequenceEqual("session.error"u8))
+                    return SessionEventsJsonContext.Default.SessionErrorEvent;
+                if (type.SequenceEqual("session.start"u8))
+                    return SessionEventsJsonContext.Default.SessionStartEvent;
+                if (type.SequenceEqual("skill.invoked"u8))
+                    return SessionEventsJsonContext.Default.SkillInvokedEvent;
+                break;
+            case 14:
+                if (type.SequenceEqual("assistant.idle"u8))
+                    return SessionEventsJsonContext.Default.AssistantIdleEvent;
+                if (type.SequenceEqual("command.queued"u8))
+                    return SessionEventsJsonContext.Default.CommandQueuedEvent;
+                if (type.SequenceEqual("session.resume"u8))
+                    return SessionEventsJsonContext.Default.SessionResumeEvent;
+                if (type.SequenceEqual("system.message"u8))
+                    return SessionEventsJsonContext.Default.SystemMessageEvent;
+                break;
+            case 15:
+                if (type.SequenceEqual("assistant.usage"u8))
+                    return SessionEventsJsonContext.Default.AssistantUsageEvent;
+                if (type.SequenceEqual("command.execute"u8))
+                    return SessionEventsJsonContext.Default.CommandExecuteEvent;
+                if (type.SequenceEqual("session.handoff"u8))
+                    return SessionEventsJsonContext.Default.SessionHandoffEvent;
+                if (type.SequenceEqual("session.warning"u8))
+                    return SessionEventsJsonContext.Default.SessionWarningEvent;
+                if (type.SequenceEqual("subagent.failed"u8))
+                    return SessionEventsJsonContext.Default.SubagentFailedEvent;
+                break;
+            case 16:
+                if (type.SequenceEqual("assistant.intent"u8))
+                    return SessionEventsJsonContext.Default.AssistantIntentEvent;
+                if (type.SequenceEqual("commands.changed"u8))
+                    return SessionEventsJsonContext.Default.CommandsChangedEvent;
+                if (type.SequenceEqual("model.call_start"u8))
+                    return SessionEventsJsonContext.Default.ModelCallStartEvent;
+                if (type.SequenceEqual("sandbox.decision"u8))
+                    return SessionEventsJsonContext.Default.SandboxDecisionEvent;
+                if (type.SequenceEqual("session.shutdown"u8))
+                    return SessionEventsJsonContext.Default.SessionShutdownEvent;
+                if (type.SequenceEqual("subagent.started"u8))
+                    return SessionEventsJsonContext.Default.SubagentStartedEvent;
+                break;
+            case 17:
+                if (type.SequenceEqual("agent.interrupted"u8))
+                    return SessionEventsJsonContext.Default.AgentInterruptedEvent;
+                if (type.SequenceEqual("assistant.message"u8))
+                    return SessionEventsJsonContext.Default.AssistantMessageEvent;
+                if (type.SequenceEqual("command.completed"u8))
+                    return SessionEventsJsonContext.Default.CommandCompletedEvent;
+                if (type.SequenceEqual("skill.invoked_ref"u8))
+                    return SessionEventsJsonContext.Default.SkillInvokedRefEvent;
+                if (type.SequenceEqual("subagent.selected"u8))
+                    return SessionEventsJsonContext.Default.SubagentSelectedEvent;
+                break;
+            case 18:
+                if (type.SequenceEqual("assistant.turn_end"u8))
+                    return SessionEventsJsonContext.Default.AssistantTurnEndEvent;
+                if (type.SequenceEqual("mcp.oauth_required"u8))
+                    return SessionEventsJsonContext.Default.McpOauthRequiredEvent;
+                if (type.SequenceEqual("model.call_failure"u8))
+                    return SessionEventsJsonContext.Default.ModelCallFailureEvent;
+                if (type.SequenceEqual("prompt_cache_break"u8))
+                    return SessionEventsJsonContext.Default.PromptCacheBreakEvent;
+                if (type.SequenceEqual("sampling.completed"u8))
+                    return SessionEventsJsonContext.Default.SamplingCompletedEvent;
+                if (type.SequenceEqual("sampling.requested"u8))
+                    return SessionEventsJsonContext.Default.SamplingRequestedEvent;
+                if (type.SequenceEqual("session.truncation"u8))
+                    return SessionEventsJsonContext.Default.SessionTruncationEvent;
+                if (type.SequenceEqual("session.usage_info"u8))
+                    return SessionEventsJsonContext.Default.SessionUsageInfoEvent;
+                if (type.SequenceEqual("subagent.completed"u8))
+                    return SessionEventsJsonContext.Default.SubagentCompletedEvent;
+                if (type.SequenceEqual("ui.ephemeral_query"u8))
+                    return SessionEventsJsonContext.Default.UiEphemeralQueryEvent;
+                break;
+            case 19:
+                if (type.SequenceEqual("assistant.reasoning"u8))
+                    return SessionEventsJsonContext.Default.AssistantReasoningEvent;
+                if (type.SequenceEqual("mcp.oauth_completed"u8))
+                    return SessionEventsJsonContext.Default.McpOauthCompletedEvent;
+                if (type.SequenceEqual("model.call_finished"u8))
+                    return SessionEventsJsonContext.Default.ModelCallFinishedEvent;
+                if (type.SequenceEqual("subagent.configured"u8))
+                    return SessionEventsJsonContext.Default.SubagentConfiguredEvent;
+                if (type.SequenceEqual("subagent.deselected"u8))
+                    return SessionEventsJsonContext.Default.SubagentDeselectedEvent;
+                if (type.SequenceEqual("system.notification"u8))
+                    return SessionEventsJsonContext.Default.SystemNotificationEvent;
+                if (type.SequenceEqual("tool.user_requested"u8))
+                    return SessionEventsJsonContext.Default.ToolUserRequestedEvent;
+                break;
+            case 20:
+                if (type.SequenceEqual("assistant.turn_retry"u8))
+                    return SessionEventsJsonContext.Default.AssistantTurnRetryEvent;
+                if (type.SequenceEqual("assistant.turn_start"u8))
+                    return SessionEventsJsonContext.Default.AssistantTurnStartEvent;
+                if (type.SequenceEqual("capabilities.changed"u8))
+                    return SessionEventsJsonContext.Default.CapabilitiesChangedEvent;
+                if (type.SequenceEqual("permission.completed"u8))
+                    return SessionEventsJsonContext.Default.PermissionCompletedEvent;
+                if (type.SequenceEqual("permission.requested"u8))
+                    return SessionEventsJsonContext.Default.PermissionRequestedEvent;
+                if (type.SequenceEqual("session.binary_asset"u8))
+                    return SessionEventsJsonContext.Default.SessionBinaryAssetEvent;
+                if (type.SequenceEqual("session.mode_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionModeChangedEvent;
+                if (type.SequenceEqual("session.model_change"u8))
+                    return SessionEventsJsonContext.Default.SessionModelChangeEvent;
+                if (type.SequenceEqual("session.plan_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionPlanChangedEvent;
+                if (type.SequenceEqual("tool.execution_start"u8))
+                    return SessionEventsJsonContext.Default.ToolExecutionStartEvent;
+                if (type.SequenceEqual("user_input.completed"u8))
+                    return SessionEventsJsonContext.Default.UserInputCompletedEvent;
+                if (type.SequenceEqual("user_input.requested"u8))
+                    return SessionEventsJsonContext.Default.UserInputRequestedEvent;
+                if (type.SequenceEqual("workflow.run_settled"u8))
+                    return SessionEventsJsonContext.Default.WorkflowRunSettledEvent;
+                if (type.SequenceEqual("workflow.run_started"u8))
+                    return SessionEventsJsonContext.Default.WorkflowRunStartedEvent;
+                if (type.SequenceEqual("workflow.run_updated"u8))
+                    return SessionEventsJsonContext.Default.WorkflowRunUpdatedEvent;
+                break;
+            case 21:
+                if (type.SequenceEqual("elicitation.completed"u8))
+                    return SessionEventsJsonContext.Default.ElicitationCompletedEvent;
+                if (type.SequenceEqual("elicitation.requested"u8))
+                    return SessionEventsJsonContext.Default.ElicitationRequestedEvent;
+                if (type.SequenceEqual("session.canvas.closed"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasClosedEvent;
+                if (type.SequenceEqual("session.canvas.opened"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasOpenedEvent;
+                if (type.SequenceEqual("session.skills_loaded"u8))
+                    return SessionEventsJsonContext.Default.SessionSkillsLoadedEvent;
+                if (type.SequenceEqual("session.task_complete"u8))
+                    return SessionEventsJsonContext.Default.SessionTaskCompleteEvent;
+                if (type.SequenceEqual("session.title_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionTitleChangedEvent;
+                if (type.SequenceEqual("session.todos_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionTodosChangedEvent;
+                if (type.SequenceEqual("session.tools_updated"u8))
+                    return SessionEventsJsonContext.Default.SessionToolsUpdatedEvent;
+                if (type.SequenceEqual("tool_search.activated"u8))
+                    return SessionEventsJsonContext.Default.ToolSearchActivatedEvent;
+                break;
+            case 22:
+                if (type.SequenceEqual("mcp.tools.list_changed"u8))
+                    return SessionEventsJsonContext.Default.McpToolsListChangedEvent;
+                if (type.SequenceEqual("session.canvas.removed"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasRemovedEvent;
+                if (type.SequenceEqual("session.indexed_search"u8))
+                    return SessionEventsJsonContext.Default.SessionIndexedSearchEvent;
+                break;
+            case 23:
+                if (type.SequenceEqual("assistant.message_delta"u8))
+                    return SessionEventsJsonContext.Default.AssistantMessageDeltaEvent;
+                if (type.SequenceEqual("assistant.message_start"u8))
+                    return SessionEventsJsonContext.Default.AssistantMessageStartEvent;
+                if (type.SequenceEqual("external_tool.completed"u8))
+                    return SessionEventsJsonContext.Default.ExternalToolCompletedEvent;
+                if (type.SequenceEqual("external_tool.requested"u8))
+                    return SessionEventsJsonContext.Default.ExternalToolRequestedEvent;
+                if (type.SequenceEqual("model.call_final_result"u8))
+                    return SessionEventsJsonContext.Default.ModelCallFinalResultEvent;
+                if (type.SequenceEqual("session.canvas.recorded"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasRecordedEvent;
+                if (type.SequenceEqual("session.context_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionContextChangedEvent;
+                if (type.SequenceEqual("session.context_cleared"u8))
+                    return SessionEventsJsonContext.Default.SessionContextClearedEvent;
+                if (type.SequenceEqual("session.fusion_resolved"u8))
+                    return SessionEventsJsonContext.Default.SessionFusionResolvedEvent;
+                if (type.SequenceEqual("session.snapshot_rewind"u8))
+                    return SessionEventsJsonContext.Default.SessionSnapshotRewindEvent;
+                if (type.SequenceEqual("skill.context_delivered"u8))
+                    return SessionEventsJsonContext.Default.SkillContextDeliveredEvent;
+                if (type.SequenceEqual("tool.execution_complete"u8))
+                    return SessionEventsJsonContext.Default.ToolExecutionCompleteEvent;
+                if (type.SequenceEqual("tool.execution_progress"u8))
+                    return SessionEventsJsonContext.Default.ToolExecutionProgressEvent;
+                break;
+            case 24:
+                if (type.SequenceEqual("exit_plan_mode.completed"u8))
+                    return SessionEventsJsonContext.Default.ExitPlanModeCompletedEvent;
+                if (type.SequenceEqual("exit_plan_mode.requested"u8))
+                    return SessionEventsJsonContext.Default.ExitPlanModeRequestedEvent;
+                if (type.SequenceEqual("mcp.prompts.list_changed"u8))
+                    return SessionEventsJsonContext.Default.McpPromptsListChangedEvent;
+                if (type.SequenceEqual("session.compaction_start"u8))
+                    return SessionEventsJsonContext.Default.SessionCompactionStartEvent;
+                if (type.SequenceEqual("session.fusion_completed"u8))
+                    return SessionEventsJsonContext.Default.SessionFusionCompletedEvent;
+                if (type.SequenceEqual("session.model_deselected"u8))
+                    return SessionEventsJsonContext.Default.SessionModelDeselectedEvent;
+                if (type.SequenceEqual("session.schedule_created"u8))
+                    return SessionEventsJsonContext.Default.SessionScheduleCreatedEvent;
+                if (type.SequenceEqual("session.schedule_rearmed"u8))
+                    return SessionEventsJsonContext.Default.SessionScheduleRearmedEvent;
+                if (type.SequenceEqual("session.usage_checkpoint"u8))
+                    return SessionEventsJsonContext.Default.SessionUsageCheckpointEvent;
+                break;
+            case 25:
+                if (type.SequenceEqual("assistant.reasoning_delta"u8))
+                    return SessionEventsJsonContext.Default.AssistantReasoningDeltaEvent;
+                if (type.SequenceEqual("assistant.streaming_delta"u8))
+                    return SessionEventsJsonContext.Default.AssistantStreamingDeltaEvent;
+                if (type.SequenceEqual("assistant.tool_call_delta"u8))
+                    return SessionEventsJsonContext.Default.AssistantToolCallDeltaEvent;
+                if (type.SequenceEqual("pending_messages.modified"u8))
+                    return SessionEventsJsonContext.Default.PendingMessagesModifiedEvent;
+                if (type.SequenceEqual("permission.assentDetected"u8))
+                    return SessionEventsJsonContext.Default.PermissionAssentDetectedEvent;
+                if (type.SequenceEqual("permission.carriedForward"u8))
+                    return SessionEventsJsonContext.Default.PermissionCarriedForwardEvent;
+                if (type.SequenceEqual("session.extensions_loaded"u8))
+                    return SessionEventsJsonContext.Default.SessionExtensionsLoadedEvent;
+                break;
+            case 26:
+                if (type.SequenceEqual("auto_mode_switch.completed"u8))
+                    return SessionEventsJsonContext.Default.AutoModeSwitchCompletedEvent;
+                if (type.SequenceEqual("auto_mode_switch.requested"u8))
+                    return SessionEventsJsonContext.Default.AutoModeSwitchRequestedEvent;
+                if (type.SequenceEqual("mcp_app.tool_call_complete"u8))
+                    return SessionEventsJsonContext.Default.McpAppToolCallCompleteEvent;
+                if (type.SequenceEqual("mcp.resources.list_changed"u8))
+                    return SessionEventsJsonContext.Default.McpResourcesListChangedEvent;
+                if (type.SequenceEqual("session.auto_mode_resolved"u8))
+                    return SessionEventsJsonContext.Default.SessionAutoModeResolvedEvent;
+                if (type.SequenceEqual("session.canvas.unavailable"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasUnavailableEvent;
+                if (type.SequenceEqual("session.completion_receipt"u8))
+                    return SessionEventsJsonContext.Default.SessionCompletionReceiptEvent;
+                if (type.SequenceEqual("session.mcp_server_removed"u8))
+                    return SessionEventsJsonContext.Default.SessionMcpServerRemovedEvent;
+                if (type.SequenceEqual("session.mcp_servers_loaded"u8))
+                    return SessionEventsJsonContext.Default.SessionMcpServersLoadedEvent;
+                if (type.SequenceEqual("session.schedule_cancelled"u8))
+                    return SessionEventsJsonContext.Default.SessionScheduleCancelledEvent;
+                break;
+            case 27:
+                if (type.SequenceEqual("session.compaction_complete"u8))
+                    return SessionEventsJsonContext.Default.SessionCompactionCompleteEvent;
+                if (type.SequenceEqual("session.custom_notification"u8))
+                    return SessionEventsJsonContext.Default.SessionCustomNotificationEvent;
+                if (type.SequenceEqual("session.fusion_route_failed"u8))
+                    return SessionEventsJsonContext.Default.SessionFusionRouteFailedEvent;
+                if (type.SequenceEqual("session.permission_recovery"u8))
+                    return SessionEventsJsonContext.Default.SessionPermissionRecoveryEvent;
+                if (type.SequenceEqual("session.permissions_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionPermissionsChangedEvent;
+                if (type.SequenceEqual("skill.context_delivered_ref"u8))
+                    return SessionEventsJsonContext.Default.SkillContextDeliveredRefEvent;
+                break;
+            case 28:
+                if (type.SequenceEqual("mcp.headers_refresh_required"u8))
+                    return SessionEventsJsonContext.Default.McpHeadersRefreshRequiredEvent;
+                if (type.SequenceEqual("session.fusion_route_started"u8))
+                    return SessionEventsJsonContext.Default.SessionFusionRouteStartedEvent;
+                break;
+            case 29:
+                if (type.SequenceEqual("assistant.fusion_phase_failed"u8))
+                    return SessionEventsJsonContext.Default.AssistantFusionPhaseFailedEvent;
+                if (type.SequenceEqual("mcp.headers_refresh_completed"u8))
+                    return SessionEventsJsonContext.Default.McpHeadersRefreshCompletedEvent;
+                if (type.SequenceEqual("session.custom_agents_updated"u8))
+                    return SessionEventsJsonContext.Default.SessionCustomAgentsUpdatedEvent;
+                if (type.SequenceEqual("session.mode_notice_delivered"u8))
+                    return SessionEventsJsonContext.Default.SessionModeNoticeDeliveredEvent;
+                if (type.SequenceEqual("tool.execution_partial_result"u8))
+                    return SessionEventsJsonContext.Default.ToolExecutionPartialResultEvent;
+                break;
+            case 30:
+                if (type.SequenceEqual("assistant.fusion_phase_started"u8))
+                    return SessionEventsJsonContext.Default.AssistantFusionPhaseStartedEvent;
+                if (type.SequenceEqual("assistant.server_tool_progress"u8))
+                    return SessionEventsJsonContext.Default.AssistantServerToolProgressEvent;
+                if (type.SequenceEqual("session.session_limits_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionSessionLimitsChangedEvent;
+                if (type.SequenceEqual("session.workspace_file_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionWorkspaceFileChangedEvent;
+                break;
+            case 31:
+                if (type.SequenceEqual("assistant.fusion_phase_activity"u8))
+                    return SessionEventsJsonContext.Default.AssistantFusionPhaseActivityEvent;
+                if (type.SequenceEqual("permission.messageAuthorization"u8))
+                    return SessionEventsJsonContext.Default.PermissionMessageAuthorizationEvent;
+                if (type.SequenceEqual("session.auto_tier_switch_failed"u8))
+                    return SessionEventsJsonContext.Default.SessionAutoTierSwitchFailedEvent;
+                if (type.SequenceEqual("session.canvas.registry_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionCanvasRegistryChangedEvent;
+                break;
+            case 32:
+                if (type.SequenceEqual("assistant.fusion_phase_completed"u8))
+                    return SessionEventsJsonContext.Default.AssistantFusionPhaseCompletedEvent;
+                if (type.SequenceEqual("session.auto_tier_recommendation"u8))
+                    return SessionEventsJsonContext.Default.SessionAutoTierRecommendationEvent;
+                if (type.SequenceEqual("session.background_tasks_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionBackgroundTasksChangedEvent;
+                if (type.SequenceEqual("session.remote_steerable_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionRemoteSteerableChangedEvent;
+                break;
+            case 33:
+                if (type.SequenceEqual("session.managed_settings_enforced"u8))
+                    return SessionEventsJsonContext.Default.SessionManagedSettingsEnforcedEvent;
+                if (type.SequenceEqual("session.managed_settings_resolved"u8))
+                    return SessionEventsJsonContext.Default.SessionManagedSettingsResolvedEvent;
+                if (type.SequenceEqual("session.mcp_server_status_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionMcpServerStatusChangedEvent;
+                break;
+            case 34:
+                if (type.SequenceEqual("permission.contextualAuthorization"u8))
+                    return SessionEventsJsonContext.Default.PermissionContextualAuthorizationEvent;
+                if (type.SequenceEqual("session_limits_exhausted.completed"u8))
+                    return SessionEventsJsonContext.Default.SessionLimitsExhaustedCompletedEvent;
+                if (type.SequenceEqual("session_limits_exhausted.requested"u8))
+                    return SessionEventsJsonContext.Default.SessionLimitsExhaustedRequestedEvent;
+                if (type.SequenceEqual("session.mcp_server_needs_reconnect"u8))
+                    return SessionEventsJsonContext.Default.SessionMcpServerNeedsReconnectEvent;
+                break;
+            case 35:
+                if (type.SequenceEqual("permission.messageAuthorizationRead"u8))
+                    return SessionEventsJsonContext.Default.PermissionMessageAuthorizationReadEvent;
+                if (type.SequenceEqual("session.autopilot_objective_changed"u8))
+                    return SessionEventsJsonContext.Default.SessionAutopilotObjectiveChangedEvent;
+                break;
+            case 37:
+                if (type.SequenceEqual("session.extensions.attachments_pushed"u8))
+                    return SessionEventsJsonContext.Default.SessionExtensionsAttachmentsPushedEvent;
+                break;
+            case 39:
+                if (type.SequenceEqual("permission.messageAuthorizationDegraded"u8))
+                    return SessionEventsJsonContext.Default.PermissionMessageAuthorizationDegradedEvent;
+                break;
+        }
+        return null;
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        SessionEvent value,
+        JsonSerializerOptions options) =>
+        JsonSerializer.Serialize(writer, value, SessionEventsJsonContext.Default.SessionEvent);
+
+    private static SessionEvent ToSessionEvent(object? value) =>
+        value as SessionEvent ?? ((SessionEventEnvelope?)value)?.ToSessionEvent()!;
+
+    private static JsonTypeInfo ReadEventTypeInfo(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return SessionEventsJsonContext.Default.SessionEventEnvelope;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("Expected a session event object.");
+        }
+
+        JsonTypeInfo? typeInfo = null;
+        bool foundDiscriminator = false;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            bool isDiscriminator = reader.ValueIsEscaped
+                ? ReadString(ref reader) == "type"
+                : reader.ValueTextEquals("type"u8);
+            if (isDiscriminator)
+            {
+                if (foundDiscriminator)
+                {
+                    throw new JsonException("Duplicate session event type discriminator.");
+                }
+                foundDiscriminator = true;
+                reader.Read();
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    if (reader.HasValueSequence || reader.ValueIsEscaped)
+                    {
+                        typeInfo = GetEventTypeInfo(StrictUtf8.GetBytes(ReadString(ref reader)));
+                    }
+                    else
+                    {
+                        typeInfo = GetEventTypeInfo(reader.ValueSpan);
+                        if (typeInfo is null)
+                        {
+                            // Validate unknown discriminator text too, including invalid UTF-8.
+                            _ = ReadString(ref reader);
+                        }
+                    }
+                }
+                else if (reader.TokenType != JsonTokenType.Number || !reader.TryGetInt32(out _))
+                {
+                    throw new JsonException("Expected a string or integer session event type discriminator.");
+                }
+            }
+            else
+            {
+                bool isMetadata = reader.HasValueSequence || reader.ValueIsEscaped
+                    ? ReadString(ref reader) is { Length: > 0 } propertyName && propertyName[0] == '$'
+                    : !reader.ValueSpan.IsEmpty && reader.ValueSpan[0] == (byte)'$';
+                if (isMetadata)
+                {
+                    throw new JsonException("Unexpected session event metadata property.");
+                }
+                reader.Read();
+                reader.Skip();
+            }
+        }
+
+        return typeInfo ?? SessionEventsJsonContext.Default.SessionEventEnvelope;
+    }
+}
+
+internal sealed class SessionEventJsonTypeInfoResolver : IJsonTypeInfoResolver
+{
+    internal static SessionEventJsonTypeInfoResolver Default { get; } = new();
+
+    public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+    {
+        if (type != typeof(SessionEvent))
+        {
+            return null;
+        }
+
+        JsonTypeInfo typeInfo = JsonMetadataServices.CreateValueInfo<SessionEvent>(
+            options,
+            SessionEventJsonConverter.Default);
+        typeInfo.PolymorphismOptions = null;
+        return typeInfo;
+    }
+}
+
+internal sealed class SessionEventEnvelope
+{
+    /// <summary>Sub-agent instance identifier. Absent for events from the root/main agent and session-level events.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("agentId")]
+    public string? AgentId { get; set; }
+
+    /// <summary>When true, the event is transient and not persisted to the session event log on disk.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("ephemeral")]
+    public bool? Ephemeral { get; set; }
+
+    /// <summary>Unique event identifier (UUID v4), generated when the event is emitted.</summary>
+    [JsonPropertyName("id")]
+    public Guid Id { get; set; }
+
+    /// <summary>ID of the chronologically preceding event in the session, forming a linked chain. Null for the first event.</summary>
+    [JsonPropertyName("parentId")]
+    public Guid? ParentId { get; set; }
+
+    /// <summary>ISO 8601 timestamp when the event was created.</summary>
+    [JsonPropertyName("timestamp")]
+    public DateTimeOffset Timestamp { get; set; }
+
+    internal SessionEvent ToSessionEvent() => new()
+    {
+        AgentId = AgentId,
+        Ephemeral = Ephemeral,
+        Id = Id,
+        ParentId = ParentId,
+        Timestamp = Timestamp,
+    };
 }
 
 /// <summary>Session initialization metadata including context and configuration.</summary>
@@ -20979,6 +21489,7 @@ public readonly struct ExtensionsLoadedExtensionStatus : IEquatable<ExtensionsLo
 [JsonSerializable(typeof(SessionErrorData))]
 [JsonSerializable(typeof(SessionErrorEvent))]
 [JsonSerializable(typeof(SessionEvent))]
+[JsonSerializable(typeof(SessionEventEnvelope))]
 [JsonSerializable(typeof(SessionExtensionsAttachmentsPushedData))]
 [JsonSerializable(typeof(SessionExtensionsAttachmentsPushedEvent))]
 [JsonSerializable(typeof(SessionExtensionsLoadedData))]

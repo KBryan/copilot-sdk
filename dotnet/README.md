@@ -505,6 +505,13 @@ Abort the currently processing message in this session.
 
 Get all events/messages from this session.
 
+Live notifications and history deserialization select source-generated metadata for the
+received event type rather than initializing every event type on the first event.
+History parsing uses a bounded stack or pooled UTF-8 buffer to avoid an extra
+reader-scoping pass; common event-type selection does not allocate a discriminator string.
+Unknown or missing event types retain the base `SessionEvent` fallback; serialization
+and malformed-event validation are unchanged.
+
 ##### `DisposeAsync(): ValueTask`
 
 Close the session and release in-memory resources. Session data on disk is preserved — the conversation can be resumed later via `ResumeSessionAsync()`. To permanently delete session data, use `client.DeleteSessionAsync()`.

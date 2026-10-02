@@ -56,6 +56,7 @@ describe("MCP remote session closure", async () => {
                 },
             });
             onTestFinished(() => disconnectSession(session));
+            expect(session.capabilities.ui?.mcpApps).toBe(true);
 
             await waitForMcpServerStatus(session, serverName, "connected");
             expect((await remoteServer.stats()).initializations).toBe(1);

@@ -298,6 +298,8 @@ server.listen(0, "127.0.0.1", () => {
             }
         });
         const proxyUrl = await starting;
+        // The proxy's startup reader closes and pauses the shared stdout stream.
+        child.stdout!.resume();
         const flushBlocked = once(outputLines, "line");
         let resolveExitWait!: () => void;
         const exitWaitStarted = new Promise<void>((resolve) => {

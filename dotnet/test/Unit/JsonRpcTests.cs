@@ -258,6 +258,15 @@ public class JsonRpcTests
         var malformed = CreateNotificationFrame(
             "session.event",
             """{"sessionId":"session-1","event":42}""");
+        var malformedDiscriminator = CreateNotificationFrame(
+            "session.event",
+            """{"sessionId":"session-1","event":{"type":false}}""");
+        var duplicateDiscriminator = CreateNotificationFrame(
+            "session.event",
+            """{"sessionId":"session-1","event":{"type":"session.idle","data":{},"type":"session.idle"}}""");
+        var unexpectedMetadata = CreateNotificationFrame(
+            "session.event",
+            """{"sessionId":"session-1","event":{"type":"future.event","$id":"1"}}""");
         var unknown = CreateNotificationFrame(
             "session.event",
             """
@@ -291,7 +300,8 @@ public class JsonRpcTests
             }
             """);
 
-        using var receiveStream = new MemoryStream(CombineFrames([malformed, unknown, known]));
+        using var receiveStream = new MemoryStream(CombineFrames(
+            [malformed, malformedDiscriminator, duplicateDiscriminator, unexpectedMetadata, unknown, known]));
         using var rpc = new JsonRpcReflection(Stream.Null, receiveStream);
         var collector = new SessionEventCollector(expectedCount: 2);
         rpc.SetLocalRpcMethod("session.event", (Action<string, SessionEvent?>)collector.Handle);
@@ -455,11 +465,17 @@ public class JsonRpcTests
         private static readonly Type JsonRpcType =
             typeof(CopilotClient).Assembly.GetType("GitHub.Copilot.JsonRpc", throwOnError: true)!;
 
-        private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
+        private static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
+
+        private static JsonSerializerOptions CreateSerializerOptions()
         {
-            AllowOutOfOrderMetadataProperties = true,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-        };
+            var property = typeof(CopilotClient).GetProperty(
+                "SerializerOptionsForMessageFormatter",
+                BindingFlags.Static | BindingFlags.NonPublic)!;
+            var options = new JsonSerializerOptions((JsonSerializerOptions)property.GetValue(null)!);
+            options.TypeInfoResolverChain.Add(new DefaultJsonTypeInfoResolver());
+            return options;
+        }
 
         private readonly object _instance;
 

@@ -180,6 +180,7 @@ export type {
     PermissionDecisionSurface,
     PermissionResponseCapability,
     ProviderConfig,
+    ProviderConfigModelProvider,
     ProviderModelConfig,
     ProviderTokenArgs,
     RemoteSessionMode,

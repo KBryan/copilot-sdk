@@ -17,7 +17,7 @@ import javax.annotation.processing.Generated;
  * @since 1.0.0
  */
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
-public final class ServerAccountsApi {
+final class ServerAccountsApi {
 
     private final RpcCaller caller;
 
@@ -33,7 +33,7 @@ public final class ServerAccountsApi {
      * @since 1.0.0
      */
     @CopilotExperimental
-    public CompletableFuture<EntraTokenAcquireResult> acquireEntraToken(AccountsAcquireEntraTokenParams params) {
+    CompletableFuture<EntraTokenAcquireResult> acquireEntraToken(AccountsAcquireEntraTokenParams params) {
         return caller.invoke("accounts.acquireEntraToken", params, EntraTokenAcquireResult.class);
     }
 

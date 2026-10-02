@@ -25,6 +25,7 @@ const inProcessBlockedE2E = [
     "**/test/e2e/hooks.e2e.test.ts",
     "**/test/e2e/hooks_extended.e2e.test.ts",
     "**/test/e2e/mcp_and_agents.e2e.test.ts",
+    "**/test/e2e/memory_retrieval.e2e.test.ts",
     "**/test/e2e/mode_empty.e2e.test.ts",
     "**/test/e2e/multi_turn.e2e.test.ts",
     "**/test/e2e/permissions.e2e.test.ts",

@@ -6158,6 +6158,10 @@ export interface AssistantUsageData {
    */
   availableToolCount?: number;
   /**
+   * Where the bring-your-own-key model runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+   */
+  byokKind?: string;
+  /**
    * Whether the provider reported prompt-cache usage details for this call
    *
    * @internal
@@ -6248,6 +6252,10 @@ export interface AssistantUsageData {
    * Model identifier used for this API call
    */
   model: string;
+  /**
+   * Fixed-set provider family serving the bring-your-own-key model (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+   */
+  modelProvider?: string;
   /**
    * Number of tool calls returned by the model
    *
@@ -6489,6 +6497,10 @@ export interface ModelCallFailureData {
   apiEndpoint?: AssistantUsageApiEndpoint;
   badRequestKind?: ModelCallFailureBadRequestKind;
   /**
+   * Where the bring-your-own-key model for the failed call runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+   */
+  byokKind?: string;
+  /**
    * Duration of the failed API call in milliseconds
    */
   durationMs?: number;
@@ -6539,6 +6551,10 @@ export interface ModelCallFailureData {
    * Model identifier used for the failed API call
    */
   model?: string;
+  /**
+   * Fixed-set provider family serving the bring-your-own-key model for the failed call (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+   */
+  modelProvider?: string;
   /**
    * Parent task tool call ID when this failed model call belongs to a sub-agent
    */

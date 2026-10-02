@@ -2490,6 +2490,7 @@ describe("CopilotClient", () => {
                 headers: { Authorization: "Bearer provider-token" },
                 modelId: "gpt-4o",
                 wireModel: "my-finetune-v3",
+                modelProvider: "lm_studio",
                 maxPromptTokens: 100_000,
                 maxOutputTokens: 4096,
                 transport: "websockets",
@@ -2503,6 +2504,7 @@ describe("CopilotClient", () => {
                 headers: { Authorization: "Bearer provider-token" },
                 modelId: "gpt-4o",
                 wireModel: "my-finetune-v3",
+                modelProvider: "lm_studio",
                 maxPromptTokens: 100_000,
                 maxOutputTokens: 4096,
                 transport: "websockets",
@@ -2531,6 +2533,7 @@ describe("CopilotClient", () => {
                 headers: { Authorization: "Bearer resume-token" },
                 modelId: "gpt-4o",
                 wireModel: "my-finetune-v3",
+                modelProvider: "ollama",
                 maxPromptTokens: 100_000,
                 maxOutputTokens: 4096,
                 transport: "websockets",
@@ -2544,11 +2547,50 @@ describe("CopilotClient", () => {
                 headers: { Authorization: "Bearer resume-token" },
                 modelId: "gpt-4o",
                 wireModel: "my-finetune-v3",
+                modelProvider: "ollama",
                 maxPromptTokens: 100_000,
                 maxOutputTokens: 4096,
                 transport: "websockets",
             })
         );
+        spy.mockRestore();
+    });
+
+    it("forwards named provider model provider in session.create request", async () => {
+        const client = new CopilotClient();
+        await client.start();
+        onTestFinished(() => stopClient(client));
+
+        const spy = vi
+            .spyOn((client as any).connection!, "sendRequest")
+            .mockImplementation(async (method: string, params: any) => {
+                if (method === "session.create")
+                    return { sessionId: params.sessionId ?? "session-id" };
+                throw new Error(`Unexpected method: ${method}`);
+            });
+
+        await client.createSession({
+            onPermissionRequest: approveAll,
+            providers: [
+                {
+                    name: "local",
+                    baseUrl: "http://localhost:11434/v1",
+                    type: "openai",
+                    modelProvider: "ollama",
+                },
+            ],
+            models: [{ id: "llama3", provider: "local" }],
+        });
+
+        const payload = spy.mock.calls.find(([method]) => method === "session.create")![1] as any;
+        expect(payload.providers).toEqual([
+            expect.objectContaining({
+                name: "local",
+                baseUrl: "http://localhost:11434/v1",
+                type: "openai",
+                modelProvider: "ollama",
+            }),
+        ]);
         spy.mockRestore();
     });
 

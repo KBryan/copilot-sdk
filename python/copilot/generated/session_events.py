@@ -3421,6 +3421,7 @@ class AssistantUsageData:
     api_endpoint: AssistantUsageApiEndpoint | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _available_tool_count: int | None = None
+    byok_kind: str | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _cache_details_reported: bool | None = None
     cache_expires_at: datetime | None = None
@@ -3446,6 +3447,7 @@ class AssistantUsageData:
     is_byok: bool | None = None
     max_output_tokens: int | None = None
     max_prompt_tokens: int | None = None
+    model_provider: str | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _num_tool_calls: int | None = None
     output_tokens: int | None = None
@@ -3480,6 +3482,7 @@ class AssistantUsageData:
         api_call_id = from_union([from_none, from_str], obj.get("apiCallId"))
         api_endpoint = from_union([from_none, lambda x: parse_enum(AssistantUsageApiEndpoint, x)], obj.get("apiEndpoint"))
         _available_tool_count = from_union([from_none, from_int], obj.get("availableToolCount"))
+        byok_kind = from_union([from_none, from_str], obj.get("byokKind"))
         _cache_details_reported = from_union([from_none, from_bool], obj.get("cacheDetailsReported"))
         cache_expires_at = from_union([from_none, from_datetime], obj.get("cacheExpiresAt"))
         cache_read_tokens = from_union([from_none, from_int], obj.get("cacheReadTokens"))
@@ -3500,6 +3503,7 @@ class AssistantUsageData:
         is_byok = from_union([from_none, from_bool], obj.get("isByok"))
         max_output_tokens = from_union([from_none, from_int], obj.get("maxOutputTokens"))
         max_prompt_tokens = from_union([from_none, from_int], obj.get("maxPromptTokens"))
+        model_provider = from_union([from_none, from_str], obj.get("modelProvider"))
         _num_tool_calls = from_union([from_none, from_int], obj.get("numToolCalls"))
         output_tokens = from_union([from_none, from_int], obj.get("outputTokens"))
         output_ttft = from_union([from_none, from_timedelta], obj.get("outputTtftMs"))
@@ -3524,6 +3528,7 @@ class AssistantUsageData:
             api_call_id=api_call_id,
             api_endpoint=api_endpoint,
             _available_tool_count=_available_tool_count,
+            byok_kind=byok_kind,
             _cache_details_reported=_cache_details_reported,
             cache_expires_at=cache_expires_at,
             cache_read_tokens=cache_read_tokens,
@@ -3544,6 +3549,7 @@ class AssistantUsageData:
             is_byok=is_byok,
             max_output_tokens=max_output_tokens,
             max_prompt_tokens=max_prompt_tokens,
+            model_provider=model_provider,
             _num_tool_calls=_num_tool_calls,
             output_tokens=output_tokens,
             output_ttft=output_ttft,
@@ -3575,6 +3581,8 @@ class AssistantUsageData:
             result["apiEndpoint"] = from_union([from_none, lambda x: to_enum(AssistantUsageApiEndpoint, x)], self.api_endpoint)
         if self._available_tool_count is not None:
             result["availableToolCount"] = from_union([from_none, to_int], self._available_tool_count)
+        if self.byok_kind is not None:
+            result["byokKind"] = from_union([from_none, from_str], self.byok_kind)
         if self._cache_details_reported is not None:
             result["cacheDetailsReported"] = from_union([from_none, from_bool], self._cache_details_reported)
         if self.cache_expires_at is not None:
@@ -3615,6 +3623,8 @@ class AssistantUsageData:
             result["maxOutputTokens"] = from_union([from_none, to_int], self.max_output_tokens)
         if self.max_prompt_tokens is not None:
             result["maxPromptTokens"] = from_union([from_none, to_int], self.max_prompt_tokens)
+        if self.model_provider is not None:
+            result["modelProvider"] = from_union([from_none, from_str], self.model_provider)
         if self._num_tool_calls is not None:
             result["numToolCalls"] = from_union([from_none, to_int], self._num_tool_calls)
         if self.output_tokens is not None:
@@ -5933,6 +5943,7 @@ class ModelCallFailureData:
     api_call_id: str | None = None
     api_endpoint: AssistantUsageApiEndpoint | None = None
     bad_request_kind: ModelCallFailureBadRequestKind | None = None
+    byok_kind: str | None = None
     duration: timedelta | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -5947,6 +5958,7 @@ class ModelCallFailureData:
     max_output_tokens: int | None = None
     max_prompt_tokens: int | None = None
     model: str | None = None
+    model_provider: str | None = None
     parent_tool_call_id: str | None = None
     provider_call_id: str | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
@@ -5965,6 +5977,7 @@ class ModelCallFailureData:
         api_call_id = from_union([from_none, from_str], obj.get("apiCallId"))
         api_endpoint = from_union([from_none, lambda x: parse_enum(AssistantUsageApiEndpoint, x)], obj.get("apiEndpoint"))
         bad_request_kind = from_union([from_none, lambda x: parse_enum(ModelCallFailureBadRequestKind, x)], obj.get("badRequestKind"))
+        byok_kind = from_union([from_none, from_str], obj.get("byokKind"))
         duration = from_union([from_none, from_timedelta], obj.get("durationMs"))
         error_code = from_union([from_none, from_str], obj.get("errorCode"))
         error_message = from_union([from_none, from_str], obj.get("errorMessage"))
@@ -5978,6 +5991,7 @@ class ModelCallFailureData:
         max_output_tokens = from_union([from_none, from_int], obj.get("maxOutputTokens"))
         max_prompt_tokens = from_union([from_none, from_int], obj.get("maxPromptTokens"))
         model = from_union([from_none, from_str], obj.get("model"))
+        model_provider = from_union([from_none, from_str], obj.get("modelProvider"))
         parent_tool_call_id = from_union([from_none, from_str], obj.get("parentToolCallId"))
         provider_call_id = from_union([from_none, from_str], obj.get("providerCallId"))
         _quota_snapshots = from_union([from_none, lambda x: from_dict(_AssistantUsageQuotaSnapshot.from_dict, x)], obj.get("quotaSnapshots"))
@@ -5992,6 +6006,7 @@ class ModelCallFailureData:
             api_call_id=api_call_id,
             api_endpoint=api_endpoint,
             bad_request_kind=bad_request_kind,
+            byok_kind=byok_kind,
             duration=duration,
             error_code=error_code,
             error_message=error_message,
@@ -6005,6 +6020,7 @@ class ModelCallFailureData:
             max_output_tokens=max_output_tokens,
             max_prompt_tokens=max_prompt_tokens,
             model=model,
+            model_provider=model_provider,
             parent_tool_call_id=parent_tool_call_id,
             provider_call_id=provider_call_id,
             _quota_snapshots=_quota_snapshots,
@@ -6025,6 +6041,8 @@ class ModelCallFailureData:
             result["apiEndpoint"] = from_union([from_none, lambda x: to_enum(AssistantUsageApiEndpoint, x)], self.api_endpoint)
         if self.bad_request_kind is not None:
             result["badRequestKind"] = from_union([from_none, lambda x: to_enum(ModelCallFailureBadRequestKind, x)], self.bad_request_kind)
+        if self.byok_kind is not None:
+            result["byokKind"] = from_union([from_none, from_str], self.byok_kind)
         if self.duration is not None:
             result["durationMs"] = from_union([from_none, to_timedelta_int], self.duration)
         if self.error_code is not None:
@@ -6051,6 +6069,8 @@ class ModelCallFailureData:
             result["maxPromptTokens"] = from_union([from_none, to_int], self.max_prompt_tokens)
         if self.model is not None:
             result["model"] = from_union([from_none, from_str], self.model)
+        if self.model_provider is not None:
+            result["modelProvider"] = from_union([from_none, from_str], self.model_provider)
         if self.parent_tool_call_id is not None:
             result["parentToolCallId"] = from_union([from_none, from_str], self.parent_tool_call_id)
         if self.provider_call_id is not None:

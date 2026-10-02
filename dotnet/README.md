@@ -357,6 +357,19 @@ await session.SendAndWaitAsync(new MessageOptions
 Agent sources serialize as `agent-<id>`. Pass the agent ID without adding a
 prefix. The SDK preserves its case and whitespace and rejects null IDs.
 
+##### `SetToolsAsync(ICollection<AIFunctionDeclaration> tools, CancellationToken cancellationToken = default): Task` (experimental)
+
+Replace the complete set of externally implemented tools supplied by this client
+on a live session. Pass the same tool declarations used in `SessionConfig.Tools`
+or `ResumeSessionConfig.Tools`; an empty collection removes this client's tools.
+Built-in, MCP/plugin, extension, subagent, and other clients' tools are unchanged.
+
+Handlers switch after the runtime accepts the replacement. Running tool calls
+finish on the handlers that started them, rejected replacements leave the
+previous handlers installed, and concurrent replacements are applied in order.
+See [Changing tools](../docs/features/changing-tools.md) for shared behavior and
+active-turn limitations.
+
 ##### Structured outputs (experimental)
 
 Use `SendAndWaitAsync<TResult>` to infer a JSON Schema from a .NET type and

@@ -10143,6 +10143,9 @@ type NamedProviderConfig struct {
 	HasBearerTokenProvider *bool `json:"hasBearerTokenProvider,omitempty"`
 	// Additional HTTP headers included with provider requests.
 	Headers map[string]string `json:"headers,omitzero"`
+	// The product serving the provider's models, reported in telemetry as `model_provider`.
+	// Only affects telemetry.
+	ModelProvider *ProviderConfigModelProvider `json:"modelProvider,omitempty"`
 	// Unique provider name used to qualify model selection IDs.
 	Name string `json:"name"`
 	// Transport used to communicate with the provider.
@@ -12104,6 +12107,10 @@ type ProviderConfig struct {
 	// Well-known model ID used for capability lookup. When set, agent behavior config and token
 	// limits are inferred from this model.
 	ModelID *string `json:"modelId,omitempty"`
+	// The product serving the model, reported in telemetry as `model_provider`. Set it when
+	// `type` alone cannot identify the product, such as Ollama or LM Studio behind an
+	// OpenAI-compatible endpoint. Only affects telemetry.
+	ModelProvider *ProviderConfigModelProvider `json:"modelProvider,omitempty"`
 	// Provider name used for model and telemetry attribution.
 	ProviderName *string `json:"providerName,omitempty"`
 	// Provider transport. Defaults to "http".
@@ -24345,6 +24352,28 @@ const (
 	ProtocolSystemMessageConfigModeAppend    ProtocolSystemMessageConfigMode = "append"
 	ProtocolSystemMessageConfigModeCustomize ProtocolSystemMessageConfigMode = "customize"
 	ProtocolSystemMessageConfigModeReplace   ProtocolSystemMessageConfigMode = "replace"
+)
+
+// The product serving the model, reported in telemetry as `model_provider`.
+// Experimental: ProviderConfigModelProvider is part of an experimental API and may change
+// or be removed.
+type ProviderConfigModelProvider string
+
+const (
+	// Anthropic API.
+	ProviderConfigModelProviderAnthropic ProviderConfigModelProvider = "anthropic"
+	// Azure OpenAI Service.
+	ProviderConfigModelProviderAzureOpenai ProviderConfigModelProvider = "azure_openai"
+	// Foundry Local.
+	ProviderConfigModelProviderFoundryLocal ProviderConfigModelProvider = "foundry_local"
+	// llama.cpp server.
+	ProviderConfigModelProviderLlamaCpp ProviderConfigModelProvider = "llama_cpp"
+	// LM Studio.
+	ProviderConfigModelProviderLmStudio ProviderConfigModelProvider = "lm_studio"
+	// Ollama.
+	ProviderConfigModelProviderOllama ProviderConfigModelProvider = "ollama"
+	// OpenAI API.
+	ProviderConfigModelProviderOpenai ProviderConfigModelProvider = "openai"
 )
 
 // Provider transport. Defaults to "http".

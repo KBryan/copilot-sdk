@@ -28,7 +28,7 @@ import javax.annotation.processing.Generated;
 @CopilotExperimental
 @JsonIgnoreProperties(ignoreUnknown = true)
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
-public abstract class EntraTokenAcquireResult {
+abstract class EntraTokenAcquireResult {
 
     /**
      * Returns the discriminator value for this variant.

@@ -3117,6 +3117,20 @@ export interface ProviderTokenArgs {
 export type BearerTokenProvider = (args: ProviderTokenArgs) => Promise<string>;
 
 /**
+ * Product serving a configured provider's model. Allowed values are
+ * "openai", "anthropic", "azure_openai", "ollama", "lm_studio",
+ * "foundry_local", and "llama_cpp".
+ */
+export type ProviderConfigModelProvider =
+    | "openai"
+    | "anthropic"
+    | "azure_openai"
+    | "ollama"
+    | "lm_studio"
+    | "foundry_local"
+    | "llama_cpp";
+
+/**
  * Configuration for a custom API provider.
  */
 export interface ProviderConfig {
@@ -3140,6 +3154,12 @@ export interface ProviderConfig {
      * providers using `wireApi: "responses"`.
      */
     transport?: "http" | "websockets";
+
+    /**
+     * Product serving the model, such as "ollama" or "lm_studio", reported in
+     * telemetry as `model_provider`. Only affects telemetry.
+     */
+    modelProvider?: ProviderConfigModelProvider;
 
     /**
      * API endpoint URL
@@ -3246,6 +3266,12 @@ export interface NamedProviderConfig {
      * Wire API format (openai/azure only). Defaults to "completions".
      */
     wireApi?: "completions" | "responses";
+
+    /**
+     * Product serving this provider's models, such as "ollama" or "lm_studio",
+     * reported in telemetry as `model_provider`. Only affects telemetry.
+     */
+    modelProvider?: ProviderConfigModelProvider;
 
     /**
      * API endpoint URL.

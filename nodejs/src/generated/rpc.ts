@@ -3823,6 +3823,28 @@ export type ProviderConfigTransport =
   /** WebSocket transport. */
   | "websockets";
 /**
+ * The product serving the model, reported in telemetry as `model_provider`.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "ProviderConfigModelProvider".
+ */
+/** @experimental */
+export type ProviderConfigModelProvider =
+  /** OpenAI API. */
+  | "openai"
+  /** Anthropic API. */
+  | "anthropic"
+  /** Azure OpenAI Service. */
+  | "azure_openai"
+  /** Ollama. */
+  | "ollama"
+  /** LM Studio. */
+  | "lm_studio"
+  /** Foundry Local. */
+  | "foundry_local"
+  /** llama.cpp server. */
+  | "llama_cpp";
+/**
  * Allowed values for the `OptionsUpdateAdditionalContentExclusionPolicyScope` enumeration.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -17402,6 +17424,7 @@ export interface NamedProviderConfig {
   headers?: {
     [k: string]: string | undefined;
   };
+  modelProvider?: ProviderConfigModelProvider;
   /**
    * Whether the host supplies bearer tokens dynamically.
    */
@@ -19731,6 +19754,7 @@ export interface ProviderConfig {
    * Provider name used for model and telemetry attribution.
    */
   providerName?: string;
+  modelProvider?: ProviderConfigModelProvider;
   /**
    * The model identifier sent to the provider API for inference (the "wire" model), as opposed to modelId which is the well-known base.
    */

@@ -477,6 +477,29 @@ Chain fluent modifiers to set tool options:
 
 For design context and decision rationale, see [ADR-006](docs/adr/adr-006-tool-definition-inline.md).
 
+## Changing tools on a live session (experimental)
+
+`CopilotSession.setTools(List<ToolDefinition>)` replaces the external tools
+registered by this Java client without recreating the session:
+
+```java
+session.setTools(List.of(
+    ToolDefinition.from("lookup_fruit", "Looks up fruit by code",
+        Param.of(Integer.class, "code", "Fruit code"),
+        code -> "dragonfruit")
+)).get();
+```
+
+The list is a complete replacement for this client only. Built-in tools, MCP
+tools, plugin tools, and tools registered by other connections are unchanged.
+Pass an empty list to remove this client's tools. Handlers switch after the
+runtime accepts the replacement; rejected replacements leave the previous
+handlers in place. Tool calls already running finish on the handler that started
+them.
+
+For cross-SDK behavior and active-turn caveats, see
+[changing tools](../docs/features/changing-tools.md).
+
 ## Auto routing tiers
 
 Use `CapiSessionOptions.setAutoTier(...)` to select `AutoTier.EFFICIENCY`,

@@ -17689,6 +17689,10 @@ public sealed class NamedProviderConfig
     [JsonPropertyName("headers")]
     public IDictionary<string, string>? Headers { get; set; }
 
+    /// <summary>The product serving the provider's models, reported in telemetry as `model_provider`. Only affects telemetry.</summary>
+    [JsonPropertyName("modelProvider")]
+    public ProviderConfigModelProvider? ModelProvider { get; set; }
+
     /// <summary>Unique provider name used to qualify model selection IDs.</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
@@ -17952,6 +17956,10 @@ public sealed class ProviderConfig
     /// <summary>Well-known model ID used for capability lookup. When set, agent behavior config and token limits are inferred from this model.</summary>
     [JsonPropertyName("modelId")]
     public string? ModelId { get; set; }
+
+    /// <summary>The product serving the model, reported in telemetry as `model_provider`. Set it when `type` alone cannot identify the product, such as Ollama or LM Studio behind an OpenAI-compatible endpoint. Only affects telemetry.</summary>
+    [JsonPropertyName("modelProvider")]
+    public ProviderConfigModelProvider? ModelProvider { get; set; }
 
     /// <summary>Provider name used for model and telemetry attribution.</summary>
     [JsonPropertyName("providerName")]
@@ -36705,6 +36713,84 @@ public readonly struct ProtocolStaticSectionAction : IEquatable<ProtocolStaticSe
         public override void Write(Utf8JsonWriter writer, ProtocolStaticSectionAction value, JsonSerializerOptions options)
         {
             GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ProtocolStaticSectionAction));
+        }
+    }
+}
+
+
+/// <summary>The product serving the model, reported in telemetry as `model_provider`.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct ProviderConfigModelProvider : IEquatable<ProviderConfigModelProvider>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="ProviderConfigModelProvider"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="ProviderConfigModelProvider"/>.</param>
+    [JsonConstructor]
+    public ProviderConfigModelProvider(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="ProviderConfigModelProvider"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>OpenAI API.</summary>
+    public static ProviderConfigModelProvider Openai { get; } = new("openai");
+
+    /// <summary>Anthropic API.</summary>
+    public static ProviderConfigModelProvider Anthropic { get; } = new("anthropic");
+
+    /// <summary>Azure OpenAI Service.</summary>
+    public static ProviderConfigModelProvider AzureOpenai { get; } = new("azure_openai");
+
+    /// <summary>Ollama.</summary>
+    public static ProviderConfigModelProvider Ollama { get; } = new("ollama");
+
+    /// <summary>LM Studio.</summary>
+    public static ProviderConfigModelProvider LmStudio { get; } = new("lm_studio");
+
+    /// <summary>Foundry Local.</summary>
+    public static ProviderConfigModelProvider FoundryLocal { get; } = new("foundry_local");
+
+    /// <summary>llama.cpp server.</summary>
+    public static ProviderConfigModelProvider LlamaCpp { get; } = new("llama_cpp");
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderConfigModelProvider"/> instances are equivalent.</summary>
+    public static bool operator ==(ProviderConfigModelProvider left, ProviderConfigModelProvider right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="ProviderConfigModelProvider"/> instances are not equivalent.</summary>
+    public static bool operator !=(ProviderConfigModelProvider left, ProviderConfigModelProvider right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is ProviderConfigModelProvider other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(ProviderConfigModelProvider other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{ProviderConfigModelProvider}"/> for serializing <see cref="ProviderConfigModelProvider"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<ProviderConfigModelProvider>
+    {
+        /// <inheritdoc />
+        public override ProviderConfigModelProvider Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ProviderConfigModelProvider value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ProviderConfigModelProvider));
         }
     }
 }

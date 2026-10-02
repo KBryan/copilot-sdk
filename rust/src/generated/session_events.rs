@@ -3538,6 +3538,9 @@ pub struct AssistantUsageData {
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) available_tool_count: Option<i64>,
+    /// Where the bring-your-own-key model runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byok_kind: Option<String>,
     /// Whether the provider reported prompt-cache usage details for this call
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3617,6 +3620,9 @@ pub struct AssistantUsageData {
     pub max_prompt_tokens: Option<i64>,
     /// Model identifier used for this API call
     pub model: String,
+    /// Fixed-set provider family serving the bring-your-own-key model (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
     /// Number of tool calls returned by the model
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3805,6 +3811,9 @@ pub struct ModelCallFailureData {
     /// For HTTP 400 failures only: whether the response carried a structured CAPI error envelope (structured_error, a deterministic validation failure) or no error body (bodyless, the transient gateway/proxy signature). Absent for non-400 failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bad_request_kind: Option<ModelCallFailureBadRequestKind>,
+    /// Where the bring-your-own-key model for the failed call runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byok_kind: Option<String>,
     /// Duration of the failed API call in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<i64>,
@@ -3851,6 +3860,9 @@ pub struct ModelCallFailureData {
     /// Model identifier used for the failed API call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Fixed-set provider family serving the bring-your-own-key model for the failed call (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
     /// Parent task tool call ID when this failed model call belongs to a sub-agent
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_tool_call_id: Option<String>,

@@ -72,7 +72,7 @@ public final class ServerRpc {
     /** API methods for the {@code agentRegistry} namespace. */
     public final ServerAgentRegistryApi agentRegistry;
     /** API methods for the {@code accounts} namespace. */
-    public final ServerAccountsApi accounts;
+    final ServerAccountsApi accounts;
 
     /**
      * Creates a new server RPC client.
@@ -125,7 +125,7 @@ public final class ServerRpc {
      * @since 1.0.0
      */
     @CopilotExperimental
-    public CompletableFuture<ConnectResult> connect(ConnectParams params) {
+    CompletableFuture<ConnectResult> connect(ConnectParams params) {
         return caller.invoke("connect", params, ConnectResult.class);
     }
 

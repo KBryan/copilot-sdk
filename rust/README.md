@@ -895,6 +895,16 @@ The closure receives the full [`ToolInvocation`](crate::types::ToolInvocation) a
 
 Reach for the `ToolHandler` trait directly when you need shared state across multiple methods or want a named type that shows up by name in stack traces.
 
+#### Replacing tools during a session
+
+`Session::set_tools` (experimental) replaces the complete set of tools this client supplies to a live session, together with the handlers that serve them. It takes the same `Tool` values as `with_tools`, and an empty collection removes all of this client's tools. Built-in, MCP, plugin, and extension tools, and tools that other connected clients supply, are unaffected.
+
+```rust,ignore
+session.set_tools(vec![search_tool, filter_tool]).await?;
+```
+
+The agent sees the new tools from its next model request. The new handlers take effect as soon as the runtime accepts the replacement, and calls already running finish on the handlers that started them. If the runtime rejects the replacement, nothing changes. A model request already in flight was made with the previous tools, so the agent can still call a tool you removed; this session won't answer that call, so replace tools while the session is idle if a running turn might still call a tool you remove. See [Changing tools during a session](../docs/features/changing-tools.md) for the behavior shared by all SDKs.
+
 ### Permission Policies
 
 Set a permission policy directly on `SessionConfig` with the chainable builders. They install a synthesized `PermissionHandler` so only permission requests are intercepted; every other event flows through unchanged.

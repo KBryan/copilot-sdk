@@ -1355,6 +1355,8 @@ type ModelCallFailureData struct {
 	APIEndpoint *AssistantUsageAPIEndpoint `json:"apiEndpoint,omitempty"`
 	// For HTTP 400 failures only: whether the response carried a structured CAPI error envelope (structured_error, a deterministic validation failure) or no error body (bodyless, the transient gateway/proxy signature). Absent for non-400 failures.
 	BadRequestKind *ModelCallFailureBadRequestKind `json:"badRequestKind,omitempty"`
+	// Where the bring-your-own-key model for the failed call runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+	ByokKind *string `json:"byokKind,omitempty"`
 	// Duration of the failed API call in milliseconds
 	DurationMs *int64 `json:"durationMs,omitempty"`
 	// For HTTP 400 failures only: the `code` from the CAPI error envelope (e.g. 'model_max_prompt_tokens_exceeded') identifying which deterministic validation failure occurred. Raw server-controlled string, emitted only through restricted telemetry. Absent for bodyless or non-400 failures.
@@ -1382,6 +1384,8 @@ type ModelCallFailureData struct {
 	MaxPromptTokens *int64 `json:"maxPromptTokens,omitempty"`
 	// Model identifier used for the failed API call
 	Model *string `json:"model,omitempty"`
+	// Fixed-set provider family serving the bring-your-own-key model for the failed call (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+	ModelProvider *string `json:"modelProvider,omitempty"`
 	// Parent task tool call ID when this failed model call belongs to a sub-agent
 	ParentToolCallID *string `json:"parentToolCallId,omitempty"`
 	// GitHub request tracing ID (x-github-request-id header) for server-side log correlation
@@ -1684,6 +1688,8 @@ type AssistantUsageData struct {
 	// Number of tools available to the model for this call
 	// Internal: AvailableToolCount is part of the SDK's internal API surface and is not intended for external use.
 	AvailableToolCount *int64 `json:"availableToolCount,omitempty"`
+	// Where the bring-your-own-key model runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.
+	ByokKind *string `json:"byokKind,omitempty"`
 	// Whether the provider reported prompt-cache usage details for this call
 	// Internal: CacheDetailsReported is part of the SDK's internal API surface and is not intended for external use.
 	CacheDetailsReported *bool `json:"cacheDetailsReported,omitempty"`
@@ -1731,6 +1737,8 @@ type AssistantUsageData struct {
 	MaxPromptTokens *int64 `json:"maxPromptTokens,omitempty"`
 	// Model identifier used for this API call
 	Model string `json:"model"`
+	// Fixed-set provider family serving the bring-your-own-key model (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.
+	ModelProvider *string `json:"modelProvider,omitempty"`
 	// Number of tool calls returned by the model
 	// Internal: NumToolCalls is part of the SDK's internal API surface and is not intended for external use.
 	NumToolCalls *int64 `json:"numToolCalls,omitempty"`

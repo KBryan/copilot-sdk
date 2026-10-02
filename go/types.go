@@ -2277,6 +2277,10 @@ type ProviderConfig struct {
 	// Set "websockets" to deliver Responses API requests over a persistent WebSocket
 	// connection instead of HTTP. Applies to OpenAI-compatible providers using WireAPI "responses".
 	Transport string `json:"transport,omitempty"`
+	// ModelProvider is the product serving the model, reported in telemetry as
+	// model_provider. Allowed values are "openai", "anthropic", "azure_openai",
+	// "ollama", "lm_studio", "foundry_local", and "llama_cpp"; only affects telemetry.
+	ModelProvider string `json:"modelProvider,omitempty"`
 	// BaseURL is the API endpoint URL
 	BaseURL string `json:"baseUrl"`
 	// APIKey is the API key. Optional for local providers like Ollama.
@@ -2405,6 +2409,11 @@ type NamedProviderConfig struct {
 	Type string `json:"type,omitempty"`
 	// WireAPI is the API format (openai/azure only): "completions" or "responses". Defaults to "completions".
 	WireAPI string `json:"wireApi,omitempty"`
+	// ModelProvider is the product serving this provider's models, reported in
+	// telemetry as model_provider. Allowed values are "openai", "anthropic",
+	// "azure_openai", "ollama", "lm_studio", "foundry_local", and "llama_cpp";
+	// only affects telemetry.
+	ModelProvider string `json:"modelProvider,omitempty"`
 	// BaseURL is the API endpoint URL.
 	BaseURL string `json:"baseUrl"`
 	// APIKey is the API key. Optional for local providers like Ollama.

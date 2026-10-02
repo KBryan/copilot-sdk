@@ -532,6 +532,29 @@ impl Tool {
     }
 }
 
+/// Handlers for a session's client-supplied tools, keyed by tool name.
+pub(crate) type ToolHandlerMap = HashMap<String, Arc<dyn crate::tool::ToolHandler>>;
+
+/// Move each tool's handler into a [`ToolHandlerMap`], leaving declaration-only
+/// definitions to send on the wire.
+///
+/// Two handlers for one name are rejected because dispatch, which is keyed by
+/// name, could only ever reach one of them.
+pub(crate) fn take_tool_handlers(tools: &mut [Tool]) -> Result<ToolHandlerMap, crate::Error> {
+    let mut handlers = ToolHandlerMap::new();
+    for tool in tools {
+        if let Some(handler) = tool.handler.take()
+            && handlers.insert(tool.name.clone(), handler).is_some()
+        {
+            return Err(crate::Error::with_message(
+                crate::ErrorKind::InvalidConfig,
+                format!("duplicate tool handler registered for name {:?}", tool.name),
+            ));
+        }
+    }
+    Ok(handlers)
+}
+
 impl std::fmt::Debug for Tool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tool")
@@ -1245,6 +1268,12 @@ pub struct ProviderConfig {
     /// Applies to OpenAI-compatible providers using `wire_api` `"responses"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
+    /// Product serving the model, such as `"ollama"` or `"lm_studio"`,
+    /// reported in telemetry as `model_provider`. Allowed values are
+    /// `"openai"`, `"anthropic"`, `"azure_openai"`, `"ollama"`,
+    /// `"lm_studio"`, `"foundry_local"`, and `"llama_cpp"`; only affects telemetry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
     /// API endpoint URL.
     pub base_url: String,
     /// API key. Optional for local providers like Ollama.
@@ -1298,6 +1327,7 @@ impl std::fmt::Debug for ProviderConfig {
             .field("provider_type", &self.provider_type)
             .field("wire_api", &self.wire_api)
             .field("transport", &self.transport)
+            .field("model_provider", &self.model_provider)
             .field("base_url", &self.base_url)
             .field("api_key", &self.api_key)
             .field("bearer_token", &self.bearer_token)
@@ -1342,6 +1372,14 @@ impl ProviderConfig {
     /// requests. Defaults to `"http"`.
     pub fn with_transport(mut self, transport: impl Into<String>) -> Self {
         self.transport = Some(transport.into());
+        self
+    }
+
+    /// Set the product serving the model. Allowed values are `"openai"`,
+    /// `"anthropic"`, `"azure_openai"`, `"ollama"`, `"lm_studio"`,
+    /// `"foundry_local"`, and `"llama_cpp"`. Only affects telemetry.
+    pub fn with_model_provider(mut self, model_provider: impl Into<String>) -> Self {
+        self.model_provider = Some(model_provider.into());
         self
     }
 
@@ -1503,6 +1541,12 @@ pub struct NamedProviderConfig {
     /// Defaults to `"completions"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wire_api: Option<String>,
+    /// Product serving this provider's models, such as `"ollama"` or
+    /// `"lm_studio"`, reported in telemetry as `model_provider`. Allowed values
+    /// are `"openai"`, `"anthropic"`, `"azure_openai"`, `"ollama"`,
+    /// `"lm_studio"`, `"foundry_local"`, and `"llama_cpp"`; only affects telemetry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
     /// API endpoint URL.
     pub base_url: String,
     /// API key. Optional for local providers like Ollama.
@@ -1532,6 +1576,7 @@ impl std::fmt::Debug for NamedProviderConfig {
             .field("name", &self.name)
             .field("provider_type", &self.provider_type)
             .field("wire_api", &self.wire_api)
+            .field("model_provider", &self.model_provider)
             .field("base_url", &self.base_url)
             .field("api_key", &self.api_key)
             .field("bearer_token", &self.bearer_token)
@@ -1566,6 +1611,14 @@ impl NamedProviderConfig {
     /// Set the API format (`"completions"` or `"responses"`; openai/azure only).
     pub fn with_wire_api(mut self, wire_api: impl Into<String>) -> Self {
         self.wire_api = Some(wire_api.into());
+        self
+    }
+
+    /// Set the product serving this provider's models. Allowed values are
+    /// `"openai"`, `"anthropic"`, `"azure_openai"`, `"ollama"`,
+    /// `"lm_studio"`, `"foundry_local"`, and `"llama_cpp"`. Only affects telemetry.
+    pub fn with_model_provider(mut self, model_provider: impl Into<String>) -> Self {
+        self.model_provider = Some(model_provider.into());
         self
     }
 
@@ -2585,7 +2638,7 @@ pub(crate) struct SessionConfigRuntime {
     pub auto_mode_switch_handler: Option<Arc<dyn AutoModeSwitchHandler>>,
     pub hooks_handler: Option<Arc<dyn SessionHooks>>,
     pub system_message_transform: Option<Arc<dyn SystemMessageTransform>>,
-    pub tool_handlers: HashMap<String, Arc<dyn crate::tool::ToolHandler>>,
+    pub tool_handlers: ToolHandlerMap,
     pub canvas_handler: Option<Arc<dyn CanvasHandler>>,
     pub session_fs_provider: Option<Arc<dyn SessionFsProvider>>,
     pub bearer_token_providers: HashMap<String, Arc<dyn BearerTokenProvider>>,
@@ -2623,19 +2676,7 @@ impl SessionConfig {
         let request_elicitation = self.elicitation_handler.is_some();
         let hooks_flag = self.hooks_handler.is_some();
 
-        let mut tool_handlers: HashMap<String, Arc<dyn crate::tool::ToolHandler>> = HashMap::new();
-        if let Some(tools) = self.tools.as_mut() {
-            for tool in tools.iter_mut() {
-                if let Some(handler) = tool.handler.take()
-                    && tool_handlers.insert(tool.name.clone(), handler).is_some()
-                {
-                    return Err(crate::Error::with_message(
-                        crate::ErrorKind::InvalidConfig,
-                        format!("duplicate tool handler registered for name {:?}", tool.name),
-                    ));
-                }
-            }
-        }
+        let tool_handlers = take_tool_handlers(self.tools.as_deref_mut().unwrap_or_default())?;
 
         let wire_commands = self.commands.as_ref().map(|cmds| {
             cmds.iter()
@@ -3909,19 +3950,7 @@ impl ResumeSessionConfig {
         let request_elicitation = self.elicitation_handler.is_some();
         let hooks_flag = self.hooks_handler.is_some();
 
-        let mut tool_handlers: HashMap<String, Arc<dyn crate::tool::ToolHandler>> = HashMap::new();
-        if let Some(tools) = self.tools.as_mut() {
-            for tool in tools.iter_mut() {
-                if let Some(handler) = tool.handler.take()
-                    && tool_handlers.insert(tool.name.clone(), handler).is_some()
-                {
-                    return Err(crate::Error::with_message(
-                        crate::ErrorKind::InvalidConfig,
-                        format!("duplicate tool handler registered for name {:?}", tool.name),
-                    ));
-                }
-            }
-        }
+        let tool_handlers = take_tool_handlers(self.tools.as_deref_mut().unwrap_or_default())?;
 
         let wire_commands = self.commands.as_ref().map(|cmds| {
             cmds.iter()
@@ -7091,6 +7120,7 @@ mod tests {
                 NamedProviderConfig::new("my-openai", "https://api.example.com/v1")
                     .with_provider_type("openai")
                     .with_wire_api("responses")
+                    .with_model_provider("ollama")
                     .with_api_key("sk-test"),
             ])
             .with_models(vec![
@@ -7110,6 +7140,7 @@ mod tests {
         );
         assert_eq!(wire_json["providers"][0]["type"], "openai");
         assert_eq!(wire_json["providers"][0]["wireApi"], "responses");
+        assert_eq!(wire_json["providers"][0]["modelProvider"], "ollama");
         assert_eq!(wire_json["providers"][0]["apiKey"], "sk-test");
         assert_eq!(wire_json["models"][0]["id"], "gpt-x");
         assert_eq!(wire_json["models"][0]["provider"], "my-openai");
@@ -7728,6 +7759,7 @@ mod tests {
             .with_provider_type("openai")
             .with_wire_api("completions")
             .with_transport("websockets")
+            .with_model_provider("lm_studio")
             .with_api_key("sk-test")
             .with_bearer_token("bearer-test")
             .with_headers(headers)
@@ -7740,6 +7772,7 @@ mod tests {
         assert_eq!(cfg.provider_type.as_deref(), Some("openai"));
         assert_eq!(cfg.wire_api.as_deref(), Some("completions"));
         assert_eq!(cfg.transport.as_deref(), Some("websockets"));
+        assert_eq!(cfg.model_provider.as_deref(), Some("lm_studio"));
         assert_eq!(cfg.api_key.as_deref(), Some("sk-test"));
         assert_eq!(cfg.bearer_token.as_deref(), Some("bearer-test"));
         assert_eq!(
@@ -7758,6 +7791,7 @@ mod tests {
         let wire = serde_json::to_value(&cfg).unwrap();
         assert_eq!(wire["modelId"], "gpt-4");
         assert_eq!(wire["wireModel"], "azure-gpt-4-deployment");
+        assert_eq!(wire["modelProvider"], "lm_studio");
         assert_eq!(wire["maxPromptTokens"], 8192);
         assert_eq!(wire["maxOutputTokens"], 2048);
 
@@ -7765,6 +7799,7 @@ mod tests {
         let wire_unset = serde_json::to_value(&unset).unwrap();
         assert!(wire_unset.get("modelId").is_none());
         assert!(wire_unset.get("wireModel").is_none());
+        assert!(wire_unset.get("modelProvider").is_none());
         assert!(wire_unset.get("maxPromptTokens").is_none());
         assert!(wire_unset.get("maxOutputTokens").is_none());
     }

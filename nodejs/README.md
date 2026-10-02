@@ -644,6 +644,24 @@ if (result.status === "pending") {
 
 See [Auto tier persistence](../docs/features/session-persistence.md#auto-tier-persistence) for the full lifecycle rules.
 
+##### `setTools(tools: Tool[]): Promise<void>`
+
+Replace the tools this client supplies to the session, together with the handlers that serve them (experimental). `tools` takes the same definitions as `createSession` and becomes this client's complete tool set; pass `[]` to remove all of this client's tools. Built-in, MCP, and plugin tools, and tools other connected clients supply, are unaffected.
+
+Once the runtime accepts the replacement, every tool call this session dispatches uses the new handlers; calls already running finish on their original handlers. If the runtime rejects it, the promise rejects and the previous tools and handlers stay in place. Concurrent calls are applied one at a time, in call order.
+
+```typescript
+await session.setTools([
+    defineTool("search_issues", {
+        description: "Search the issues shown on the current page",
+        parameters: z.object({ query: z.string() }),
+        handler: async ({ query }) => searchIssues(query),
+    }),
+]);
+```
+
+The agent sees the new tools from its next model request, which can fall within a turn in progress, so a model request already in flight can still call a tool you removed. See [Changing tools during a session](../docs/features/changing-tools.md) for the details.
+
 ##### `abort(): Promise<void>`
 
 Abort the currently processing message in this session.

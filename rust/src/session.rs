@@ -37,13 +37,13 @@ use crate::types::{
     CreateSessionResult, ElicitationRequest, ElicitationResult, ExitPlanModeData,
     GetMessagesResponse, MessageOptions, PermissionRequestData, RequestId, ResumeSessionConfig,
     ResumeSessionResult, SectionOverride, SessionCapabilities, SessionConfig, SessionEvent,
-    SessionId, SetModelOptions, SystemMessageConfig, ToolInvocation, ToolResult,
-    ToolResultExpanded, TraceContext, TranscriptRecovery, UiInputOptions,
-    ensure_attachment_display_names,
+    SessionId, SetModelOptions, SystemMessageConfig, Tool, ToolHandlerMap, ToolInvocation,
+    ToolResult, ToolResultExpanded, TraceContext, TranscriptRecovery, UiInputOptions,
+    ensure_attachment_display_names, take_tool_handlers,
 };
 use crate::{
-    Client, Error, ErrorKind, JsonRpcResponse, SessionErrorKind, SessionEventNotification,
-    error_codes,
+    Client, Error, ErrorKind, JsonRpcResponse, ProtocolErrorKind, SessionErrorKind,
+    SessionEventNotification, error_codes,
 };
 
 /// Fixed name of the runtime's built-in tool-search tool. A client can replace
@@ -92,7 +92,9 @@ pub(crate) struct SessionHandlers {
     pub user_input: Option<Arc<dyn UserInputHandler>>,
     pub exit_plan_mode: Option<Arc<dyn ExitPlanModeHandler>>,
     pub auto_mode_switch: Option<Arc<dyn AutoModeSwitchHandler>>,
-    pub tools: Arc<HashMap<String, Arc<dyn crate::tool::ToolHandler>>>,
+    /// Shared with the owning [`Session`], which replaces the map when the
+    /// runtime accepts a [`Session::set_tools`] call.
+    pub tools: Arc<parking_lot::RwLock<ToolHandlerMap>>,
 }
 
 type PendingExternalTools = Arc<ParkingLotMutex<HashMap<RequestId, Arc<CancellationToken>>>>;
@@ -519,6 +521,13 @@ pub struct Session {
     /// Cancels only host-owned external tool callbacks. Disconnect signals this
     /// before the destroy RPC without stopping unrelated event delivery.
     external_tools_shutdown: CancellationToken,
+    /// This client's tool handlers, shared with the event loop's
+    /// `external_tool.requested` dispatch.
+    tool_handlers: Arc<parking_lot::RwLock<ToolHandlerMap>>,
+    /// Held for each [`Session::set_tools`] request until the runtime answers,
+    /// so replacements reach the runtime, and replace the handlers, one at a
+    /// time.
+    set_tools_lock: Arc<tokio::sync::Mutex<()>>,
     /// Only populated while a `send_and_wait` call is in flight.
     ///
     /// Sync `parking_lot::Mutex` because the lock is never held across an
@@ -1133,6 +1142,115 @@ impl Session {
             .await
     }
 
+    /// Replace the tools this client supplies to the session.
+    ///
+    /// `tools` becomes the complete set of externally implemented tools this
+    /// client supplies, replacing the set from [`SessionConfig::with_tools`],
+    /// [`ResumeSessionConfig::with_tools`], or a previous call. Built-in, MCP,
+    /// plugin, and extension tools, and tools that other clients connected to
+    /// the session supply, are unaffected. Pass an empty collection to remove
+    /// all of this client's tools.
+    ///
+    /// As at startup, this session dispatches calls to tools that carry a
+    /// [handler](Tool::with_handler), and advertises declaration-only tools for
+    /// another client to service.
+    ///
+    /// The new handlers take effect as soon as the runtime accepts the
+    /// replacement: from then on, every tool request this session dispatches
+    /// uses them, including requests the runtime sent before it accepted.
+    /// Calls already running finish on the handlers that started them. If the
+    /// runtime rejects the replacement, nothing changes. Concurrent calls on
+    /// the same session are applied one at a time, in the order they start.
+    ///
+    /// The runtime offers the new tools from the agent's next model request,
+    /// which can fall within a turn in progress. A model request already in
+    /// flight was made with the previous tools, so the agent can still call a
+    /// tool you removed. This session doesn't answer that call, and it can stay
+    /// pending until the turn is aborted. If a running turn might still call a
+    /// tool you remove, replace tools while the session is idle.
+    ///
+    /// **Experimental.** Wraps the experimental `session.tools.set` RPC, which
+    /// requires a runtime that supports it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::InvalidConfig`], without contacting the runtime, if
+    /// two tools carry handlers under the same name. The runtime rejects invalid
+    /// tool names and names that another connected client already supplies.
+    ///
+    /// # Cancel safety
+    ///
+    /// **Cancel-safe.** Dropping this future while an earlier replacement is
+    /// still in flight sends nothing. Once the request starts, it runs to
+    /// completion in its own task. Dropping this future then doesn't abandon
+    /// the replacement: an accepted replacement still takes effect, and later
+    /// calls still wait for the runtime's answer. Only the result is lost.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use github_copilot_sdk::Tool;
+    /// # use github_copilot_sdk::tool::ToolHandler;
+    /// # async fn example(
+    /// #     session: github_copilot_sdk::session::Session,
+    /// #     search_issues: Arc<dyn ToolHandler>,
+    /// # ) -> Result<(), github_copilot_sdk::Error> {
+    /// session
+    ///     .set_tools([Tool::new("search_issues")
+    ///         .with_description("Search the issues shown on the current page")
+    ///         .with_handler(search_issues)])
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn set_tools<I: IntoIterator<Item = Tool>>(&self, tools: I) -> Result<(), Error> {
+        let mut tools: Vec<Tool> = tools.into_iter().collect();
+        let handlers = take_tool_handlers(&mut tools)?;
+        let mut params = serde_json::json!({ "sessionId": self.id });
+        params["tools"] = serde_json::to_value(&tools)?;
+
+        let set_tools_lock = self.set_tools_lock.clone().lock_owned().await;
+        let installed = self.tool_handlers.clone();
+        let replaced = Arc::new(ParkingLotMutex::new(None));
+        // Swapping on the read task means no tool request read after the
+        // runtime accepted is dispatched to the previous handlers.
+        let accepted: crate::jsonrpc::InlineResponseCallback = Box::new({
+            let replaced = replaced.clone();
+            move |_| {
+                let previous = std::mem::replace(&mut *installed.write(), handlers);
+                *replaced.lock() = Some(previous);
+                Ok(())
+            }
+        });
+        let request = self.client.call_with_inline_callback(
+            rpc_methods::SESSION_TOOLS_SET,
+            Some(params),
+            Some(accepted),
+        );
+        let span = tracing::error_span!("set_tools", session_id = %self.id);
+        // The task owns the request and the lock, so even if this future is
+        // dropped, an accepted replacement still takes effect and the next
+        // call waits for the runtime's answer.
+        let replacement = tokio::spawn(
+            async move {
+                let _set_tools_lock = set_tools_lock;
+                let result = request.await;
+                // Run the replaced handlers' destructors here rather than on
+                // the read task, which every session on this client shares.
+                let previous = replaced.lock().take();
+                drop(previous);
+                result
+            }
+            .instrument(span),
+        );
+        match replacement.await {
+            Ok(result) => result.map(|_| ()),
+            Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+            Err(_) => Err(ErrorKind::Protocol(ProtocolErrorKind::RequestCancelled).into()),
+        }
+    }
+
     /// Disconnect this session from the CLI.
     ///
     /// Sends the `session.detach` RPC, stops the event loop, and unregisters
@@ -1634,6 +1752,9 @@ impl Client {
             runtime.permission_handler.take(),
             runtime.permission_policy.take(),
         );
+        let tool_handlers = Arc::new(parking_lot::RwLock::new(std::mem::take(
+            &mut runtime.tool_handlers,
+        )));
         let handlers = SessionHandlers {
             permission: permission_handler,
             managed_settings_enabled: has_managed_settings(
@@ -1645,7 +1766,7 @@ impl Client {
             user_input: runtime.user_input_handler.take(),
             exit_plan_mode: runtime.exit_plan_mode_handler.take(),
             auto_mode_switch: runtime.auto_mode_switch_handler.take(),
-            tools: Arc::new(std::mem::take(&mut runtime.tool_handlers)),
+            tools: tool_handlers.clone(),
         };
         let hooks = runtime.hooks_handler.take();
         let transforms = runtime.system_message_transform.take();
@@ -1849,6 +1970,8 @@ impl Client {
             event_loop: ParkingLotMutex::new(Some(event_loop)),
             shutdown,
             external_tools_shutdown,
+            tool_handlers,
+            set_tools_lock: Arc::default(),
             idle_waiter,
             capabilities,
             open_canvases,
@@ -1965,6 +2088,9 @@ impl Client {
             runtime.permission_handler.take(),
             runtime.permission_policy.take(),
         );
+        let tool_handlers = Arc::new(parking_lot::RwLock::new(std::mem::take(
+            &mut runtime.tool_handlers,
+        )));
         let handlers = SessionHandlers {
             permission: permission_handler,
             managed_settings_enabled: has_managed_settings(
@@ -1976,7 +2102,7 @@ impl Client {
             user_input: runtime.user_input_handler.take(),
             exit_plan_mode: runtime.exit_plan_mode_handler.take(),
             auto_mode_switch: runtime.auto_mode_switch_handler.take(),
-            tools: Arc::new(std::mem::take(&mut runtime.tool_handlers)),
+            tools: tool_handlers.clone(),
         };
         let hooks = runtime.hooks_handler.take();
         let transforms = runtime.system_message_transform.take();
@@ -2150,6 +2276,8 @@ impl Client {
             event_loop: ParkingLotMutex::new(Some(event_loop)),
             shutdown,
             external_tools_shutdown,
+            tool_handlers,
+            set_tools_lock: Arc::default(),
             idle_waiter,
             capabilities,
             open_canvases,
@@ -2936,7 +3064,7 @@ async fn handle_notification(
             let tool_handler = if data.tool_name.is_empty() {
                 None
             } else {
-                handlers.tools.get(&data.tool_name).cloned()
+                handlers.tools.read().get(&data.tool_name).cloned()
             };
             let Some(tool_handler) = tool_handler else {
                 return;

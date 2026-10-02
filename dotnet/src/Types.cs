@@ -2402,6 +2402,15 @@ public sealed class ProviderConfig
     public string? Transport { get; set; }
 
     /// <summary>
+    /// Product serving the model, such as <c>ollama</c> or <c>lm_studio</c>, reported in telemetry
+    /// as <c>model_provider</c>. Allowed values are <c>openai</c>, <c>anthropic</c>,
+    /// <c>azure_openai</c>, <c>ollama</c>, <c>lm_studio</c>, <c>foundry_local</c>, and
+    /// <c>llama_cpp</c>; only affects telemetry.
+    /// </summary>
+    [JsonPropertyName("modelProvider")]
+    public string? ModelProvider { get; set; }
+
+    /// <summary>
     /// Base URL of the provider's API endpoint.
     /// </summary>
     [JsonPropertyName("baseUrl")]
@@ -2570,6 +2579,15 @@ public sealed class NamedProviderConfig
     /// </summary>
     [JsonPropertyName("wireApi")]
     public string? WireApi { get; set; }
+
+    /// <summary>
+    /// Product serving this provider's models, such as <c>ollama</c> or <c>lm_studio</c>, reported
+    /// in telemetry as <c>model_provider</c>. Allowed values are <c>openai</c>, <c>anthropic</c>,
+    /// <c>azure_openai</c>, <c>ollama</c>, <c>lm_studio</c>, <c>foundry_local</c>, and
+    /// <c>llama_cpp</c>; only affects telemetry.
+    /// </summary>
+    [JsonPropertyName("modelProvider")]
+    public string? ModelProvider { get; set; }
 
     /// <summary>
     /// API endpoint URL.

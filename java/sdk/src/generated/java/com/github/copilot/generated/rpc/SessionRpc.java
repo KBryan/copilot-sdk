@@ -98,7 +98,7 @@ public final class SessionRpc {
     /** API methods for the {@code metadata} namespace. */
     public final SessionMetadataApi metadata;
     /** API methods for the {@code settings} namespace. */
-    public final SessionSettingsApi settings;
+    final SessionSettingsApi settings;
     /** API methods for the {@code contentExclusion} namespace. */
     public final SessionContentExclusionApi contentExclusion;
     /** API methods for the {@code shell} namespace. */
@@ -229,7 +229,7 @@ public final class SessionRpc {
      * @since 1.0.0
      */
     @CopilotExperimental
-    public CompletableFuture<Void> sendSystemNotification(SessionSendSystemNotificationParams params) {
+    CompletableFuture<Void> sendSystemNotification(SessionSendSystemNotificationParams params) {
         com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(params);
         _p.put("sessionId", this.sessionId);
         return caller.invoke("session.sendSystemNotification", _p, Void.class);

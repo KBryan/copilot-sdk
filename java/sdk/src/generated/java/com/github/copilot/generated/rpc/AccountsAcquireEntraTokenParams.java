@@ -24,7 +24,7 @@ import javax.annotation.processing.Generated;
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AccountsAcquireEntraTokenParams(
+record AccountsAcquireEntraTokenParams(
     /** Public client application id. */
     @JsonProperty("clientId") String clientId,
     /** Tenant id or tenant selector, such as common or organizations. */

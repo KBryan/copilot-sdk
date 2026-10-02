@@ -20,7 +20,7 @@ import javax.annotation.processing.Generated;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
-public final class EntraTokenAcquireResultOk extends EntraTokenAcquireResult {
+final class EntraTokenAcquireResultOk extends EntraTokenAcquireResult {
 
     @JsonProperty("status")
     private final String status = "ok";

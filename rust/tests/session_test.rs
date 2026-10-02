@@ -5374,7 +5374,8 @@ async fn nested_handler_panics_still_send_cancellation_replies() {
             _request_id: RequestId,
             _request: ElicitationRequest,
         ) -> ElicitationResult {
-            panic!("test elicitation handler panic");
+            // Test cancellation after unwinding, not progress of the panic diagnostic sink.
+            std::panic::resume_unwind(Box::new("test elicitation handler panic"));
         }
     }
 
@@ -5386,7 +5387,7 @@ async fn nested_handler_panics_still_send_cancellation_replies() {
             _request_id: RequestId,
             _request: McpAuthRequest,
         ) -> McpAuthResult {
-            panic!("test MCP-auth handler panic");
+            std::panic::resume_unwind(Box::new("test MCP-auth handler panic"));
         }
     }
 
@@ -5758,6 +5759,448 @@ async fn external_tool_broadcast_for_unknown_tool_is_not_responded_to() {
         "expected no RPC response for unknown tool, got: {:?}",
         res.ok()
     );
+}
+
+/// Answers every call with its label, so a test can tell which handler served it.
+struct LabelTool(&'static str);
+
+#[async_trait]
+impl tool::ToolHandler for LabelTool {
+    async fn call(
+        &self,
+        _invocation: ToolInvocation,
+    ) -> Result<ToolResult, github_copilot_sdk::Error> {
+        Ok(ToolResult::Text(self.0.to_string()))
+    }
+}
+
+fn label_tool(name: &str, label: &'static str) -> Tool {
+    Tool::new(name)
+        .with_description(format!("{name} tool"))
+        .with_parameters(serde_json::json!({"type": "object"}))
+        .with_handler(Arc::new(LabelTool(label)))
+}
+
+async fn request_external_tool(server: &mut FakeServer, request_id: &str, tool_name: &str) {
+    server
+        .send_event(
+            "external_tool.requested",
+            serde_json::json!({
+                "requestId": request_id,
+                "sessionId": server.session_id,
+                "toolCallId": format!("call-{request_id}"),
+                "toolName": tool_name,
+                "arguments": {},
+            }),
+        )
+        .await;
+}
+
+/// Reads the handler's answer to `request_id`.
+async fn read_tool_result(server: &mut FakeServer, request_id: &str) -> Value {
+    let reply = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(reply["method"], "session.tools.handlePendingToolCall");
+    assert_eq!(reply["params"]["requestId"], request_id);
+    reply["params"]["result"].clone()
+}
+
+async fn assert_no_request(server: &mut FakeServer) {
+    let request = timeout(Duration::from_millis(150), server.read_request()).await;
+    assert!(request.is_err(), "unexpected request: {:?}", request.ok());
+}
+
+#[tokio::test]
+async fn set_tools_replaces_the_definitions_and_handlers_together() {
+    let (session, mut server) = create_session_pair_with_config(|cfg| {
+        cfg.with_tools(vec![label_tool("old", "old handler")])
+    })
+    .await;
+    let session = Arc::new(session);
+
+    let replace = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([
+                    label_tool("new", "new handler"),
+                    Tool::new("declared").with_description("Declared only"),
+                ])
+                .await
+        }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.tools.set");
+    assert_eq!(
+        request["params"],
+        serde_json::json!({
+            "sessionId": server.session_id,
+            "tools": [
+                { "name": "new", "description": "new tool", "parameters": { "type": "object" } },
+                { "name": "declared", "description": "Declared only" },
+            ],
+        })
+    );
+    server.respond(&request, serde_json::json!({})).await;
+    timeout(TIMEOUT, replace).await.unwrap().unwrap().unwrap();
+
+    request_external_tool(&mut server, "req-new", "new").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-new").await,
+        "new handler"
+    );
+
+    // Neither the removed tool nor the declaration-only tool is answered here.
+    request_external_tool(&mut server, "req-old", "old").await;
+    request_external_tool(&mut server, "req-declared", "declared").await;
+    assert_no_request(&mut server).await;
+}
+
+// With one worker, the event loop usually dispatches the next message before
+// the replacement task resumes, so this exercises the swap on the read task.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn set_tools_keeps_the_previous_handlers_until_the_runtime_accepts_the_replacement() {
+    let (session, mut server) = create_session_pair_with_config(|cfg| {
+        cfg.with_tools(vec![label_tool("old", "old handler")])
+    })
+    .await;
+    let session = Arc::new(session);
+
+    let replace = tokio::spawn({
+        let session = session.clone();
+        async move { session.set_tools([label_tool("new", "new handler")]).await }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.tools.set");
+
+    // Until the runtime accepts, the outgoing tool is still this client's, and
+    // the incoming one may still belong to another client.
+    request_external_tool(&mut server, "req-old", "old").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-old").await,
+        "old handler"
+    );
+    request_external_tool(&mut server, "req-new", "new").await;
+    assert_no_request(&mut server).await;
+
+    // The first messages after the response already see exactly the accepted
+    // set: the removed tool is not answered, and the added one is.
+    server.respond(&request, serde_json::json!({})).await;
+    request_external_tool(&mut server, "req-old-after", "old").await;
+    request_external_tool(&mut server, "req-new-after", "new").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-new-after").await,
+        "new handler"
+    );
+    assert_no_request(&mut server).await;
+    timeout(TIMEOUT, replace).await.unwrap().unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn set_tools_lets_a_running_call_finish_on_its_original_handler() {
+    /// Blocks each call until released, then answers with its label.
+    struct GatedTool {
+        started: parking_lot::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl tool::ToolHandler for GatedTool {
+        async fn call(
+            &self,
+            _invocation: ToolInvocation,
+        ) -> Result<ToolResult, github_copilot_sdk::Error> {
+            if let Some(started) = self.started.lock().take() {
+                let _ = started.send(());
+            }
+            self.release.notified().await;
+            Ok(ToolResult::Text("old lookup".to_string()))
+        }
+    }
+
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let release = Arc::new(Notify::new());
+    let gated = Tool::new("lookup")
+        .with_description("lookup tool")
+        .with_parameters(serde_json::json!({"type": "object"}))
+        .with_handler(Arc::new(GatedTool {
+            started: parking_lot::Mutex::new(Some(started_tx)),
+            release: release.clone(),
+        }));
+    let (session, mut server) =
+        create_session_pair_with_config(move |cfg| cfg.with_tools(vec![gated])).await;
+    let session = Arc::new(session);
+
+    request_external_tool(&mut server, "req-running", "lookup").await;
+    timeout(TIMEOUT, started_rx).await.unwrap().unwrap();
+
+    let replace = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([label_tool("lookup", "new lookup")])
+                .await
+        }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.tools.set");
+    server.respond(&request, serde_json::json!({})).await;
+    timeout(TIMEOUT, replace).await.unwrap().unwrap().unwrap();
+
+    request_external_tool(&mut server, "req-after", "lookup").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-after").await,
+        "new lookup"
+    );
+
+    release.notify_one();
+    assert_eq!(
+        read_tool_result(&mut server, "req-running").await,
+        "old lookup"
+    );
+}
+
+#[tokio::test]
+async fn set_tools_leaves_the_handlers_unchanged_when_the_runtime_rejects_it() {
+    let (session, mut server) = create_session_pair_with_config(|cfg| {
+        cfg.with_tools(vec![label_tool("old", "old handler")])
+    })
+    .await;
+    let session = Arc::new(session);
+
+    let replace = tokio::spawn({
+        let session = session.clone();
+        async move { session.set_tools([label_tool("new", "new handler")]).await }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.tools.set");
+
+    // Another client owns `new`, so its calls are never this client's to answer.
+    request_external_tool(&mut server, "req-new", "new").await;
+    assert_no_request(&mut server).await;
+    server
+        .respond_error(
+            &request,
+            -32602,
+            "External tool name clash: new already registered by another connection",
+        )
+        .await;
+    let error = timeout(TIMEOUT, replace)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        matches!(error.kind(), ErrorKind::Rpc { code: -32602 }),
+        "{error}"
+    );
+
+    request_external_tool(&mut server, "req-new-after", "new").await;
+    assert_no_request(&mut server).await;
+    request_external_tool(&mut server, "req-old", "old").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-old").await,
+        "old handler"
+    );
+}
+
+#[tokio::test]
+async fn set_tools_completes_the_replacement_when_the_caller_stops_waiting() {
+    let (session, mut server) = create_session_pair_with_config(|cfg| {
+        cfg.with_tools(vec![label_tool("old", "old handler")])
+    })
+    .await;
+    let session = Arc::new(session);
+
+    let abandoned = tokio::spawn({
+        let session = session.clone();
+        async move { session.set_tools([label_tool("new", "new handler")]).await }
+    });
+    let abandoned_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(abandoned_request["method"], "session.tools.set");
+    abandoned.abort();
+    assert!(abandoned.await.unwrap_err().is_cancelled());
+
+    // A later replacement still waits for the abandoned one.
+    let next = tokio::spawn({
+        let session = session.clone();
+        async move { session.set_tools(Vec::new()).await }
+    });
+    assert_no_request(&mut server).await;
+    server
+        .respond(&abandoned_request, serde_json::json!({}))
+        .await;
+    let next_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(next_request["params"]["tools"], serde_json::json!([]));
+
+    // The abandoned replacement still took effect.
+    request_external_tool(&mut server, "req-old", "old").await;
+    request_external_tool(&mut server, "req-new", "new").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-new").await,
+        "new handler"
+    );
+    assert_no_request(&mut server).await;
+
+    server.respond(&next_request, serde_json::json!({})).await;
+    timeout(TIMEOUT, next).await.unwrap().unwrap().unwrap();
+    request_external_tool(&mut server, "req-new-after", "new").await;
+    assert_no_request(&mut server).await;
+}
+
+#[tokio::test]
+async fn set_tools_rejects_duplicate_handlers_without_contacting_the_runtime() {
+    let (session, mut server) = create_session_pair_with_config(|cfg| {
+        cfg.with_tools(vec![label_tool("old", "old handler")])
+    })
+    .await;
+    let session = Arc::new(session);
+
+    let error = session
+        .set_tools([label_tool("dup", "first"), label_tool("dup", "second")])
+        .await
+        .unwrap_err();
+    assert!(matches!(error.kind(), ErrorKind::InvalidConfig), "{error}");
+
+    // The next request on the wire is this probe, so nothing was sent before it.
+    let probe = tokio::spawn({
+        let session = session.clone();
+        async move { session.abort().await }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.abort");
+    server.respond(&request, serde_json::json!({})).await;
+    timeout(TIMEOUT, probe).await.unwrap().unwrap().unwrap();
+
+    request_external_tool(&mut server, "req-old", "old").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-old").await,
+        "old handler"
+    );
+}
+
+#[tokio::test]
+async fn set_tools_applies_concurrent_replacements_in_order() {
+    let (session, mut server) = create_session_pair().await;
+    let session = Arc::new(session);
+
+    let first = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([label_tool("first", "first handler")])
+                .await
+        }
+    });
+    let first_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(first_request["params"]["tools"][0]["name"], "first");
+
+    let second = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([label_tool("second", "second handler")])
+                .await
+        }
+    });
+    // The second replacement waits for the runtime to answer the first.
+    assert_no_request(&mut server).await;
+    server.respond(&first_request, serde_json::json!({})).await;
+    timeout(TIMEOUT, first).await.unwrap().unwrap().unwrap();
+
+    let second_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(second_request["params"]["tools"][0]["name"], "second");
+    server.respond(&second_request, serde_json::json!({})).await;
+    timeout(TIMEOUT, second).await.unwrap().unwrap().unwrap();
+
+    request_external_tool(&mut server, "req-first", "first").await;
+    assert_no_request(&mut server).await;
+    request_external_tool(&mut server, "req-second", "second").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-second").await,
+        "second handler"
+    );
+}
+
+#[tokio::test]
+async fn set_tools_sends_nothing_when_dropped_while_queued() {
+    let (session, mut server) = create_session_pair().await;
+    let session = Arc::new(session);
+
+    let first = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([label_tool("first", "first handler")])
+                .await
+        }
+    });
+    let first_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+
+    let queued = tokio::spawn({
+        let session = session.clone();
+        async move {
+            session
+                .set_tools([label_tool("queued", "queued handler")])
+                .await
+        }
+    });
+    assert_no_request(&mut server).await;
+    queued.abort();
+    assert!(queued.await.unwrap_err().is_cancelled());
+
+    server.respond(&first_request, serde_json::json!({})).await;
+    timeout(TIMEOUT, first).await.unwrap().unwrap().unwrap();
+    assert_no_request(&mut server).await;
+
+    request_external_tool(&mut server, "req-queued", "queued").await;
+    assert_no_request(&mut server).await;
+    request_external_tool(&mut server, "req-first", "first").await;
+    assert_eq!(
+        read_tool_result(&mut server, "req-first").await,
+        "first handler"
+    );
+}
+
+#[tokio::test]
+async fn set_tools_replaces_the_tools_of_a_resumed_session() {
+    use github_copilot_sdk::types::ResumeSessionConfig;
+
+    let (client, server_read, server_write) = make_client();
+    let mut server = FakeServer {
+        read: server_read,
+        write: server_write,
+        session_id: "resumed-with-tools".to_string(),
+    };
+    let resume = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .resume_session(
+                    ResumeSessionConfig::new(SessionId::from("resumed-with-tools"))
+                        .with_tools(vec![label_tool("old", "old handler")]),
+                )
+                .await
+                .unwrap()
+        }
+    });
+    let resume_request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(resume_request["method"], "session.resume");
+    server_respond_create(&mut server.write, &resume_request, "resumed-with-tools").await;
+    respond_to_reload(&mut server.read, &mut server.write).await;
+    let session = Arc::new(timeout(TIMEOUT, resume).await.unwrap().unwrap());
+
+    let replace = tokio::spawn({
+        let session = session.clone();
+        async move { session.set_tools(Vec::new()).await }
+    });
+    let request = timeout(TIMEOUT, server.read_request()).await.unwrap();
+    assert_eq!(request["method"], "session.tools.set");
+    assert_eq!(request["params"]["tools"], serde_json::json!([]));
+    server.respond(&request, serde_json::json!({})).await;
+    timeout(TIMEOUT, replace).await.unwrap().unwrap().unwrap();
+
+    request_external_tool(&mut server, "req-old", "old").await;
+    assert_no_request(&mut server).await;
 }
 
 #[tokio::test]

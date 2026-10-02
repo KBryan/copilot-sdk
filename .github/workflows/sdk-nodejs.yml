@@ -91,9 +91,20 @@ jobs:
         run: |
           if [ "$COPILOT_SDK_DEFAULT_CONNECTION" = "inprocess" ]; then
             npm test -- test/e2e/inprocess_ffi.e2e.test.ts test/e2e/auth_host.e2e.test.ts
+          elif [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+            npm test -- --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/sdk-nodejs-results.json"
           else
             npm test
           fi
+      - name: Upload merge-queue Node.js test results
+        if: always() && github.event_name == 'merge_group' && runner.os == 'Linux' && matrix.transport == 'default'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: suspected-flakes-sdk-nodejs-${{ github.run_attempt }}-linux
+          path: ${{ runner.temp }}/sdk-nodejs-results.json
+          if-no-files-found: warn
+          retention-days: 7
 
   nodejs-musl-x64:
     name: "Node.js (Alpine x64, ${{ matrix.transport }})"

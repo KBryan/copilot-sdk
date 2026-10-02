@@ -367,6 +367,7 @@ Initial acquisition runs during session creation or resume. Cancellation, provid
 - `Send(ctx context.Context, options MessageOptions) (string, error)` - Send a message
 - `On(handler SessionEventHandler) func()` - Subscribe to events (returns unsubscribe function)
 - `Abort(ctx context.Context) error` - Abort the currently processing message
+- `SetTools(ctx context.Context, tools []Tool) error` - Replace this client's live custom tools and handlers for the session. See [changing tools](../docs/features/changing-tools.md) for shared behavior and active-turn limitations.
 - `GetEvents(ctx context.Context) ([]SessionEvent, error)` - Get event history
 - `Disconnect() error` - Disconnect the session (releases in-memory resources, preserves disk state)
 - `UI() *SessionUI` - Interactive UI API for elicitation dialogs

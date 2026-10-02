@@ -135,6 +135,7 @@ from .session import (
     UserInputHandler,
     _capabilities_to_dict,
     _PermissionHandlerFn,
+    _tools_to_wire_definitions,
 )
 from .session_fs_provider import SessionFsProvider, create_session_fs_adapter
 from .tools import Tool
@@ -2618,26 +2619,7 @@ class CopilotClient:
         if not self._client:
             await self.start()
 
-        tool_defs = []
-        if tools:
-            for tool in tools:
-                definition: dict[str, Any] = {
-                    "name": tool.name,
-                    "description": tool.description,
-                }
-                if tool.parameters:
-                    definition["parameters"] = tool.parameters
-                if tool.overrides_built_in_tool:
-                    definition["overridesBuiltInTool"] = True
-                if tool.skip_permission:
-                    definition["skipPermission"] = True
-                if tool.defer is not None:
-                    definition["defer"] = tool.defer
-                if tool.metadata is not None:
-                    definition["metadata"] = tool.metadata
-                if tool.is_terminal:
-                    definition["isTerminal"] = True
-                tool_defs.append(definition)
+        tool_defs = [definition.to_dict() for definition in _tools_to_wire_definitions(tools)]
 
         # Empty-mode validation and normalization
         mode = self._options.mode
@@ -3418,26 +3400,7 @@ class CopilotClient:
         if not self._client:
             await self.start()
 
-        tool_defs = []
-        if tools:
-            for tool in tools:
-                definition: dict[str, Any] = {
-                    "name": tool.name,
-                    "description": tool.description,
-                }
-                if tool.parameters:
-                    definition["parameters"] = tool.parameters
-                if tool.overrides_built_in_tool:
-                    definition["overridesBuiltInTool"] = True
-                if tool.skip_permission:
-                    definition["skipPermission"] = True
-                if tool.defer is not None:
-                    definition["defer"] = tool.defer
-                if tool.metadata is not None:
-                    definition["metadata"] = tool.metadata
-                if tool.is_terminal:
-                    definition["isTerminal"] = True
-                tool_defs.append(definition)
+        tool_defs = [definition.to_dict() for definition in _tools_to_wire_definitions(tools)]
 
         # Empty-mode validation and normalization
         mode = self._options.mode
@@ -4319,6 +4282,8 @@ class CopilotClient:
             wire_provider["wireApi"] = provider["wire_api"]
         if "transport" in provider:
             wire_provider["transport"] = provider["transport"]
+        if "model_provider" in provider:
+            wire_provider["modelProvider"] = provider["model_provider"]
         if "bearer_token" in provider:
             wire_provider["bearerToken"] = provider["bearer_token"]
         if provider.get("bearer_token_provider") is not None:
@@ -4353,6 +4318,8 @@ class CopilotClient:
             wire["type"] = provider["type"]
         if "wire_api" in provider:
             wire["wireApi"] = provider["wire_api"]
+        if "model_provider" in provider:
+            wire["modelProvider"] = provider["model_provider"]
         if "base_url" in provider:
             wire["baseUrl"] = provider["base_url"]
         if "api_key" in provider:

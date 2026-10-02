@@ -2372,6 +2372,7 @@ class TestSessionConfigForwarding:
                     "headers": {"Authorization": "Bearer provider-token"},
                     "model_id": "gpt-4o",
                     "wire_model": "my-finetune-v3",
+                    "model_provider": "lm_studio",
                     "max_prompt_tokens": 100_000,
                     "max_output_tokens": 4096,
                     "transport": "websockets",
@@ -2383,6 +2384,7 @@ class TestSessionConfigForwarding:
             assert provider["headers"] == {"Authorization": "Bearer provider-token"}
             assert provider["modelId"] == "gpt-4o"
             assert provider["wireModel"] == "my-finetune-v3"
+            assert provider["modelProvider"] == "lm_studio"
             assert provider["maxPromptTokens"] == 100_000
             assert provider["maxOutputTokens"] == 4096
             assert provider["transport"] == "websockets"
@@ -2417,6 +2419,7 @@ class TestSessionConfigForwarding:
                     "headers": {"Authorization": "Bearer resume-token"},
                     "model_id": "gpt-4o",
                     "wire_model": "my-finetune-v3",
+                    "model_provider": "ollama",
                     "max_prompt_tokens": 100_000,
                     "max_output_tokens": 4096,
                 },
@@ -2427,8 +2430,50 @@ class TestSessionConfigForwarding:
             assert provider["headers"] == {"Authorization": "Bearer resume-token"}
             assert provider["modelId"] == "gpt-4o"
             assert provider["wireModel"] == "my-finetune-v3"
+            assert provider["modelProvider"] == "ollama"
             assert provider["maxPromptTokens"] == 100_000
             assert provider["maxOutputTokens"] == 4096
+        finally:
+            await client.force_stop()
+
+    @pytest.mark.asyncio
+    async def test_create_session_forwards_named_provider_model_provider(self):
+        client = CopilotClient(connection=RuntimeConnection.for_stdio(path=CLI_PATH))
+        await client.start()
+
+        try:
+            captured = {}
+            original_request = client._client.request
+
+            async def mock_request(method, params, **kwargs):
+                captured[method] = params
+                if method == "session.create":
+                    sid = params.get("sessionId") or "session-id"
+                    result = {"sessionId": sid}
+                    callback = kwargs.get("on_response_inline")
+                    if callback is not None:
+                        callback(result)
+                    return result
+                return await original_request(method, params, **kwargs)
+
+            client._client.request = mock_request
+            await client.create_session(
+                on_permission_request=PermissionHandler.approve_all,
+                providers=[
+                    {
+                        "name": "local",
+                        "type": "openai",
+                        "base_url": "http://localhost:11434/v1",
+                        "model_provider": "ollama",
+                    }
+                ],
+                models=[{"id": "llama3", "provider": "local"}],
+            )
+
+            provider = captured["session.create"]["providers"][0]
+            assert provider["name"] == "local"
+            assert provider["baseUrl"] == "http://localhost:11434/v1"
+            assert provider["modelProvider"] == "ollama"
         finally:
             await client.force_stop()
 

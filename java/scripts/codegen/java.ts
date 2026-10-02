@@ -75,6 +75,10 @@ function normalizeSchemaBrandCasing<T>(schema: T): T {
     return schema;
 }
 
+function normalizeRpcSchema(schema: RpcSchema): RpcSchema {
+    return normalizeSchemaBrandCasing(structuredClone(schema));
+}
+
 function normalizeBrandCasingNode(node: unknown): void {
     if (Array.isArray(node)) {
         for (const item of node) normalizeBrandCasingNode(item);
@@ -248,6 +252,7 @@ const pendingStandaloneTypes = new Map<string, JSONSchema7>();
 const promotedNestedUnionTypes = new Set<string>();
 const promotedSealedUnionTypes = new Set<string>();
 const generatedSessionEventTypeNames = new Set<string>();
+let publicRpcDefinitionNames = new Set<string>();
 
 // Cross-schema definitions: keyed by schema filename (e.g. "session-events.schema.json"),
 // value is the definitions map from that schema. Populated by generateRpcTypes so that
@@ -322,6 +327,54 @@ function nullableResultReference(schema: JSONSchema7): JSONSchema7 | undefined {
     if (first.type === "null" && second.$ref) return second;
     if (second.type === "null" && first.$ref) return first;
     return undefined;
+}
+
+function collectReferencedDefinitionNames(schema: JSONSchema7 | null | undefined, definitions: Record<string, JSONSchema7>, names = new Set<string>()): Set<string> {
+    if (!schema || typeof schema !== "object") return names;
+    const refName = referencedDefinitionName(schema);
+    if (refName) {
+        if (names.has(refName)) return names;
+        names.add(refName);
+        collectReferencedDefinitionNames(definitions[refName], definitions, names);
+        return names;
+    }
+    for (const key of ["items", "additionalProperties"] as const) {
+        const child = schema[key];
+        if (child && typeof child === "object" && !Array.isArray(child)) {
+            collectReferencedDefinitionNames(child as JSONSchema7, definitions, names);
+        }
+    }
+    for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+        for (const child of schema[key] ?? []) {
+            if (child && typeof child === "object") collectReferencedDefinitionNames(child as JSONSchema7, definitions, names);
+        }
+    }
+    for (const child of Object.values(schema.properties ?? {})) {
+        if (child && typeof child === "object") collectReferencedDefinitionNames(child as JSONSchema7, definitions, names);
+    }
+    return names;
+}
+
+function computePublicRpcDefinitionNames(schema: RpcSchema): Set<string> {
+    const definitions = schema.definitions ?? {};
+    const names = new Set<string>();
+    const collect = (node: Record<string, unknown> | undefined): void => {
+        if (!node) return;
+        for (const [, method] of collectRpcMethods(node)) {
+            if (method.visibility === "internal") continue;
+            collectReferencedDefinitionNames(method.params, definitions, names);
+            collectReferencedDefinitionNames(method.result, definitions, names);
+        }
+    };
+    collect(schema.server);
+    collect(schema.session);
+    collect(schema.clientSession);
+    collect(schema.clientGlobal);
+    return names;
+}
+
+function rpcTypeVisibility(name: string, _schema: JSONSchema7): "public" | "internal" {
+    return publicRpcDefinitionNames.has(name) ? "public" : "internal";
 }
 
 /**
@@ -704,6 +757,7 @@ interface RpcUnion {
     schema: JSONSchema7;
     packageName: string;
     packageDir: string;
+    visibility: "public" | "internal";
     discriminatorProperty: string;
     variants: RpcVariant[];
 }
@@ -772,7 +826,8 @@ async function generatePolymorphicResultClass(
     className: string,
     schema: JSONSchema7,
     packageName: string,
-    packageDir: string
+    packageDir: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const variants = resolveAnyOfVariants(unionVariants(schema) ?? []);
     const discriminator = findDiscriminator(variants);
@@ -794,13 +849,14 @@ async function generatePolymorphicResultClass(
         if (previous && stableStringify(previous.schema) !== stableStringify(schema)) {
             throw new Error(`Conflicting Java RPC union "${className}".`);
         }
+        const plannedVisibility = previous && previous.visibility === "public" ? "public" : visibility;
         rpcGeneration.unions.set(className, {
-            schema, packageName, packageDir, discriminatorProperty: discriminator.property, variants: variantInfos,
+            schema, packageName, packageDir, visibility: plannedVisibility, discriminatorProperty: discriminator.property, variants: variantInfos,
         });
         // Resolve fields now so nested/standalone unions participate in the same
         // ownership plan. Nothing is written until every membership is known.
         for (const variant of variantInfos) {
-            await generatePolymorphicVariantClass(variant.variantClassName, variant.schema, variant.discriminatorValue, discriminator.property, className, packageName, packageDir);
+            await generatePolymorphicVariantClass(variant.variantClassName, variant.schema, variant.discriminatorValue, discriminator.property, className, packageName, packageDir, visibility);
         }
         return;
     }
@@ -853,7 +909,8 @@ async function generatePolymorphicResultClass(
     }
     baseLines.push(`@JsonIgnoreProperties(ignoreUnknown = true)`);
     baseLines.push(GENERATED_ANNOTATION);
-    baseLines.push(`public abstract class ${className} {`);
+    const visModifier = visibility === "public" ? "public " : "";
+    baseLines.push(`${visModifier}abstract class ${className} {`);
     baseLines.push("");
     baseLines.push(`    /**`);
     baseLines.push(`     * Returns the discriminator value for this variant.`);
@@ -868,7 +925,7 @@ async function generatePolymorphicResultClass(
 
     // Generate each variant subclass
     for (const variant of variantInfos) {
-        await generatePolymorphicVariantClass(variant.variantClassName, variant.schema, variant.discriminatorValue, discriminator.property, className, packageName, packageDir);
+        await generatePolymorphicVariantClass(variant.variantClassName, variant.schema, variant.discriminatorValue, discriminator.property, className, packageName, packageDir, visibility);
     }
 }
 
@@ -882,7 +939,8 @@ async function generatePolymorphicVariantClass(
     discriminatorProperty: string,
     baseClassName: string,
     packageName: string,
-    packageDir: string
+    packageDir: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const experimental = isSchemaExperimental(schema);
     const allImports = new Set<string>([
@@ -956,7 +1014,8 @@ async function generatePolymorphicVariantClass(
     lines.push(`@JsonIgnoreProperties(ignoreUnknown = true)`);
     lines.push(`@JsonInclude(JsonInclude.Include.NON_NULL)`);
     lines.push(GENERATED_ANNOTATION);
-    lines.push(`public final class ${className} extends ${baseClassName} {`);
+    const visModifier = visibility === "public" ? "public " : "";
+    lines.push(`${visModifier}final class ${className} extends ${baseClassName} {`);
     lines.push("");
 
     // Discriminator field
@@ -1007,7 +1066,8 @@ async function generateSealedUnionInterface(
     schema: JSONSchema7,
     packageName: string,
     packageDir: string,
-    headerComment: string
+    headerComment: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const variants = resolveUnionVariants(schema);
     const discriminator = variants ? findRequiredStringDiscriminator(variants) : null;
@@ -1062,7 +1122,8 @@ async function generateSealedUnionInterface(
     }
     baseLines.push(`@JsonIgnoreProperties(ignoreUnknown = true)`);
     baseLines.push(GENERATED_ANNOTATION);
-    baseLines.push(`public sealed interface ${className} permits ${variantInfos.map((variant) => variant.variantClassName).join(", ")} {`);
+    const visModifier = visibility === "public" ? "public " : "";
+    baseLines.push(`${visModifier}sealed interface ${className} permits ${variantInfos.map((variant) => variant.variantClassName).join(", ")} {`);
     baseLines.push(`    /**`);
     baseLines.push(`     * Returns the discriminator value for this variant.`);
     baseLines.push(`     *`);
@@ -1084,7 +1145,8 @@ async function generateSealedUnionInterface(
             className,
             packageName,
             packageDir,
-            headerComment
+            headerComment,
+            visibility
         );
     }
 }
@@ -1097,7 +1159,8 @@ async function generateSealedUnionVariantRecord(
     baseClassName: string,
     packageName: string,
     packageDir: string,
-    headerComment: string
+    headerComment: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const experimental = isSchemaExperimental(schema);
     const allImports = new Set<string>([
@@ -1177,7 +1240,8 @@ async function generateSealedUnionVariantRecord(
     lines.push(`@JsonInclude(JsonInclude.Include.NON_NULL)`);
     lines.push(`@JsonTypeInfo(use = JsonTypeInfo.Id.NONE)`);
     lines.push(GENERATED_ANNOTATION);
-    lines.push(`public record ${className}(`);
+    const visModifier = visibility === "public" ? "public " : "";
+    lines.push(`${visModifier}record ${className}(`);
     for (let i = 0; i < fields.length; i++) {
         const field = fields[i];
         const comma = i < fields.length - 1 ? "," : "";
@@ -1893,7 +1957,8 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
 async function generatePendingStandaloneTypes(
     packageName: string,
     packageDir: string,
-    headerComment: string
+    headerComment: string,
+    visibilityForName: (name: string, schema: JSONSchema7) => "public" | "internal" = () => "public"
 ): Promise<void> {
     const generated = new Set<string>();
 
@@ -1910,16 +1975,17 @@ async function generatePendingStandaloneTypes(
         if (batch.length === 0) break;
 
         for (const [name, schema] of batch) {
+            const visibility = visibilityForName(name, schema);
             if (schema.type === "string" && schema.enum) {
-                await generateStandaloneEnum(name, schema, packageName, packageDir, headerComment);
+                await generateStandaloneEnum(name, schema, packageName, packageDir, headerComment, visibility);
             } else if (schema.type === "object" && schema.properties) {
-                await generateStandaloneRecord(name, schema, packageName, packageDir, headerComment);
+                await generateStandaloneRecord(name, schema, packageName, packageDir, headerComment, visibility);
             } else if (unionVariants(schema)) {
                 const variants = resolveUnionVariants(schema);
                 if (variants && variants.length > 1 && promotedSealedUnionTypes.has(name) && findRequiredStringDiscriminator(variants)) {
-                    await generateSealedUnionInterface(name, schema, packageName, packageDir, headerComment);
+                    await generateSealedUnionInterface(name, schema, packageName, packageDir, headerComment, visibility);
                 } else if (variants && variants.length > 1 && findDiscriminator(variants)) {
-                    await generatePolymorphicResultClass(name, schema, packageName, packageDir);
+                    await generatePolymorphicResultClass(name, schema, packageName, packageDir, visibility);
                 } else {
                     console.warn(`[codegen] Cannot generate standalone type for ${name}: union without discriminator`);
                 }
@@ -1936,7 +2002,8 @@ async function generateStandaloneEnum(
     schema: JSONSchema7,
     packageName: string,
     packageDir: string,
-    headerComment: string
+    headerComment: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const values = schema.enum as string[];
     const experimental = isSchemaExperimental(schema);
@@ -1965,7 +2032,8 @@ async function generateStandaloneEnum(
         lines.push(`@CopilotExperimental`);
     }
     lines.push(GENERATED_ANNOTATION);
-    lines.push(`public enum ${name} {`);
+    const visModifier = visibility === "public" ? "public " : "";
+    lines.push(`${visModifier}enum ${name} {`);
     for (let i = 0; i < values.length; i++) {
         const v = values[i];
         const comma = i < values.length - 1 ? "," : ";";
@@ -1995,10 +2063,11 @@ async function generateStandaloneRecord(
     schema: JSONSchema7,
     packageName: string,
     packageDir: string,
-    headerComment: string
+    headerComment: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const nestedTypes = new Map<string, { code: string }>();
-    const { code, imports } = generateRpcClass(name, schema, nestedTypes, packageName);
+    const { code, imports } = generateRpcClass(name, schema, nestedTypes, packageName, visibility);
     const experimental = isSchemaExperimental(schema);
 
     const lines: string[] = [];
@@ -2050,6 +2119,7 @@ interface RpcMethod {
     rpcMethod: string;
     params: JSONSchema7 | null;
     result: JSONSchema7 | null;
+    visibility?: string;
     stability?: string;
     deprecated?: boolean;
 }
@@ -2261,7 +2331,8 @@ function javadocText(text: string): string {
 export function generateLegacyRequestClass(
     className: string,
     schema: JSONSchema7,
-    legacy: LegacyParameters
+    legacy: LegacyParameters,
+    visibility: "public" | "internal" = "public"
 ): { code: string; imports: Set<string> } {
     const imports = new Set<string>(["java.util.Objects"]);
     const localNestedTypes = new Map<string, JavaClassDef>();
@@ -2286,7 +2357,8 @@ export function generateLegacyRequestClass(
 
     const lines: string[] = [];
     lines.push(`@JsonInclude(JsonInclude.Include.NON_NULL)`);
-    lines.push(`public final class ${className} {`);
+    const visModifier = visibility === "public" ? "public " : "";
+    lines.push(`${visModifier}final class ${className} {`);
     for (const field of fields) {
         lines.push(``);
         lines.push(`    /** ${field.description} */`);
@@ -2357,7 +2429,7 @@ interface RpcSchema {
 async function generateRpcTypes(schemaPath: string): Promise<void> {
     console.log("\n🔌 Generating RPC types...");
     const schemaContent = await fs.readFile(schemaPath, "utf-8");
-    const schema: RpcSchema = normalizeSchemaBrandCasing(JSON.parse(schemaContent));
+    const schema = normalizeRpcSchema(JSON.parse(schemaContent) as RpcSchema);
     crossSchemaDefinitions.clear();
 
     // Load cross-schema definitions (session-events) so that cross-schema $ref values
@@ -2383,13 +2455,14 @@ export async function renderRpcTypes(
     historicalOwners: Readonly<Record<string, string>> = RPC_VARIANT_OWNERS
 ): Promise<Map<string, string>> {
     if (rpcGeneration) throw new Error("Concurrent Java RPC generation is not supported.");
+    schema = normalizeRpcSchema(schema);
     const generation: RpcGeneration = { files: new Map(), unions: new Map() };
     rpcGeneration = generation;
     try {
         await collectRpcTypes(schema);
         generation.variantNames = planRpcVariantNames(generation, historicalOwners);
         for (const [name, union] of generation.unions) {
-            await generatePolymorphicResultClass(name, union.schema, union.packageName, union.packageDir);
+            await generatePolymorphicResultClass(name, union.schema, union.packageName, union.packageDir, union.visibility);
         }
         if ((schema.definitions ?? {})["InstallationReview"]) {
             const packageDir = `sdk/src/generated/java/com/github/copilot/generated/rpc`;
@@ -2427,6 +2500,7 @@ export async function renderRpcTypes(
 
 async function collectRpcTypes(schema: RpcSchema): Promise<void> {
     currentDefinitions = schema.definitions ?? {};
+    publicRpcDefinitionNames = computePublicRpcDefinitionNames(schema);
     pendingStandaloneTypes.clear();
     promotedNestedUnionTypes.clear();
     promotedSealedUnionTypes.clear();
@@ -2489,7 +2563,7 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
                 const paramsClassName = `${className}Params`;
                 if (!generatedClasses.has(paramsClassName)) {
                     generatedClasses.set(paramsClassName, true);
-                    await generatePolymorphicResultClass(paramsClassName, paramsUnionSchema, packageName, packageDir);
+                    await generatePolymorphicResultClass(paramsClassName, paramsUnionSchema, packageName, packageDir, method.visibility === "internal" ? "internal" : "public");
                     allFiles.push(`${paramsClassName}.java`);
                 }
                 paramsSchema = null;
@@ -2502,7 +2576,7 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
                 const legacy = javaLegacyParameters(method, sectionName);
                 if (!generatedClasses.has(paramsClassName)) {
                     generatedClasses.set(paramsClassName, true);
-                    allFiles.push(await generateRpcDataClass(paramsClassName, paramsSchema, packageName, packageDir, method.rpcMethod, "params", method.stability, method.deprecated === true, new Set(legacy?.additions)));
+                    allFiles.push(await generateRpcDataClass(paramsClassName, paramsSchema, packageName, packageDir, method.rpcMethod, "params", method.stability, method.deprecated === true, new Set(legacy?.additions), method.visibility === "internal" ? "internal" : "public"));
                 }
                 if (legacy) {
                     legacyRequests.push({ className: legacyRequestClassName(method), schema: paramsSchema, legacy, method });
@@ -2524,11 +2598,15 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
                     (Object.keys(resultSchema.properties).length > 0 ||
                         (resultRefName && sectionName === "clientGlobal"))
                 ) {
+                    if (method.visibility === "internal" && resultRefName && resultSchema.type === "object") {
+                        pendingStandaloneTypes.set(resultRefName, resultSchema);
+                        continue;
+                    }
                     // Object with properties → generate a record class
                     const resultClassName = `${className}Result`;
                     if (!generatedClasses.has(resultClassName)) {
                         generatedClasses.set(resultClassName, true);
-                        allFiles.push(await generateRpcDataClass(resultClassName, resultSchema, packageName, packageDir, method.rpcMethod, "result", method.stability, method.deprecated === true));
+                        allFiles.push(await generateRpcDataClass(resultClassName, resultSchema, packageName, packageDir, method.rpcMethod, "result", method.stability, method.deprecated === true, new Set(), method.visibility === "internal" ? "internal" : "public"));
                     }
                 } else if (resultRefName && resultSchema.type === "string" && resultSchema.enum) {
                     // String enum → register for standalone generation
@@ -2539,14 +2617,14 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
                     if (variants.length > 1 && findDiscriminator(variants)) {
                         if (!generatedClasses.has(resultRefName)) {
                             generatedClasses.set(resultRefName, true);
-                            await generatePolymorphicResultClass(resultRefName, resultSchema, packageName, packageDir);
+                            await generatePolymorphicResultClass(resultRefName, resultSchema, packageName, packageDir, rpcTypeVisibility(resultRefName, resultSchema));
                         }
                     }
                 } else if (resultRefName && resultSchema.type === "object" && !resultSchema.properties) {
                     // Empty named object → generate empty record
                     if (!generatedClasses.has(resultRefName)) {
                         generatedClasses.set(resultRefName, true);
-                        allFiles.push(await generateRpcDataClass(resultRefName, resultSchema, packageName, packageDir, method.rpcMethod, "result"));
+                        allFiles.push(await generateRpcDataClass(resultRefName, resultSchema, packageName, packageDir, method.rpcMethod, "result", undefined, undefined, new Set(), rpcTypeVisibility(resultRefName, resultSchema)));
                     }
                 } else if (resultRefName && resultSchema.type === "array") {
                     // Named array aliases (e.g. AccountGetAllUsersResult) are returned
@@ -2562,11 +2640,11 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
     }
 
     // Generate standalone types discovered via $ref resolution
-    await generatePendingStandaloneTypes(packageName, packageDir, GENERATED_FROM_API);
+    await generatePendingStandaloneTypes(packageName, packageDir, GENERATED_FROM_API, rpcTypeVisibility);
 
     // Request classes are written last so any generated type with the same name is a conflict.
     for (const request of legacyRequests) {
-        await generateLegacyRequestFile(request.className, request.schema, request.legacy, request.method, packageName, packageDir);
+        await generateLegacyRequestFile(request.className, request.schema, request.legacy, request.method, packageName, packageDir, request.method.visibility === "internal" ? "internal" : "public");
     }
 }
 
@@ -2576,13 +2654,14 @@ async function generateLegacyRequestFile(
     legacy: LegacyParameters,
     method: RpcMethod,
     packageName: string,
-    packageDir: string
+    packageDir: string,
+    visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const relativePath = `${packageDir}/${className}.java`;
     if (rpcGeneration?.files.has(relativePath)) {
         throw new Error(`Conflicting Java RPC output "${relativePath}" for the ${method.rpcMethod} request class.`);
     }
-    const { code, imports } = generateLegacyRequestClass(className, schema, legacy);
+    const { code, imports } = generateLegacyRequestClass(className, schema, legacy, visibility);
     const experimental = method.stability === "experimental";
 
     const lines: string[] = [];
@@ -2632,10 +2711,11 @@ async function generateRpcDataClass(
     kind: "params" | "result",
     stability?: string,
     deprecated?: boolean,
-    omittedProperties: ReadonlySet<string> = new Set()
+    omittedProperties: ReadonlySet<string> = new Set(),
+    visibility: "public" | "internal" = "public"
 ): Promise<string> {
     const nestedTypes = new Map<string, { code: string }>();
-    const { code, imports } = generateRpcClass(className, schema, nestedTypes, packageName, "public", kind === "params", omittedProperties);
+    const { code, imports } = generateRpcClass(className, schema, nestedTypes, packageName, visibility, kind === "params", omittedProperties);
 
     const lines: string[] = [];
     lines.push(COPYRIGHT);
@@ -2733,6 +2813,16 @@ function buildNamespaceTree(node: Record<string, unknown>): NamespaceTree {
     return tree;
 }
 
+function hasPublicRpcMethods(tree: NamespaceTree): boolean {
+    for (const method of tree.methods.values()) {
+        if (method.visibility !== "internal") return true;
+    }
+    for (const child of tree.subspaces.values()) {
+        if (hasPublicRpcMethods(child)) return true;
+    }
+    return false;
+}
+
 /**
  * Derive the Java class name for an API namespace class.
  * e.g., prefix="Server", path=["mcp","config"] → "ServerMcpConfigApi"
@@ -2771,9 +2861,9 @@ function wrapperResultClassName(method: RpcMethodNode): string {
                     return refName;
                 }
             }
-            // Object with properties → use MethodNameResult
+            // Preserve public method-specific names; internal methods share the named definition.
             if (resolved.type === "object" && resolved.properties && Object.keys(resolved.properties).length > 0) {
-                return rpcMethodToClassName(method.rpcMethod) + "Result";
+                return method.visibility === "internal" ? refName : rpcMethodToClassName(method.rpcMethod) + "Result";
             }
             // Empty object (no properties) that is a named definition → use definition name
             if (resolved.type === "object" && !resolved.properties) {
@@ -2898,9 +2988,7 @@ export function generateApiMethod(
     const hasExtraParams = paramsClass !== null;
     const paramsOptional = hasExtraParams && methodParamsAreOptional(method);
     const resultAllowsNull = methodResultAllowsNull(method);
-    // Supervised-participant host operations are not owner-client APIs. Keep this
-    // scoped to hosting rather than changing unrelated existing Java API exposure.
-    const access = method.visibility === "internal" && method.rpcMethod.startsWith("host.") ? "" : "public ";
+    const access = method.visibility === "internal" ? "" : "public ";
     let needsMapper = false;
 
     const lines: string[] = [];
@@ -2988,7 +3076,7 @@ export function generateApiMethod(
     if (legacy) {
         const requestClass = legacyRequestClassName(method);
         pushJavadoc([`     * <p>`, `     * Accepts the extensible request, including inputs added after the params record.`], false);
-        lines.push(`    public CompletableFuture<${resultClass}> ${key}(${requestClass} request) {`);
+        lines.push(`    ${access}CompletableFuture<${resultClass}> ${key}(${requestClass} request) {`);
         if (isSession) {
             needsMapper = true;
             lines.push(`        com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(Objects.requireNonNull(request, "request"));`);
@@ -3031,8 +3119,9 @@ async function generateNamespaceApiFile(
     const subInits: string[] = [];
     for (const [subKey, subTree] of tree.subspaces) {
         const subClass = apiClassName(prefix, [...namespacePath, subKey]);
+        const subAccess = hasPublicRpcMethods(subTree) ? "public " : "";
         subFields.push(`    /** API methods for the {@code ${[...namespacePath, subKey].join(".")}} sub-namespace. */`);
-        subFields.push(`    public final ${subClass} ${subKey};`);
+        subFields.push(`    ${subAccess}final ${subClass} ${subKey};`);
         if (isSession) {
             subInits.push(`        this.${subKey} = new ${subClass}(caller, sessionId);`);
         } else {
@@ -3081,7 +3170,8 @@ async function generateNamespaceApiFile(
     classLines.push(` * @since 1.0.0`);
     classLines.push(` */`);
     classLines.push(GENERATED_ANNOTATION);
-    classLines.push(`public final class ${className} {`);
+    const classAccess = hasPublicRpcMethods(tree) ? "public " : "";
+    classLines.push(`${classAccess}final class ${className} {`);
     classLines.push(``);
     if (needsMapper) {
         classLines.push(`    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = RpcMapper.INSTANCE;`);
@@ -3152,8 +3242,9 @@ async function generateRpcRootFile(
     const subInits: string[] = [];
     for (const [nsKey, nsTree] of tree.subspaces) {
         const nsClass = apiClassName(prefix, [nsKey]);
+        const nsAccess = hasPublicRpcMethods(nsTree) ? "public " : "";
         subFields.push(`    /** API methods for the {@code ${nsKey}} namespace. */`);
-        subFields.push(`    public final ${nsClass} ${nsKey};`);
+        subFields.push(`    ${nsAccess}final ${nsClass} ${nsKey};`);
         if (isSession) {
             subInits.push(`        this.${nsKey} = new ${nsClass}(caller, sessionId);`);
         } else {
@@ -3385,13 +3476,14 @@ async function generateRpcWrappers(schemaPath: string): Promise<void> {
     console.log("\n🔧 Generating RPC wrapper classes...");
 
     const schemaContent = await fs.readFile(schemaPath, "utf-8");
-    await emitRpcWrappers(normalizeSchemaBrandCasing(JSON.parse(schemaContent)) as RpcSchema);
+    await emitRpcWrappers(normalizeRpcSchema(JSON.parse(schemaContent) as RpcSchema));
     console.log(`✅ RPC wrapper classes generated`);
 }
 
 /** Render the RPC wrapper classes in memory. */
 export async function renderRpcWrappers(schema: RpcSchema): Promise<Map<string, string>> {
     if (pendingOutput) throw new Error("Concurrent Java RPC wrapper generation is not supported.");
+    schema = normalizeRpcSchema(schema);
     const files = new Map<string, string>();
     pendingOutput = files;
     try {

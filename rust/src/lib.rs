@@ -2474,32 +2474,37 @@ impl Client {
     /// If the callback returns an error, that error is propagated to
     /// this awaiter in place of the response. The callback never causes
     /// the read loop to crash.
-    pub(crate) async fn call_with_inline_callback(
+    ///
+    /// The returned future owns the request but not this `Client`, so it
+    /// can be spawned without keeping the connection open.
+    pub(crate) fn call_with_inline_callback(
         &self,
         method: &str,
         params: Option<serde_json::Value>,
         inline_callback: Option<crate::jsonrpc::InlineResponseCallback>,
-    ) -> Result<serde_json::Value> {
+    ) -> impl std::future::Future<Output = Result<serde_json::Value>> + Send + 'static {
         let session_id: Option<SessionId> = params
             .as_ref()
             .and_then(|p| p.get("sessionId"))
             .and_then(|v| v.as_str())
             .map(SessionId::from);
-        let response = self
-            .inner
-            .rpc
-            .send_request_with_inline_callback(method, params, inline_callback)
-            .await?;
-        if let Some(err) = response.error {
-            if err.message.contains("Session not found") {
-                return Err(ErrorKind::Session(SessionErrorKind::NotFound(
-                    session_id.unwrap_or_else(|| "unknown".into()),
-                ))
-                .into());
+        let request =
+            self.inner
+                .rpc
+                .send_request_with_inline_callback(method, params, inline_callback);
+        async move {
+            let response = request.await?;
+            if let Some(err) = response.error {
+                if err.message.contains("Session not found") {
+                    return Err(ErrorKind::Session(SessionErrorKind::NotFound(
+                        session_id.unwrap_or_else(|| "unknown".into()),
+                    ))
+                    .into());
+                }
+                return Err(Error::from_rpc(err.code, err.message, err.data));
             }
-            return Err(Error::from_rpc(err.code, err.message, err.data));
+            Ok(response.result.unwrap_or(serde_json::Value::Null))
         }
-        Ok(response.result.unwrap_or(serde_json::Value::Null))
     }
 
     /// Send a JSON-RPC response back to the CLI (e.g. for permission or tool call requests).

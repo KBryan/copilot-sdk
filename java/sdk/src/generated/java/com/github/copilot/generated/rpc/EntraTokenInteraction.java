@@ -19,7 +19,7 @@ import javax.annotation.processing.Generated;
  */
 @CopilotExperimental
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
-public enum EntraTokenInteraction {
+enum EntraTokenInteraction {
     /** The {@code silent} variant. */
     SILENT("silent"),
     /** The {@code interactive} variant. */

@@ -4816,6 +4816,11 @@ public sealed partial class AssistantUsageData
     [JsonPropertyName("availableToolCount")]
     internal long? AvailableToolCount { get; set; }
 
+    /// <summary>Where the bring-your-own-key model runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("byokKind")]
+    public string? ByokKind { get; set; }
+
     /// <summary>Whether the provider reported prompt-cache usage details for this call.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonInclude]
@@ -4926,6 +4931,11 @@ public sealed partial class AssistantUsageData
     /// <summary>Model identifier used for this API call.</summary>
     [JsonPropertyName("model")]
     public required string Model { get; set; }
+
+    /// <summary>Fixed-set provider family serving the bring-your-own-key model (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("modelProvider")]
+    public string? ModelProvider { get; set; }
 
     /// <summary>Number of tool calls returned by the model.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -5184,6 +5194,11 @@ public sealed partial class ModelCallFailureData
     [JsonPropertyName("badRequestKind")]
     public ModelCallFailureBadRequestKind? BadRequestKind { get; set; }
 
+    /// <summary>Where the bring-your-own-key model for the failed call runs and who manages it: "local_managed" (on the device, managed by Copilot), "local_user" (on the device, managed by the user), or "remote_user" (off the device, managed by the user). Absent for Copilot-served models.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("byokKind")]
+    public string? ByokKind { get; set; }
+
     /// <summary>Duration of the failed API call in milliseconds.</summary>
     [JsonConverter(typeof(MillisecondsTimeSpanConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -5250,6 +5265,11 @@ public sealed partial class ModelCallFailureData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("model")]
     public string? Model { get; set; }
+
+    /// <summary>Fixed-set provider family serving the bring-your-own-key model for the failed call (for example "openai", "anthropic", "azure_openai", "ollama", "llama_cpp", or "other"). Never the caller-supplied provider name. Absent for Copilot-served models.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("modelProvider")]
+    public string? ModelProvider { get; set; }
 
     /// <summary>Parent task tool call ID when this failed model call belongs to a sub-agent.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

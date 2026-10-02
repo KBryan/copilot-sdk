@@ -81,6 +81,43 @@ describe("ReplayingCapiProxy", () => {
     return yaml.parse(content) as NormalizedData;
   }
 
+  test("does not impose idle expiry on pooled control connections", async () => {
+    const proxy = new ReplayingCapiProxy("http://localhost");
+    const address = await proxy.start();
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    const getExchanges = () =>
+      new Promise<{
+        headers: http.IncomingHttpHeaders;
+        reusedSocket: boolean;
+      }>((resolve, reject) => {
+        const request = http.get(
+          `${address}/exchanges`,
+          { agent },
+          (response) => {
+            response.on("error", reject);
+            response.on("end", () =>
+              resolve({
+                headers: response.headers,
+                reusedSocket: request.reusedSocket,
+              }),
+            );
+            response.resume();
+          },
+        );
+        request.on("error", reject);
+      });
+
+    try {
+      const first = await getExchanges();
+      expect(first.headers.connection).toBe("keep-alive");
+      expect(first.headers["keep-alive"]).toBeUndefined();
+      expect((await getExchanges()).reusedSocket).toBe(true);
+    } finally {
+      agent.destroy();
+      await proxy.stop();
+    }
+  });
+
   test("validates registered GitHub identities before replay configuration", async () => {
     const proxy = new ReplayingCapiProxy("http://localhost");
     proxy.setCopilotUserByToken("owner-token", { login: "owner", id: 42 });

@@ -123,6 +123,7 @@ const defaultModel = "claude-sonnet-5";
  */
 export class ReplayingCapiProxy extends CapturingHttpProxy {
   private state: ReplayingCapiProxyState | null = null;
+  private memoryApiStub: MemoryApiStub | undefined;
   private startPromise: Promise<string> | null = null;
   private defaultToolResultNormalizers: ToolResultNormalizer[] = [
     { toolName: "*", normalizer: normalizeLargeOutputFilepaths },
@@ -287,6 +288,16 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
             response: CopilotUserResponse;
           };
           this.copilotUserByToken.set(config.token, config.response);
+          options.onResponseStart(200, {});
+          options.onResponseEnd();
+          return;
+        }
+
+        if (
+          options.requestOptions.path === "/memory-api-config" &&
+          options.requestOptions.method === "POST"
+        ) {
+          this.memoryApiStub = JSON.parse(options.body!) as MemoryApiStub;
           options.onResponseStart(200, {});
           options.onResponseEnd();
           return;
@@ -516,8 +527,14 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
         // Matches: /agents/*/memory/*/enabled, /agents/*/memory/*/recent, etc.
         if (options.requestOptions.path?.match(/\/agents\/.*\/memory\//)) {
           let body: string;
+          let statusCode = 200;
           if (options.requestOptions.path.includes("/enabled")) {
-            body = JSON.stringify({ enabled: false });
+            body = JSON.stringify(this.memoryApiStub?.enabled ?? { enabled: false });
+          } else if (options.requestOptions.path.includes("/memories")) {
+            statusCode = this.memoryApiStub?.memoriesStatusCode ?? 200;
+            body = JSON.stringify(
+              statusCode === 404 ? {} : (this.memoryApiStub?.memories ?? {}),
+            );
           } else if (options.requestOptions.path.includes("/recent")) {
             body = JSON.stringify({ memories: [] });
           } else {
@@ -527,7 +544,7 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
             "content-type": "application/json",
             ...commonResponseHeaders,
           };
-          options.onResponseStart(200, headers);
+          options.onResponseStart(statusCode, headers);
           options.onData(Buffer.from(body));
           options.onResponseEnd();
           return;
@@ -2205,6 +2222,23 @@ export type CopilotUserResponse = {
       unlimited?: boolean;
     }
   >;
+};
+
+export type MemoryApiStub = {
+  enabled?: { enabled: boolean };
+  memories?: {
+    repositoryMemories?: Array<{
+      subject: string;
+      fact: string;
+      citations: string[];
+    }>;
+    userMemories?: Array<{
+      subject: string;
+      fact: string;
+      citations: string[];
+    }>;
+  };
+  memoriesStatusCode?: number;
 };
 
 export type ParsedHttpExchange = {

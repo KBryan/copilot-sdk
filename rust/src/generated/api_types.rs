@@ -14942,6 +14942,9 @@ pub struct NamedProviderConfig {
     /// Additional HTTP headers included with provider requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
+    /// The product serving the provider's models, reported in telemetry as `model_provider`. Only affects telemetry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<ProviderConfigModelProvider>,
     /// Unique provider name used to qualify model selection IDs.
     pub name: String,
     /// Transport used to communicate with the provider.
@@ -17483,6 +17486,9 @@ pub struct ProviderConfig {
     /// Well-known model ID used for capability lookup. When set, agent behavior config and token limits are inferred from this model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+    /// The product serving the model, reported in telemetry as `model_provider`. Set it when `type` alone cannot identify the product, such as Ollama or LM Studio behind an OpenAI-compatible endpoint. Only affects telemetry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<ProviderConfigModelProvider>,
     /// Provider name used for model and telemetry attribution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_name: Option<String>,
@@ -40952,6 +40958,43 @@ pub enum ModelSwitchAutoTierStatus {
     /// The request was accepted but has not committed. A later user turn using the `auto` model must mint and validate the replacement before it becomes effective.
     #[serde(rename = "pending")]
     Pending,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// The product serving the model, reported in telemetry as `model_provider`.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProviderConfigModelProvider {
+    /// OpenAI API.
+    #[serde(rename = "openai")]
+    Openai,
+    /// Anthropic API.
+    #[serde(rename = "anthropic")]
+    Anthropic,
+    /// Azure OpenAI Service.
+    #[serde(rename = "azure_openai")]
+    AzureOpenai,
+    /// Ollama.
+    #[serde(rename = "ollama")]
+    Ollama,
+    /// LM Studio.
+    #[serde(rename = "lm_studio")]
+    LmStudio,
+    /// Foundry Local.
+    #[serde(rename = "foundry_local")]
+    FoundryLocal,
+    /// llama.cpp server.
+    #[serde(rename = "llama_cpp")]
+    LlamaCpp,
     /// Unknown variant for forward compatibility.
     #[default]
     #[serde(other)]

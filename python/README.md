@@ -518,6 +518,27 @@ tool = define_tool(
 )
 ```
 
+#### Changing Tools on a Live Session (experimental)
+
+Use `await session.set_tools(tools)` to replace the complete set of custom tools
+supplied by this SDK client connection. The method accepts the same `Tool`
+definitions used with `create_session()` and `resume_session()`; built-in tools,
+MCP/plugin tools, and tools supplied by other client connections are unaffected.
+Passing an empty list removes this client's custom tools.
+
+Handlers switch after the runtime accepts the replacement. Running tool calls
+finish on the handler they already captured, a rejected replacement leaves the
+previous handlers in place, and concurrent `set_tools()` calls on the same
+session are applied in order.
+
+```python
+await session.set_tools([lookup_issue, lookup_customer])
+await session.set_tools([])  # remove this client's custom tools
+```
+
+See [Changing tools on a live session](../docs/features/changing-tools.md) for
+the shared behavior and active-turn limitations.
+
 #### Overriding Built-in Tools
 
 If you register a tool with the same name as a built-in CLI tool (e.g. `edit_file`, `read_file`), the SDK will throw an error unless you explicitly opt in by setting `overrides_built_in_tool=True`. This flag signals that you intend to replace the built-in tool with your custom implementation.

@@ -10,6 +10,7 @@ package com.github.copilot.generated;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.github.copilot.CopilotExperimental;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,7 @@ public final class AssistantUsageEvent extends SessionEvent {
         /** Recognized provider-reported reasons for dropped thinking blocks, in response order */
         @JsonProperty("thinkingDroppedReasons") List<String> thinkingDroppedReasons,
         /** Model multiplier cost for billing purposes */
+        @CopilotExperimental
         @JsonProperty("cost") Double cost,
         /** Duration of the API call in milliseconds */
         @JsonProperty("duration") Long duration,
@@ -122,6 +124,7 @@ public final class AssistantUsageEvent extends SessionEvent {
         /** Whether the model response was blocked or truncated by content filtering (finish_reason === 'content_filter'). For Anthropic models this corresponds to a 'refusal' stop reason. */
         @JsonProperty("contentFilterTriggered") Boolean contentFilterTriggered,
         /** Experimental HydraFusion attribution for this concrete model call's usage. */
+        @CopilotExperimental
         @JsonProperty("fusion") FusionAttribution fusion
     ) {
     }

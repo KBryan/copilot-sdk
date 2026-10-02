@@ -631,6 +631,11 @@ observers share the failed future.
 
 Some SDK APIs are marked as experimental with `@CopilotExperimental`. These APIs may change or be removed in future versions without notice.
 
+An otherwise stable session event can contain experimental properties. Generated
+event payload records preserve each property's schema stability marker on its
+record component and generated accessor; the enclosing event and its other
+properties remain stable.
+
 By default, referencing an experimental API from your code causes a **compile-time error**:
 
 ```

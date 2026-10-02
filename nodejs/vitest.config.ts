@@ -60,6 +60,7 @@ export default defineConfig({
         teardownTimeout: 10000,
         isolate: true, // Run each test file in isolation
         pool: "forks", // Use process forking for better isolation
+        globalSetup: ["./test/e2e/harness/globalSetup.ts"],
         // Exclude our ad-hoc test files that aren't vitest-based
         exclude: [
             "**/node_modules/**",

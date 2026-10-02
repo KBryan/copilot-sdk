@@ -10,6 +10,7 @@ package com.github.copilot.generated;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.github.copilot.CopilotExperimental;
 import java.util.Map;
 import javax.annotation.processing.Generated;
 
@@ -86,6 +87,7 @@ public final class ModelCallFailureEvent extends SessionEvent {
         /** Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures. */
         @JsonProperty("requestFingerprint") ModelCallFailureRequestFingerprint requestFingerprint,
         /** Experimental HydraFusion attribution for this failed concrete model call. */
+        @CopilotExperimental
         @JsonProperty("fusion") FusionAttribution fusion
     ) {
     }

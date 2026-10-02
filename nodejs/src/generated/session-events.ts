@@ -6975,6 +6975,12 @@ export interface ToolExecutionProgressData {
    */
   progressMessage: string;
   /**
+   * Client-only structured progress metadata. Not model-facing tool output.
+   *
+   * @experimental
+   */
+  structuredContent?: JsonValue;
+  /**
    * Tool call ID this progress notification belongs to
    */
   toolCallId: string;
@@ -11801,6 +11807,10 @@ export interface AutoModeResolvedData {
    * The routing method the server applied, when Auto Intent ran
    */
   routingMethod?: string;
+  /**
+   * Short human-readable sentence from the routing service explaining why this model was chosen, for display alongside the model. Present only when the service supplied one: it is omitted for on-device selections, when the service did not provide an explanation, and when a replayed decision made no routing call. The text is display-only and drawn from a fixed catalogue; several distinct routing categories share identical wording, so it cannot be used to recover the category or keyed on programmatically.
+   */
+  selectionReason?: string;
   /**
    * Whether a sticky model choice overrode the router result
    */

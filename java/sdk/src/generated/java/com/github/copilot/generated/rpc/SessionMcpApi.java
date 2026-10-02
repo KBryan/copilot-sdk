@@ -33,6 +33,8 @@ public final class SessionMcpApi {
     public final SessionMcpAppsApi apps;
     /** API methods for the {@code mcp.resources} sub-namespace. */
     public final SessionMcpResourcesApi resources;
+    /** API methods for the {@code mcp.prompts} sub-namespace. */
+    public final SessionMcpPromptsApi prompts;
 
     /** @param caller the RPC transport function */
     SessionMcpApi(RpcCaller caller, String sessionId) {
@@ -42,6 +44,7 @@ public final class SessionMcpApi {
         this.headers = new SessionMcpHeadersApi(caller, sessionId);
         this.apps = new SessionMcpAppsApi(caller, sessionId);
         this.resources = new SessionMcpResourcesApi(caller, sessionId);
+        this.prompts = new SessionMcpPromptsApi(caller, sessionId);
     }
 
     /**

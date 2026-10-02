@@ -566,6 +566,8 @@ pub mod rpc_methods {
     pub const SESSION_MCP_OAUTH_PREPARELOGIN: &str = "session.mcp.oauth.prepareLogin";
     /// `session.mcp.oauth.login`
     pub const SESSION_MCP_OAUTH_LOGIN: &str = "session.mcp.oauth.login";
+    /// `session.mcp.oauth.complete`
+    pub const SESSION_MCP_OAUTH_COMPLETE: &str = "session.mcp.oauth.complete";
     /// `session.mcp.oauth.probe`
     pub const SESSION_MCP_OAUTH_PROBE: &str = "session.mcp.oauth.probe";
     /// `session.mcp.oauth.cancelLogin`
@@ -593,6 +595,10 @@ pub mod rpc_methods {
     pub const SESSION_MCP_RESOURCES_LIST: &str = "session.mcp.resources.list";
     /// `session.mcp.resources.listTemplates`
     pub const SESSION_MCP_RESOURCES_LISTTEMPLATES: &str = "session.mcp.resources.listTemplates";
+    /// `session.mcp.prompts.list`
+    pub const SESSION_MCP_PROMPTS_LIST: &str = "session.mcp.prompts.list";
+    /// `session.mcp.prompts.get`
+    pub const SESSION_MCP_PROMPTS_GET: &str = "session.mcp.prompts.get";
     /// `session.diagnostics.configure`
     pub const SESSION_DIAGNOSTICS_CONFIGURE: &str = "session.diagnostics.configure";
     /// `session.diagnostics.read`
@@ -11645,6 +11651,23 @@ pub struct McpOauthCancelLoginResult {
     pub cancelled: bool,
 }
 
+/// Host-delivered callback for a runtime-managed MCP OAuth login.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOauthCompleteRequest {
+    /// Opaque identifier returned by session.mcp.oauth.login for the pending external callback.
+    pub authorization_id: String,
+    /// Full externally visible HTTPS callback URL received by the host, including the authorization response query parameters. Applications behind a reverse proxy must reconstruct the public URL rather than passing an internal proxy URL.
+    pub callback_url: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpOauthPendingRequestResponseToken {
@@ -11699,7 +11722,7 @@ pub struct McpOauthHandlePendingResult {
     pub success: bool,
 }
 
-/// Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.
+/// Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.
 ///
 /// <div class="warning">
 ///
@@ -11752,6 +11775,8 @@ pub struct McpOauthLoginOptions {
     #[serde(flatten)]
     legacy: McpOauthLoginRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     login_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     expected_installation_id: Option<String>,
@@ -11771,6 +11796,7 @@ impl McpOauthLoginOptions {
                 public_client: None,
                 grant_type: None,
             },
+            redirect_uri: None,
             login_id: None,
             expected_installation_id: None,
         }
@@ -11818,6 +11844,12 @@ impl McpOauthLoginOptions {
         self
     }
 
+    /// Optional externally visible HTTPS redirect URI for a host-managed callback endpoint. When supplied, the runtime still owns discovery, PKCE, token exchange, persistence, and reconnect, but does not bind a loopback listener or terminate HTTPS. The URI must not contain query parameters or a fragment and must be registered for the selected CIMD, DCR, or static OAuth client.
+    pub fn redirect_uri(mut self, value: impl Into<String>) -> Self {
+        self.redirect_uri = Some(value.into());
+        self
+    }
+
     /// Required for owned login. Consumes the exact prepareLogin handle once.
     /// Set forceReauth and display options during preparation, not consumption.
     pub fn login_id(mut self, value: impl Into<String>) -> Self {
@@ -11843,7 +11875,10 @@ impl McpOauthLoginOptions {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpOauthLoginResult {
-    /// URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. When present, the runtime starts the callback listener before returning and continues the flow in the background; completion is signaled via session.mcp_server_status_changed.
+    /// Opaque authorization identifier returned only for a host-managed redirect URI. The runtime also sends it as the OAuth state value, so the callback endpoint can read state and pass it with the full callback URL to session.mcp.oauth.complete.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_id: Option<String>,
+    /// URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. For the default loopback flow, the runtime starts its listener before returning. With redirectUri, the host receives the callback and completes it through session.mcp.oauth.complete. The runtime continues the flow in the background and signals completion via session.mcp_server_status_changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_url: Option<String>,
     /// Runtime-issued owned flow identity; never a server name or installation operation ID.
@@ -12297,6 +12332,202 @@ pub struct McpPrepareInstallRequest {
     pub secret_storage: McpInstallationSecretStorage,
     /// The exact original source, used transiently only after confirmation.
     pub source: McpServerCardReference,
+}
+
+/// An argument accepted by an MCP prompt.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptArgument {
+    /// Argument-level metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard argument fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Description of the argument
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Name of the argument
+    pub name: String,
+    /// Whether the argument is required; omission is distinct from false
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+}
+
+/// An MCP prompt icon with standard size hints and preserved non-standard fields.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptIcon {
+    /// Server-provided non-standard icon fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Icon MIME type, when known
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    /// Icon sizes, such as `48x48` or `any`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<Vec<String>>,
+    /// Icon URI
+    pub src: String,
+    /// Theme hint for this icon
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+}
+
+/// An MCP prompt descriptor. Server-provided non-standard fields are exposed under `additionalProperties`.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPrompt {
+    /// Prompt-level metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard descriptor fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Arguments accepted by the prompt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<Vec<McpPromptArgument>>,
+    /// Description of what this prompt provides
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Icons associated with this prompt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<McpPromptIcon>>,
+    /// The programmatic name of the prompt
+    pub name: String,
+    /// Human-readable display title
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// An MCP prompt message with opaque JSON content preserved without flattening or content-type filtering.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptMessage {
+    /// Message-level metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard message fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// The original MCP content block, including nested metadata and unfamiliar content types
+    pub content: serde_json::Value,
+    /// The role of the message sender
+    pub role: McpPromptRole,
+}
+
+/// MCP server, prompt name, and optional string-valued arguments.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptsGetRequest {
+    /// String-valued arguments to pass to the prompt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<HashMap<String, String>>,
+    /// The programmatic name of the prompt
+    pub prompt_name: String,
+    /// Name of the MCP server hosting the prompt
+    pub server_name: String,
+}
+
+/// Prompt messages returned by the MCP server without sending them to the model.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptsGetResult {
+    /// MCP result metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard result fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Description of the prompt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Ordered prompt messages
+    pub messages: Vec<McpPromptMessage>,
+}
+
+/// MCP server whose prompts to enumerate.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptsListRequest {
+    /// Opaque MCP pagination cursor from a prior `nextCursor` value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    /// Name of the MCP server whose prompts to enumerate
+    pub server_name: String,
+}
+
+/// One page of prompts advertised by the named MCP server.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPromptsListResult {
+    /// MCP result metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard result fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Opaque cursor for the next page, if the server has more prompts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    /// Prompts advertised by the server
+    pub prompts: Vec<McpPrompt>,
 }
 
 /// Registration parameters for an external MCP client.
@@ -22965,7 +23196,7 @@ pub struct ShellCancelUserRequestedRequest {
     pub request_id: RequestId,
 }
 
-/// Shell command to run, with optional working directory and timeout in milliseconds.
+/// Shell command to run, with optional working directory and timeout in milliseconds. Spawn failures return an RPC error.
 ///
 /// <div class="warning">
 ///
@@ -22986,7 +23217,7 @@ pub struct ShellExecRequest {
     pub timeout: Option<i64>,
 }
 
-/// Identifier of the spawned process, used to correlate streamed output and exit notifications.
+/// Identifier of the spawned shell process, usable with shell.kill while the process is running.
 ///
 /// <div class="warning">
 ///
@@ -22997,7 +23228,7 @@ pub struct ShellExecRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellExecResult {
-    /// Unique identifier for tracking streamed output
+    /// Identifier usable with shell.kill while the process is running
     pub process_id: String,
 }
 
@@ -31447,7 +31678,10 @@ pub struct SessionMcpOauthPrepareLoginResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMcpOauthLoginResult {
-    /// URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. When present, the runtime starts the callback listener before returning and continues the flow in the background; completion is signaled via session.mcp_server_status_changed.
+    /// Opaque authorization identifier returned only for a host-managed redirect URI. The runtime also sends it as the OAuth state value, so the callback endpoint can read state and pass it with the full callback URL to session.mcp.oauth.complete.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_id: Option<String>,
+    /// URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. For the default loopback flow, the runtime starts its listener before returning. With redirectUri, the host receives the callback and completes it through session.mcp.oauth.complete. The runtime continues the flow in the background and signals completion via session.mcp_server_status_changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authorization_url: Option<String>,
     /// Runtime-issued owned flow identity; never a server name or installation operation ID.
@@ -31646,6 +31880,54 @@ pub struct SessionMcpResourcesListTemplatesResult {
     pub next_cursor: Option<String>,
     /// Resource templates advertised by the server (proxied MCP `resources/templates/list`)
     pub resource_templates: Vec<McpResourceTemplate>,
+}
+
+/// One page of prompts advertised by the named MCP server.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpPromptsListResult {
+    /// MCP result metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard result fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Opaque cursor for the next page, if the server has more prompts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    /// Prompts advertised by the server
+    pub prompts: Vec<McpPrompt>,
+}
+
+/// Prompt messages returned by the MCP server without sending them to the model.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpPromptsGetResult {
+    /// MCP result metadata
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+    /// Server-provided non-standard result fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<HashMap<String, serde_json::Value>>,
+    /// Description of the prompt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Ordered prompt messages
+    pub messages: Vec<McpPromptMessage>,
 }
 
 /// Per-source session diagnostics configuration.
@@ -33577,7 +33859,7 @@ pub struct SessionContentExclusionCheckPathsResult {
     pub checks: Vec<ContentExclusionPathCheck>,
 }
 
-/// Identifier of the spawned process, used to correlate streamed output and exit notifications.
+/// Identifier of the spawned shell process, usable with shell.kill while the process is running.
 ///
 /// <div class="warning">
 ///
@@ -33588,7 +33870,7 @@ pub struct SessionContentExclusionCheckPathsResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionShellExecResult {
-    /// Unique identifier for tracking streamed output
+    /// Identifier usable with shell.kill while the process is running
     pub process_id: String,
 }
 
@@ -40308,6 +40590,28 @@ pub enum McpPlanInstallResult {
     UnavailableTransport(CatalogUnavailableTransportError),
     NotInstallable(CatalogNotInstallableError),
     Unavailable(CatalogUnavailableError),
+}
+
+/// The sender role of an MCP prompt message.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum McpPromptRole {
+    /// A message from the user.
+    #[serde(rename = "user")]
+    User,
+    /// A message from the assistant.
+    #[serde(rename = "assistant")]
+    Assistant,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// Outcome of the sampling inference. 'success' produced a response; 'failure' encountered an error (including agent-side rejection by content filter or criteria); 'cancelled' the caller cancelled this execution via cancelSamplingExecution.

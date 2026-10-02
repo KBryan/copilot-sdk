@@ -116,6 +116,15 @@ npm --prefix nodejs ci --ignore-scripts
 npm --prefix test/harness ci --ignore-scripts
 ```
 
+Node tests, including the unit-only profile, run generator subprocesses and
+require the codegen package's own dependencies. Prepare these before invoking
+Node tests directly or from a standalone SDK checkout (runtime build/test tasks
+already prepare them):
+
+```bash
+npm --prefix scripts/codegen ci --ignore-scripts
+```
+
 The full Node test task also runs the corrections-script tests:
 
 ```bash
@@ -318,6 +327,16 @@ area, not shared runtime behavior.
 For TypeScript SDK E2Es, use the existing
 `nodejs/test/e2e/harness/sdkTestContext.ts` fixture. In the runtime repository,
 also follow the `e2e-test-author` skill's SDK section.
+
+The Node.js Vitest global setup bundles the shared replay proxy once per run
+into Vitest's project-owned temporary directory (and refreshes it on watch
+reruns). Each E2E context launches that bundle directly with the test runner's
+Node executable, without an npm, shell, or TypeScript-loader subprocess.
+Focused Vitest commands use the same setup; no separate proxy build is needed.
+If startup or shutdown cleanup cannot confirm that the child exited, `CapiProxy`
+retains the child handle so callers can retry cleanup with `stop()`.
+Once shutdown is acknowledged, it waits for the child to finish flushing captures
+and exit rather than applying a forced-termination timeout to the flush.
 
 Owned-stdio shutdown regressions share
 `test/harness/stdio-shutdown-runtime.cjs` across all six SDKs. Launch it with

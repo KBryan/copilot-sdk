@@ -3749,6 +3749,10 @@ pub struct PromptCacheBreakData {
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tools_redefined: Option<Vec<String>>,
+    /// Changed definition parts of redefined tools, as `tool:part` entries; property-level parts only for telemetry-safe tools, whose other names are hashed
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tools_redefined_parts: Option<Vec<String>>,
     /// Raw names of tools redefined since the prior call, restricted because a tool name can be user-authored
     #[doc(hidden)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -4096,6 +4100,16 @@ pub struct ToolExecutionPartialResultData {
 pub struct ToolExecutionProgressData {
     /// Human-readable progress status message (e.g., from an MCP server)
     pub progress_message: String,
+    /// Client-only structured progress metadata. Not model-facing tool output.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This type is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases.
+    ///
+    /// </div>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<serde_json::Value>,
     /// Tool call ID this progress notification belongs to
     pub tool_call_id: String,
 }
@@ -7410,6 +7424,9 @@ pub struct SessionAutoModeResolvedData {
     /// The routing method the server applied, when Auto Intent ran
     #[serde(skip_serializing_if = "Option::is_none")]
     pub routing_method: Option<String>,
+    /// Short human-readable sentence from the routing service explaining why this model was chosen, for display alongside the model. Present only when the service supplied one: it is omitted for on-device selections, when the service did not provide an explanation, and when a replayed decision made no routing call. The text is display-only and drawn from a fixed catalogue; several distinct routing categories share identical wording, so it cannot be used to recover the category or keyed on programmatically.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<String>,
     /// Whether a sticky model choice overrode the router result
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sticky_override: Option<bool>,

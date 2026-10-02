@@ -1754,6 +1754,7 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
         javaName: string;
         javaType: string;
         description?: string;
+        experimental: boolean;
     }
 
     const dataFields: FieldInfo[] = [];
@@ -1770,6 +1771,7 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
                 javaName: toCamelCase(propName),
                 javaType: result.javaType,
                 description: prop.description,
+                experimental: isSchemaExperimental(prop),
             });
         }
     }
@@ -1854,6 +1856,10 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
                 const comma = i < dataFields.length - 1 ? "," : "";
                 if (field.description) {
                     lines.push(`        /** ${field.description} */`);
+                }
+                if (field.experimental) {
+                    allImports.add("com.github.copilot.CopilotExperimental");
+                    lines.push(`        @CopilotExperimental`);
                 }
                 lines.push(`        @JsonProperty("${field.jsonName}") ${field.javaType} ${field.javaName}${comma}`);
             }

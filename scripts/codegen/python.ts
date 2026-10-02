@@ -7,8 +7,6 @@
  */
 
 import fs from "fs/promises";
-import { realpathSync } from "node:fs";
-import path from "path";
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 import { fileURLToPath } from "url";
 import {
@@ -19,6 +17,7 @@ import {
     getApiSchemaPath,
     getRpcSchemaTypeName,
     getSessionEventsSchemaPath,
+    isCodegenEntrypoint,
     isObjectSchema,
     isOpaqueJson,
     isVoidSchema,
@@ -1368,7 +1367,8 @@ function removeRequiredAnyDefaultsForPython(
         }
 
         const requiredFields = resolved.required.map(toSnakeCase);
-        for (const className of new Set([definitionName, toPascalCase(definitionName)])) {
+        // Quicktype capitalizes acronyms, for example McpPromptMessage becomes MCPPromptMessage.
+        for (const className of new Set([definitionName.toLowerCase(), toPascalCase(definitionName).toLowerCase()])) {
             const fields = requiredFieldsByClass.get(className) ?? new Set<string>();
             for (const field of requiredFields) {
                 fields.add(field);
@@ -1379,7 +1379,7 @@ function removeRequiredAnyDefaultsForPython(
 
     const classBlockRe = /(@dataclass\r?\nclass\s+(\w+):[\s\S]*?)(?=^@dataclass|^class\s+\w|^def\s+\w|\Z)/gm;
     return code.replace(classBlockRe, (block: string, _classPrefix: string, className: string) => {
-        const requiredFields = requiredFieldsByClass.get(className);
+        const requiredFields = requiredFieldsByClass.get(className.toLowerCase());
         if (!requiredFields) {
             return block;
         }
@@ -4385,7 +4385,7 @@ async function generate(sessionSchemaPath?: string, apiSchemaPath?: string): Pro
 
 const __filename = fileURLToPath(import.meta.url);
 
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(__filename)) {
+if (isCodegenEntrypoint(process.argv[1], __filename)) {
     const sessionArg = process.argv[2] || undefined;
     const apiArg = process.argv[3] || undefined;
     generate(sessionArg, apiArg).catch((err) => {

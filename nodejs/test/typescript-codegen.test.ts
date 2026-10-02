@@ -5,11 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
     assertNoPublicInternalReferences,
     filterPublicSessionEventVariants,
-    isTypeScriptCodegenEntrypoint,
     normalizeSchemaForTypeScript,
     tsNullableResultTypeName,
 } from "../../scripts/codegen/typescript.ts";
-import type { DefinitionCollections } from "../../scripts/codegen/utils.ts";
+import { isCodegenEntrypoint, type DefinitionCollections } from "../../scripts/codegen/utils.ts";
 
 describe("typescript schema codegen", () => {
     it("preserves an explicit nullable reference result's named union", () => {
@@ -42,7 +41,7 @@ describe("typescript schema codegen", () => {
 
     it("recognizes Windows entrypoint paths case-insensitively", () => {
         expect(
-            isTypeScriptCodegenEntrypoint(
+            isCodegenEntrypoint(
                 "C:\\b\\execroot\\src\\sdk\\scripts\\codegen\\typescript.ts",
                 "c:\\B\\execroot\\src\\sdk\\scripts\\codegen\\typescript.ts",
                 "win32"

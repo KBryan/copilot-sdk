@@ -7636,6 +7636,18 @@ type MCPOauthCancelLoginResult struct {
 	Cancelled bool `json:"cancelled"`
 }
 
+// Host-delivered callback for a runtime-managed MCP OAuth login.
+// Experimental: MCPOauthCompleteRequest is part of an experimental API and may change or be
+// removed.
+type MCPOauthCompleteRequest struct {
+	// Opaque identifier returned by session.mcp.oauth.login for the pending external callback.
+	AuthorizationID string `json:"authorizationId"`
+	// Full externally visible HTTPS callback URL received by the host, including the
+	// authorization response query parameters. Applications behind a reverse proxy must
+	// reconstruct the public URL rather than passing an internal proxy URL.
+	CallbackURL string `json:"callbackUrl"`
+}
+
 // Pending MCP OAuth request ID and host-provided token or cancellation response.
 // Experimental: MCPOauthHandlePendingRequest is part of an experimental API and may change
 // or be removed.
@@ -7656,7 +7668,7 @@ type MCPOauthHandlePendingResult struct {
 }
 
 // Remote MCP server name and optional overrides controlling reauthentication, OAuth client
-// display name, callback success-page copy, and static OAuth client selection.
+// display name, callback handling, and static OAuth client selection.
 // Experimental: MCPOauthLoginRequest is part of an experimental API and may change or be
 // removed.
 type MCPOauthLoginRequest struct {
@@ -7693,6 +7705,12 @@ type MCPOauthLoginRequest struct {
 	// runtime treats it as confidential and uses the per-login clientSecret if provided,
 	// otherwise retrieving the client secret from the MCP OAuth secret store.
 	PublicClient *bool `json:"publicClient,omitempty"`
+	// Optional externally visible HTTPS redirect URI for a host-managed callback endpoint. When
+	// supplied, the runtime still owns discovery, PKCE, token exchange, persistence, and
+	// reconnect, but does not bind a loopback listener or terminate HTTPS. The URI must not
+	// contain query parameters or a fragment and must be registered for the selected CIMD, DCR,
+	// or static OAuth client.
+	RedirectURI *string `json:"redirectUri,omitempty"`
 	// Name of the remote MCP server to authenticate
 	ServerName string `json:"serverName"`
 }
@@ -7702,11 +7720,16 @@ type MCPOauthLoginRequest struct {
 // Experimental: MCPOauthLoginResult is part of an experimental API and may change or be
 // removed.
 type MCPOauthLoginResult struct {
+	// Opaque authorization identifier returned only for a host-managed redirect URI. The
+	// runtime also sends it as the OAuth state value, so the callback endpoint can read state
+	// and pass it with the full callback URL to session.mcp.oauth.complete.
+	AuthorizationID *string `json:"authorizationId,omitempty"`
 	// URL the caller should open in a browser to complete OAuth. Omitted when cached tokens
 	// were still valid and no browser interaction was needed — the server is already
-	// reconnected in that case. When present, the runtime starts the callback listener before
-	// returning and continues the flow in the background; completion is signaled via
-	// session.mcp_server_status_changed.
+	// reconnected in that case. For the default loopback flow, the runtime starts its listener
+	// before returning. With redirectUri, the host receives the callback and completes it
+	// through session.mcp.oauth.complete. The runtime continues the flow in the background and
+	// signals completion via session.mcp_server_status_changed.
 	AuthorizationURL *string `json:"authorizationUrl,omitempty"`
 	// Runtime-issued owned flow identity; never a server name or installation operation ID.
 	LoginID *string `json:"loginId,omitempty"`
@@ -8357,6 +8380,122 @@ type MCPPrepareInstallRequest struct {
 	SecretStorage MCPInstallationSecretStorage `json:"secretStorage"`
 	// The exact original source, used transiently only after confirmation.
 	Source MCPServerCardReference `json:"source"`
+}
+
+// An MCP prompt descriptor. Server-provided non-standard fields are exposed under
+// `additionalProperties`.
+// Experimental: MCPPrompt is part of an experimental API and may change or be removed.
+type MCPPrompt struct {
+	// Server-provided non-standard descriptor fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// Arguments accepted by the prompt
+	Arguments []MCPPromptArgument `json:"arguments,omitzero"`
+	// Description of what this prompt provides
+	Description *string `json:"description,omitempty"`
+	// Icons associated with this prompt
+	Icons []MCPPromptIcon `json:"icons,omitzero"`
+	// Prompt-level metadata
+	Meta map[string]any `json:"_meta,omitzero"`
+	// The programmatic name of the prompt
+	Name string `json:"name"`
+	// Human-readable display title
+	Title *string `json:"title,omitempty"`
+}
+
+// An argument accepted by an MCP prompt.
+// Experimental: MCPPromptArgument is part of an experimental API and may change or be
+// removed.
+type MCPPromptArgument struct {
+	// Server-provided non-standard argument fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// Description of the argument
+	Description *string `json:"description,omitempty"`
+	// Argument-level metadata
+	Meta map[string]any `json:"_meta,omitzero"`
+	// Name of the argument
+	Name string `json:"name"`
+	// Whether the argument is required; omission is distinct from false
+	Required *bool `json:"required,omitempty"`
+}
+
+// An MCP prompt icon with standard size hints and preserved non-standard fields.
+// Experimental: MCPPromptIcon is part of an experimental API and may change or be removed.
+type MCPPromptIcon struct {
+	// Server-provided non-standard icon fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// Icon MIME type, when known
+	MIMEType *string `json:"mimeType,omitempty"`
+	// Icon sizes, such as `48x48` or `any`
+	Sizes []string `json:"sizes,omitzero"`
+	// Icon URI
+	Src string `json:"src"`
+	// Theme hint for this icon
+	Theme *string `json:"theme,omitempty"`
+}
+
+// An MCP prompt message with opaque JSON content preserved without flattening or
+// content-type filtering.
+// Experimental: MCPPromptMessage is part of an experimental API and may change or be
+// removed.
+type MCPPromptMessage struct {
+	// Server-provided non-standard message fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// The original MCP content block, including nested metadata and unfamiliar content types
+	Content any `json:"content"`
+	// Message-level metadata
+	Meta map[string]any `json:"_meta,omitzero"`
+	// The role of the message sender
+	Role MCPPromptRole `json:"role"`
+}
+
+// MCP server, prompt name, and optional string-valued arguments.
+// Experimental: MCPPromptsGetRequest is part of an experimental API and may change or be
+// removed.
+type MCPPromptsGetRequest struct {
+	// String-valued arguments to pass to the prompt
+	Arguments map[string]string `json:"arguments,omitzero"`
+	// The programmatic name of the prompt
+	PromptName string `json:"promptName"`
+	// Name of the MCP server hosting the prompt
+	ServerName string `json:"serverName"`
+}
+
+// Prompt messages returned by the MCP server without sending them to the model.
+// Experimental: MCPPromptsGetResult is part of an experimental API and may change or be
+// removed.
+type MCPPromptsGetResult struct {
+	// Server-provided non-standard result fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// Description of the prompt
+	Description *string `json:"description,omitempty"`
+	// Ordered prompt messages
+	Messages []MCPPromptMessage `json:"messages"`
+	// MCP result metadata
+	Meta map[string]any `json:"_meta,omitzero"`
+}
+
+// MCP server whose prompts to enumerate.
+// Experimental: MCPPromptsListRequest is part of an experimental API and may change or be
+// removed.
+type MCPPromptsListRequest struct {
+	// Opaque MCP pagination cursor from a prior `nextCursor` value
+	Cursor *string `json:"cursor,omitempty"`
+	// Name of the MCP server whose prompts to enumerate
+	ServerName string `json:"serverName"`
+}
+
+// One page of prompts advertised by the named MCP server.
+// Experimental: MCPPromptsListResult is part of an experimental API and may change or be
+// removed.
+type MCPPromptsListResult struct {
+	// Server-provided non-standard result fields
+	AdditionalProperties map[string]any `json:"additionalProperties,omitzero"`
+	// MCP result metadata
+	Meta map[string]any `json:"_meta,omitzero"`
+	// Opaque cursor for the next page, if the server has more prompts
+	NextCursor *string `json:"nextCursor,omitempty"`
+	// Prompts advertised by the server
+	Prompts []MCPPrompt `json:"prompts"`
 }
 
 // Registration parameters for an external MCP client.
@@ -14924,6 +15063,11 @@ type SessionMCPOauthCancelLoginResult struct {
 	Cancelled bool `json:"cancelled"`
 }
 
+// Experimental: SessionMCPOauthCompleteResult is part of an experimental API and may change
+// or be removed.
+type SessionMCPOauthCompleteResult struct {
+}
+
 // Effect-free preparation bound to the existing local session, requester and installation,
 // with frozen options.
 // Experimental: SessionMCPOauthPrepareLoginRequest is part of an experimental API and may
@@ -16749,7 +16893,8 @@ type ShellCredentials struct {
 	Git *bool `json:"git,omitempty"`
 }
 
-// Shell command to run, with optional working directory and timeout in milliseconds.
+// Shell command to run, with optional working directory and timeout in milliseconds. Spawn
+// failures return an RPC error.
 // Experimental: ShellExecRequest is part of an experimental API and may change or be
 // removed.
 type ShellExecRequest struct {
@@ -16761,11 +16906,11 @@ type ShellExecRequest struct {
 	Timeout *int64 `json:"timeout,omitempty"`
 }
 
-// Identifier of the spawned process, used to correlate streamed output and exit
-// notifications.
+// Identifier of the spawned shell process, usable with shell.kill while the process is
+// running.
 // Experimental: ShellExecResult is part of an experimental API and may change or be removed.
 type ShellExecResult struct {
-	// Unique identifier for tracking streamed output
+	// Identifier usable with shell.kill while the process is running
 	ProcessID string `json:"processId"`
 }
 
@@ -23366,6 +23511,17 @@ const (
 	MCPPlanValueCategoryRuntimeArgument MCPPlanValueCategory = "runtime-argument"
 	// Substituted into the remote endpoint URL.
 	MCPPlanValueCategoryURLVariable MCPPlanValueCategory = "url-variable"
+)
+
+// The sender role of an MCP prompt message.
+// Experimental: MCPPromptRole is part of an experimental API and may change or be removed.
+type MCPPromptRole string
+
+const (
+	// A message from the assistant.
+	MCPPromptRoleAssistant MCPPromptRole = "assistant"
+	// A message from the user.
+	MCPPromptRoleUser MCPPromptRole = "user"
 )
 
 // Outcome of the sampling inference. 'success' produced a response; 'failure' encountered
@@ -31014,6 +31170,29 @@ func (a *MCPOauthAPI) CancelLogin(ctx context.Context, params *SessionMCPOauthCa
 	return &result, nil
 }
 
+// Completes a runtime-managed MCP OAuth login after the authorization server redirects to a
+// host-managed callback URL.
+//
+// RPC method: session.mcp.oauth.complete.
+//
+// Parameters: Host-delivered callback for a runtime-managed MCP OAuth login.
+func (a *MCPOauthAPI) Complete(ctx context.Context, params *MCPOauthCompleteRequest) (*SessionMCPOauthCompleteResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	if params != nil {
+		req["authorizationId"] = params.AuthorizationID
+		req["callbackUrl"] = params.CallbackURL
+	}
+	raw, err := a.client.Request(ctx, "session.mcp.oauth.complete", req)
+	if err != nil {
+		return nil, err
+	}
+	var result SessionMCPOauthCompleteResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // HandlePendingRequest resolves a pending MCP OAuth request with a host-provided token or
 // cancellation. The pending request is emitted as mcp.oauth_required with the data
 // necessary to authorize the request.
@@ -31047,7 +31226,7 @@ func (a *MCPOauthAPI) HandlePendingRequest(ctx context.Context, params *MCPOauth
 // RPC method: session.mcp.oauth.login.
 //
 // Parameters: Remote MCP server name and optional overrides controlling reauthentication,
-// OAuth client display name, callback success-page copy, and static OAuth client selection.
+// OAuth client display name, callback handling, and static OAuth client selection.
 //
 // Returns: OAuth authorization URL the caller should open, or empty when cached tokens
 // already authenticated the server.
@@ -31080,6 +31259,9 @@ func (a *MCPOauthAPI) Login(ctx context.Context, params *MCPOauthLoginRequest) (
 		}
 		if params.PublicClient != nil {
 			req["publicClient"] = *params.PublicClient
+		}
+		if params.RedirectURI != nil {
+			req["redirectUri"] = *params.RedirectURI
 		}
 		req["serverName"] = params.ServerName
 	}
@@ -31189,6 +31371,70 @@ func (a *MCPOauthAPI) Respond(ctx context.Context, params *MCPOauthRespondReques
 // Experimental: Oauth returns experimental APIs that may change or be removed.
 func (s *MCPAPI) Oauth() *MCPOauthAPI {
 	return (*MCPOauthAPI)(s)
+}
+
+// Experimental: MCPPromptsAPI contains experimental APIs that may change or be removed.
+type MCPPromptsAPI sessionAPI
+
+// Get a prompt's messages from a connected MCP server (proxies MCP `prompts/get`). Content
+// is preserved as opaque JSON. Does not send messages to the model, execute tools, or fetch
+// referenced resources.
+//
+// RPC method: session.mcp.prompts.get.
+//
+// Parameters: MCP server, prompt name, and optional string-valued arguments.
+//
+// Returns: Prompt messages returned by the MCP server without sending them to the model.
+func (a *MCPPromptsAPI) Get(ctx context.Context, params *MCPPromptsGetRequest) (*MCPPromptsGetResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	if params != nil {
+		if params.Arguments != nil {
+			req["arguments"] = params.Arguments
+		}
+		req["promptName"] = params.PromptName
+		req["serverName"] = params.ServerName
+	}
+	raw, err := a.client.Request(ctx, "session.mcp.prompts.get", req)
+	if err != nil {
+		return nil, err
+	}
+	var result MCPPromptsGetResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// List enumerate one page of prompts a connected MCP server exposes (proxies MCP
+// `prompts/list`). Pass `cursor` to continue from a prior result's `nextCursor`.
+//
+// RPC method: session.mcp.prompts.list.
+//
+// Parameters: MCP server whose prompts to enumerate.
+//
+// Returns: One page of prompts advertised by the named MCP server.
+func (a *MCPPromptsAPI) List(ctx context.Context, params *MCPPromptsListRequest) (*MCPPromptsListResult, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	if params != nil {
+		if params.Cursor != nil {
+			req["cursor"] = *params.Cursor
+		}
+		req["serverName"] = params.ServerName
+	}
+	raw, err := a.client.Request(ctx, "session.mcp.prompts.list", req)
+	if err != nil {
+		return nil, err
+	}
+	var result MCPPromptsListResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Experimental: Prompts returns experimental APIs that may change or be removed.
+func (s *MCPAPI) Prompts() *MCPPromptsAPI {
+	return (*MCPPromptsAPI)(s)
 }
 
 // Experimental: MCPResourcesAPI contains experimental APIs that may change or be removed.
@@ -33781,7 +34027,7 @@ func (a *ShellAPI) CancelUserRequested(ctx context.Context, params *ShellCancelU
 	return &result, nil
 }
 
-// Exec starts a shell command and streams output through session notifications. The command
+// Exec starts a shell command, returning an RPC error if it cannot be spawned. The command
 // runs as the leader of its own process group (POSIX) or in a dedicated job object
 // (Windows), so a forced termination — via "shell.kill", the request timeout, or session
 // disposal — signals that whole group/job rather than only the direct child. Two gaps are
@@ -33793,10 +34039,10 @@ func (a *ShellAPI) CancelUserRequested(ctx context.Context, params *ShellCancelU
 // RPC method: session.shell.exec.
 //
 // Parameters: Shell command to run, with optional working directory and timeout in
-// milliseconds.
+// milliseconds. Spawn failures return an RPC error.
 //
-// Returns: Identifier of the spawned process, used to correlate streamed output and exit
-// notifications.
+// Returns: Identifier of the spawned shell process, usable with shell.kill while the
+// process is running.
 func (a *ShellAPI) Exec(ctx context.Context, params *ShellExecRequest) (*ShellExecResult, error) {
 	req := map[string]any{"sessionId": a.sessionID}
 	if params != nil {

@@ -7704,6 +7704,13 @@ impl<'a> SessionRpcMcp<'a> {
         }
     }
 
+    /// `session.mcp.prompts.*` sub-namespace.
+    pub fn prompts(&self) -> SessionRpcMcpPrompts<'a> {
+        SessionRpcMcpPrompts {
+            session: self.session,
+        }
+    }
+
     /// `session.mcp.resources.*` sub-namespace.
     pub fn resources(&self) -> SessionRpcMcpResources<'a> {
         SessionRpcMcpResources {
@@ -8754,7 +8761,7 @@ impl<'a> SessionRpcMcpOauth<'a> {
     ///
     /// # Parameters
     ///
-    /// * `params` - Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.
+    /// * `params` - Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.
     ///
     /// # Returns
     ///
@@ -8784,7 +8791,7 @@ impl<'a> SessionRpcMcpOauth<'a> {
     ///
     /// # Parameters
     ///
-    /// * `params` - Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.
+    /// * `params` - Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.
     ///
     /// # Returns
     ///
@@ -8811,6 +8818,32 @@ impl<'a> SessionRpcMcpOauth<'a> {
             .call(rpc_methods::SESSION_MCP_OAUTH_LOGIN, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Completes a runtime-managed MCP OAuth login after the authorization server redirects to a host-managed callback URL.
+    ///
+    /// Wire method: `session.mcp.oauth.complete`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Host-delivered callback for a runtime-managed MCP OAuth login.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn complete(&self, params: McpOauthCompleteRequest) -> Result<(), Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_MCP_OAUTH_COMPLETE, Some(wire_params))
+            .await?;
+        Ok(())
     }
 
     /// Passively probes a configured remote MCP server to classify whether OAuth is required or a cached/override token is accepted. Does not start OAuth, emit pending OAuth requests, or mutate MCP connection state.
@@ -8943,6 +8976,74 @@ impl<'a> SessionRpcMcpOauth<'a> {
             .session
             .client()
             .call(rpc_methods::SESSION_MCP_OAUTH_RESPOND, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+}
+
+/// `session.mcp.prompts.*` RPCs.
+#[derive(Clone, Copy)]
+pub struct SessionRpcMcpPrompts<'a> {
+    pub(crate) session: &'a Session,
+}
+
+impl<'a> SessionRpcMcpPrompts<'a> {
+    /// Enumerate one page of prompts a connected MCP server exposes (proxies MCP `prompts/list`). Pass `cursor` to continue from a prior result's `nextCursor`.
+    ///
+    /// Wire method: `session.mcp.prompts.list`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - MCP server whose prompts to enumerate.
+    ///
+    /// # Returns
+    ///
+    /// One page of prompts advertised by the named MCP server.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn list(&self, params: McpPromptsListRequest) -> Result<McpPromptsListResult, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_MCP_PROMPTS_LIST, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Get a prompt's messages from a connected MCP server (proxies MCP `prompts/get`). Content is preserved as opaque JSON. Does not send messages to the model, execute tools, or fetch referenced resources.
+    ///
+    /// Wire method: `session.mcp.prompts.get`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - MCP server, prompt name, and optional string-valued arguments.
+    ///
+    /// # Returns
+    ///
+    /// Prompt messages returned by the MCP server without sending them to the model.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn get(&self, params: McpPromptsGetRequest) -> Result<McpPromptsGetResult, Error> {
+        let mut wire_params = serde_json::to_value(params)?;
+        wire_params["sessionId"] = serde_json::Value::String(self.session.id().to_string());
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_MCP_PROMPTS_GET, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
     }
@@ -12567,17 +12668,17 @@ pub struct SessionRpcShell<'a> {
 }
 
 impl<'a> SessionRpcShell<'a> {
-    /// Starts a shell command and streams output through session notifications. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.
+    /// Starts a shell command, returning an RPC error if it cannot be spawned. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.
     ///
     /// Wire method: `session.shell.exec`.
     ///
     /// # Parameters
     ///
-    /// * `params` - Shell command to run, with optional working directory and timeout in milliseconds.
+    /// * `params` - Shell command to run, with optional working directory and timeout in milliseconds. Spawn failures return an RPC error.
     ///
     /// # Returns
     ///
-    /// Identifier of the spawned process, used to correlate streamed output and exit notifications.
+    /// Identifier of the spawned shell process, usable with shell.kill while the process is running.
     ///
     /// <div class="warning">
     ///

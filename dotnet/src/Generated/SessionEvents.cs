@@ -4625,6 +4625,12 @@ public sealed partial class PromptCacheBreakData
     [JsonPropertyName("toolsRedefined")]
     internal string[]? ToolsRedefined { get; set; }
 
+    /// <summary>Changed definition parts of redefined tools, as `tool:part` entries; property-level parts only for telemetry-safe tools, whose other names are hashed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonInclude]
+    [JsonPropertyName("toolsRedefinedParts")]
+    internal string[]? ToolsRedefinedParts { get; set; }
+
     /// <summary>Raw names of tools redefined since the prior call, restricted because a tool name can be user-authored.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonInclude]
@@ -4999,6 +5005,12 @@ public sealed partial class ToolExecutionProgressData
     /// <summary>Human-readable progress status message (e.g., from an MCP server).</summary>
     [JsonPropertyName("progressMessage")]
     public required string ProgressMessage { get; set; }
+
+    /// <summary>Client-only structured progress metadata. Not model-facing tool output.</summary>
+    [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("structuredContent")]
+    public JsonElement? StructuredContent { get; set; }
 
     /// <summary>Tool call ID this progress notification belongs to.</summary>
     [JsonPropertyName("toolCallId")]
@@ -6426,6 +6438,11 @@ public sealed partial class SessionAutoModeResolvedData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("routingMethod")]
     public string? RoutingMethod { get; set; }
+
+    /// <summary>Short human-readable sentence from the routing service explaining why this model was chosen, for display alongside the model. Present only when the service supplied one: it is omitted for on-device selections, when the service did not provide an explanation, and when a replayed decision made no routing call. The text is display-only and drawn from a fixed catalogue; several distinct routing categories share identical wording, so it cannot be used to recover the category or keyed on programmatically.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("selectionReason")]
+    public string? SelectionReason { get; set; }
 
     /// <summary>Whether a sticky model choice overrode the router result.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

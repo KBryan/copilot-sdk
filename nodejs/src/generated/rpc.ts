@@ -3448,6 +3448,18 @@ export type McpPlanInstallResult =
   | CatalogNotInstallableError
   | CatalogUnavailableError;
 /**
+ * The sender role of an MCP prompt message.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptRole".
+ */
+/** @experimental */
+export type McpPromptRole =
+  /** A message from the user. */
+  | "user"
+  /** A message from the assistant. */
+  | "assistant";
+/**
  * MCP server configuration (stdio, remote HTTP/SSE, or in-process)
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -14999,6 +15011,23 @@ export interface McpOauthCancelLoginResult {
   cancelled: boolean;
 }
 /**
+ * Host-delivered callback for a runtime-managed MCP OAuth login.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpOauthCompleteRequest".
+ */
+/** @experimental */
+export interface McpOauthCompleteRequest {
+  /**
+   * Opaque identifier returned by session.mcp.oauth.login for the pending external callback.
+   */
+  authorizationId: string;
+  /**
+   * Full externally visible HTTPS callback URL received by the host, including the authorization response query parameters. Applications behind a reverse proxy must reconstruct the public URL rather than passing an internal proxy URL.
+   */
+  callbackUrl: string;
+}
+/**
  * Pending MCP OAuth request ID and host-provided token or cancellation response.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -15026,7 +15055,7 @@ export interface McpOauthHandlePendingResult {
   success: boolean;
 }
 /**
- * Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.
+ * Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "McpOauthLoginRequest".
@@ -15063,6 +15092,10 @@ export interface McpOauthLoginRequest {
   publicClient?: boolean;
   grantType?: McpOauthLoginGrantType;
   /**
+   * Optional externally visible HTTPS redirect URI for a host-managed callback endpoint. When supplied, the runtime still owns discovery, PKCE, token exchange, persistence, and reconnect, but does not bind a loopback listener or terminate HTTPS. The URI must not contain query parameters or a fragment and must be registered for the selected CIMD, DCR, or static OAuth client.
+   */
+  redirectUri?: string;
+  /**
    * Required for owned login. Consumes the exact prepareLogin handle once.
    * Set forceReauth and display options during preparation, not consumption.
    */
@@ -15086,9 +15119,13 @@ export interface McpOauthLoginResult {
   loginId?: string;
   status?: McpOwnedOauthLoginStatus;
   /**
-   * URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. When present, the runtime starts the callback listener before returning and continues the flow in the background; completion is signaled via session.mcp_server_status_changed.
+   * URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. For the default loopback flow, the runtime starts its listener before returning. With redirectUri, the host receives the callback and completes it through session.mcp.oauth.complete. The runtime continues the flow in the background and signals completion via session.mcp_server_status_changed.
    */
   authorizationUrl?: string;
+  /**
+   * Opaque authorization identifier returned only for a host-managed redirect URI. The runtime also sends it as the OAuth state value, so the callback endpoint can read state and pass it with the full callback URL to session.mcp.oauth.complete.
+   */
+  authorizationId?: string;
 }
 /**
  * Effect-free preparation bound to the existing local session, requester and installation, with frozen options.
@@ -15320,6 +15357,235 @@ export interface McpPrepareInstallRequest {
   secrets: McpInstallationSecret[];
   source: McpServerCardReference;
   secretStorage: McpInstallationSecretStorage;
+}
+/**
+ * An MCP prompt descriptor. Server-provided non-standard fields are exposed under `additionalProperties`.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPrompt".
+ */
+/** @experimental */
+export interface McpPrompt {
+  /**
+   * The programmatic name of the prompt
+   */
+  name: string;
+  /**
+   * Human-readable display title
+   */
+  title?: string;
+  /**
+   * Description of what this prompt provides
+   */
+  description?: string;
+  /**
+   * Arguments accepted by the prompt
+   */
+  arguments?: McpPromptArgument[];
+  /**
+   * Icons associated with this prompt
+   */
+  icons?: McpPromptIcon[];
+  /**
+   * Prompt-level metadata
+   */
+  _meta?: {
+    [k: string]: JsonValue | undefined;
+  };
+  /**
+   * Server-provided non-standard descriptor fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
+}
+/**
+ * An argument accepted by an MCP prompt.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptArgument".
+ */
+/** @experimental */
+export interface McpPromptArgument {
+  /**
+   * Name of the argument
+   */
+  name: string;
+  /**
+   * Description of the argument
+   */
+  description?: string;
+  /**
+   * Whether the argument is required; omission is distinct from false
+   */
+  required?: boolean;
+  /**
+   * Argument-level metadata
+   */
+  _meta?: {
+    [k: string]: JsonValue | undefined;
+  };
+  /**
+   * Server-provided non-standard argument fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
+}
+/**
+ * An MCP prompt icon with standard size hints and preserved non-standard fields.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptIcon".
+ */
+/** @experimental */
+export interface McpPromptIcon {
+  /**
+   * Icon URI
+   */
+  src: string;
+  /**
+   * Icon MIME type, when known
+   */
+  mimeType?: string;
+  /**
+   * Icon sizes, such as `48x48` or `any`
+   */
+  sizes?: string[];
+  /**
+   * Theme hint for this icon
+   */
+  theme?: string;
+  /**
+   * Server-provided non-standard icon fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
+}
+/**
+ * An MCP prompt message with opaque JSON content preserved without flattening or content-type filtering.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptMessage".
+ */
+/** @experimental */
+export interface McpPromptMessage {
+  role: McpPromptRole;
+  /**
+   * The original MCP content block, including nested metadata and unfamiliar content types
+   */
+  content: JsonValue;
+  /**
+   * Message-level metadata
+   */
+  _meta?: {
+    [k: string]: JsonValue | undefined;
+  };
+  /**
+   * Server-provided non-standard message fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
+}
+/**
+ * MCP server, prompt name, and optional string-valued arguments.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptsGetRequest".
+ */
+/** @experimental */
+export interface McpPromptsGetRequest {
+  /**
+   * Name of the MCP server hosting the prompt
+   */
+  serverName: string;
+  /**
+   * The programmatic name of the prompt
+   */
+  promptName: string;
+  /**
+   * String-valued arguments to pass to the prompt
+   */
+  arguments?: {
+    [k: string]: string | undefined;
+  };
+}
+/**
+ * Prompt messages returned by the MCP server without sending them to the model.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptsGetResult".
+ */
+/** @experimental */
+export interface McpPromptsGetResult {
+  /**
+   * Description of the prompt
+   */
+  description?: string;
+  /**
+   * Ordered prompt messages
+   */
+  messages: McpPromptMessage[];
+  /**
+   * MCP result metadata
+   */
+  _meta?: {
+    [k: string]: JsonValue | undefined;
+  };
+  /**
+   * Server-provided non-standard result fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
+}
+/**
+ * MCP server whose prompts to enumerate.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptsListRequest".
+ */
+/** @experimental */
+export interface McpPromptsListRequest {
+  /**
+   * Name of the MCP server whose prompts to enumerate
+   */
+  serverName: string;
+  /**
+   * Opaque MCP pagination cursor from a prior `nextCursor` value
+   */
+  cursor?: string;
+}
+/**
+ * One page of prompts advertised by the named MCP server.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpPromptsListResult".
+ */
+/** @experimental */
+export interface McpPromptsListResult {
+  /**
+   * Prompts advertised by the server
+   */
+  prompts: McpPrompt[];
+  /**
+   * Opaque cursor for the next page, if the server has more prompts
+   */
+  nextCursor?: string;
+  /**
+   * MCP result metadata
+   */
+  _meta?: {
+    [k: string]: JsonValue | undefined;
+  };
+  /**
+   * Server-provided non-standard result fields
+   */
+  additionalProperties?: {
+    [k: string]: JsonValue | undefined;
+  };
 }
 /**
  * Registration parameters for an external MCP client.
@@ -24703,7 +24969,7 @@ export interface ShellCancelUserRequestedRequest {
   requestId: string;
 }
 /**
- * Shell command to run, with optional working directory and timeout in milliseconds.
+ * Shell command to run, with optional working directory and timeout in milliseconds. Spawn failures return an RPC error.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "ShellExecRequest".
@@ -24724,7 +24990,7 @@ export interface ShellExecRequest {
   timeout?: number;
 }
 /**
- * Identifier of the spawned process, used to correlate streamed output and exit notifications.
+ * Identifier of the spawned shell process, usable with shell.kill while the process is running.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "ShellExecResult".
@@ -24732,7 +24998,7 @@ export interface ShellExecRequest {
 /** @experimental */
 export interface ShellExecResult {
   /**
-   * Unique identifier for tracking streamed output
+   * Identifier usable with shell.kill while the process is running
    */
   processId: string;
 }
@@ -30821,7 +31087,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         send: async (params: SendRequest): Promise<SendResult> =>
-            connection.sendRequest("session.send", { sessionId, ...params }),
+            connection.sendRequest("session.send", { ...params, sessionId }),
         /**
          * Sends zero or more user messages to the session in a single turn and returns their message IDs. All provided messages are appended to the conversation in order, then exactly one agent turn runs over the resulting history. When the list is empty, one turn runs over the existing history with no new user message. Remote-backed (Mission Control) sessions do not support this method and will return an error.
          *
@@ -30832,7 +31098,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         sendMessages: async (params: SendMessagesRequest): Promise<SendMessagesResult> =>
-            connection.sendRequest("session.sendMessages", { sessionId, ...params }),
+            connection.sendRequest("session.sendMessages", { ...params, sessionId }),
         /** @experimental */
         sandbox: {
             /**
@@ -30850,7 +31116,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of attempting to disable sandboxing for the current session.
              */
             disableForSession: async (params: SandboxDisableForSessionRequest): Promise<SandboxDisableForSessionResult> =>
-                connection.sendRequest("session.sandbox.disableForSession", { sessionId, ...params }),
+                connection.sendRequest("session.sandbox.disableForSession", { ...params, sessionId }),
             /**
              * Adds the path offered by a pending sandbox escalation permission request's sandboxPathGrant to the session's sandbox policy and approves the request, so the blocked operation re-runs inside the sandbox rather than outside it. The request is rejected unless the exact request is still pending, carries a sandboxPathGrant, and the grant still takes effect under the current managed policy. Does not persist the path; hosts that store sandbox settings save it themselves.
              *
@@ -30859,7 +31125,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of accepting a sandbox path grant.
              */
             grantPathForRequest: async (params: SandboxGrantPathForRequestRequest): Promise<SandboxGrantPathForRequestResult> =>
-                connection.sendRequest("session.sandbox.grantPathForRequest", { sessionId, ...params }),
+                connection.sendRequest("session.sandbox.grantPathForRequest", { ...params, sessionId }),
         },
         /**
          * Aborts the current agent turn.
@@ -30871,7 +31137,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         abort: async (params: AbortRequest): Promise<AbortResult> =>
-            connection.sendRequest("session.abort", { sessionId, ...params }),
+            connection.sendRequest("session.abort", { ...params, sessionId }),
         /**
          * Interrupts the current main agent turn while leaving running background work (subagents, sidekicks, and promoted attached shells) alive. No-op when the main loop is not processing.
          *
@@ -30882,7 +31148,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         interruptMainTurn: async (params: InterruptMainTurnRequest): Promise<InterruptMainTurnResult> =>
-            connection.sendRequest("session.interruptMainTurn", { sessionId, ...params }),
+            connection.sendRequest("session.interruptMainTurn", { ...params, sessionId }),
         /**
          * Cancels every running background agent (task-registry subagents plus sidekick agents) without interrupting the main agent loop. Promoted attached shells are left running.
          *
@@ -30900,7 +31166,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         shutdown: async (params: ShutdownRequest): Promise<void> =>
-            connection.sendRequest("session.shutdown", { sessionId, ...params }),
+            connection.sendRequest("session.shutdown", { ...params, sessionId }),
         /** @experimental */
         gitHubAuth: {
             /**
@@ -30918,7 +31184,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the credential update succeeded.
              */
             setCredentials: async (params: SessionSetCredentialsParams): Promise<SessionSetCredentialsResult> =>
-                connection.sendRequest("session.gitHubAuth.setCredentials", { sessionId, ...params }),
+                connection.sendRequest("session.gitHubAuth.setCredentials", { ...params, sessionId }),
         },
         /** @experimental */
         accounts: {
@@ -30930,7 +31196,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The enumerated collection, keyed by the same selector as the query.
              */
             enumerate: async (params: AccountsEnumerateRequest): Promise<AuthEnumerateValue> =>
-                connection.sendRequest("session.accounts.enumerate", { sessionId, ...params }),
+                connection.sendRequest("session.accounts.enumerate", { ...params, sessionId }),
             /**
              * Read one typed accounts datum: the active account, a neutral status summary, or the last authentication errors.
              *
@@ -30939,7 +31205,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The read result, keyed by the same selector as the query.
              */
             get: async (params: AccountsGetRequest): Promise<AuthReadValue> =>
-                connection.sendRequest("session.accounts.get", { sessionId, ...params }),
+                connection.sendRequest("session.accounts.get", { ...params, sessionId }),
             /**
              * Apply one non-interactive accounts mutation: switch the active account, log an account out, or set credentials from a token.
              *
@@ -30948,7 +31214,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of a non-interactive accounts mutation.
              */
             set: async (params: AccountsSetRequest): Promise<AuthWriteResult> =>
-                connection.sendRequest("session.accounts.set", { sessionId, ...params }),
+                connection.sendRequest("session.accounts.set", { ...params, sessionId }),
             /** @experimental */
             login: {
                 /**
@@ -30959,7 +31225,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns A started login flow: its opaque id and first step.
                  */
                 begin: async (params: AuthLoginBeginRequest): Promise<AuthLoginBegun> =>
-                    connection.sendRequest("session.accounts.login.begin", { sessionId, ...params }),
+                    connection.sendRequest("session.accounts.login.begin", { ...params, sessionId }),
                 /**
                  * Advance an in-flight login flow, optionally fulfilling an input-required step, and return the next step.
                  *
@@ -30968,14 +31234,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns One step in an interactive login flow. The consumer acts on the step and calls advance to proceed. Browser-open is encoded as two distinct steps by design: `open-url` is CONSUMER-driven (the provider surfaces the authorize URL and the consumer opens it — github.com/GHEC web), while `needs-interaction` is PROVIDER-driven (the provider opens the browser or broker UI itself and does not surface a URL — Entra).
                  */
                 advance: async (params: AuthLoginAdvanceRequest): Promise<AuthLoginStep> =>
-                    connection.sendRequest("session.accounts.login.advance", { sessionId, ...params }),
+                    connection.sendRequest("session.accounts.login.advance", { ...params, sessionId }),
                 /**
                  * Cancel an in-flight login flow and release its resources.
                  *
                  * @param params Cancel an in-flight login flow.
                  */
                 cancel: async (params: AuthLoginCancelRequest): Promise<void> =>
-                    connection.sendRequest("session.accounts.login.cancel", { sessionId, ...params }),
+                    connection.sendRequest("session.accounts.login.cancel", { ...params, sessionId }),
             },
         },
         /** @experimental */
@@ -30988,7 +31254,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of collecting a session debug bundle.
              */
             collectLogs: async (params: DebugCollectLogsRequest): Promise<DebugCollectLogsResult> =>
-                connection.sendRequest("session.debug.collectLogs", { sessionId, ...params }),
+                connection.sendRequest("session.debug.collectLogs", { ...params, sessionId }),
         },
         /** @experimental */
         canvas: {
@@ -31014,14 +31280,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Open canvas instance snapshot.
              */
             open: async (params: CanvasOpenRequest): Promise<OpenCanvasInstance> =>
-                connection.sendRequest("session.canvas.open", { sessionId, ...params }),
+                connection.sendRequest("session.canvas.open", { ...params, sessionId }),
             /**
              * Closes an open canvas instance.
              *
              * @param params Canvas close parameters.
              */
             close: async (params: CanvasCloseRequest): Promise<void> =>
-                connection.sendRequest("session.canvas.close", { sessionId, ...params }),
+                connection.sendRequest("session.canvas.close", { ...params, sessionId }),
             /** @experimental */
             action: {
                 /**
@@ -31032,7 +31298,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Canvas action invocation result.
                  */
                 invoke: async (params: CanvasActionInvokeRequest): Promise<CanvasActionInvokeResult> =>
-                    connection.sendRequest("session.canvas.action.invoke", { sessionId, ...params }),
+                    connection.sendRequest("session.canvas.action.invoke", { ...params, sessionId }),
             },
         },
         /** @experimental */
@@ -31045,7 +31311,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Complete current or terminal workflow run envelope.
              */
             run: async (params: WorkflowRunRequest): Promise<WorkflowRunResult> =>
-                connection.sendRequest("session.workflow.run", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.run", { ...params, sessionId }),
             /**
              * Resumes a dynamic workflow run using its persisted name, arguments, journal, and accounting.
              *
@@ -31054,7 +31320,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Resolved persisted workflow identity and resumed run envelope.
              */
             resume: async (params: WorkflowResumeRequest): Promise<WorkflowResumeResult> =>
-                connection.sendRequest("session.workflow.resume", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.resume", { ...params, sessionId }),
             /**
              * Gets the current or settled envelope for a dynamic workflow run.
              *
@@ -31063,7 +31329,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Complete current or terminal workflow run envelope.
              */
             getRun: async (params: WorkflowGetRunRequest): Promise<WorkflowRunResult> =>
-                connection.sendRequest("session.workflow.getRun", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.getRun", { ...params, sessionId }),
             /**
              * Lists durable dynamic workflow runs for this session in creation order.
              *
@@ -31072,7 +31338,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns A page of workflow runs in durable creation order.
              */
             listRuns: async (params: WorkflowListRunsRequest): Promise<WorkflowListRunsResult> =>
-                connection.sendRequest("session.workflow.listRuns", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.listRuns", { ...params, sessionId }),
             /**
              * Gets durable and live observability detail for one dynamic workflow run.
              *
@@ -31081,7 +31347,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Full workflow run observability detail.
              */
             getRunDetail: async (params: WorkflowGetRunRequest): Promise<WorkflowRunDetail> =>
-                connection.sendRequest("session.workflow.getRunDetail", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.getRunDetail", { ...params, sessionId }),
             /**
              * Pages durable progress for one dynamic workflow run.
              *
@@ -31090,7 +31356,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns A bidirectional page of workflow progress.
              */
             getRunProgress: async (params: WorkflowGetRunProgressRequest): Promise<WorkflowProgressPage> =>
-                connection.sendRequest("session.workflow.getRunProgress", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.getRunProgress", { ...params, sessionId }),
             /**
              * Requests cancellation of a dynamic workflow run and returns its run envelope.
              *
@@ -31099,7 +31365,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Complete current or terminal workflow run envelope.
              */
             cancel: async (params: WorkflowCancelRequest): Promise<WorkflowRunResult> =>
-                connection.sendRequest("session.workflow.cancel", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.cancel", { ...params, sessionId }),
             /**
              * Pauses a running dynamic workflow and returns its settled run envelope.
              *
@@ -31108,7 +31374,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Complete current or terminal workflow run envelope.
              */
             pause: async (params: WorkflowPauseRequest): Promise<WorkflowRunResult> =>
-                connection.sendRequest("session.workflow.pause", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.pause", { ...params, sessionId }),
             /**
              * Records a batch of ordered dynamic workflow progress lines.
              *
@@ -31117,7 +31383,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Acknowledgement that a workflow request was accepted.
              */
             log: async (params: WorkflowLogRequest): Promise<WorkflowAckResult> =>
-                connection.sendRequest("session.workflow.log", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.log", { ...params, sessionId }),
             /**
              * Runs one dynamic-workflow-scoped subagent and returns its result.
              *
@@ -31126,7 +31392,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of one workflow-scoped subagent call.
              */
             agent: async (params: WorkflowAgentRequest): Promise<WorkflowAgentResult> =>
-                connection.sendRequest("session.workflow.agent", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.agent", { ...params, sessionId }),
             /** @experimental */
             journal: {
                 /**
@@ -31137,7 +31403,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Result of reading a workflow journal entry.
                  */
                 get: async (params: WorkflowJournalGetRequest): Promise<WorkflowJournalGetResult> =>
-                    connection.sendRequest("session.workflow.journal.get", { sessionId, ...params }),
+                    connection.sendRequest("session.workflow.journal.get", { ...params, sessionId }),
                 /**
                  * Stores a memoized dynamic workflow journal entry.
                  *
@@ -31146,7 +31412,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Acknowledgement that a workflow request was accepted.
                  */
                 put: async (params: WorkflowJournalPutRequest): Promise<WorkflowAckResult> =>
-                    connection.sendRequest("session.workflow.journal.put", { sessionId, ...params }),
+                    connection.sendRequest("session.workflow.journal.put", { ...params, sessionId }),
             },
         },
         /** @experimental */
@@ -31166,7 +31432,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The model identifier active on the session after the switch.
              */
             switchTo: async (params: ModelSwitchToRequest): Promise<ModelSwitchToResult> =>
-                connection.sendRequest("session.model.switchTo", { sessionId, ...params }),
+                connection.sendRequest("session.model.switchTo", { ...params, sessionId }),
             /**
              * Requests an Auto preference change without changing the session's selected model. The latest unclaimed request wins; the runtime commits it only after a later prompt using the `auto` model mints a usable model and token pair. A `pending` response confirms that the request was accepted, not that it committed. Observe eventual success through `session.model_change`, failure through the ephemeral `session.auto_tier_switch_failed` event, or current unclaimed state through `session.model.getCurrent`.
              *
@@ -31175,7 +31441,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Immediate acknowledgement and Auto preference snapshot after a switch request. This result never implies that a pending preference committed.
              */
             switchAutoTier: async (params: ModelSwitchAutoTierRequest): Promise<ModelSwitchAutoTierResult> =>
-                connection.sendRequest("session.model.switchAutoTier", { sessionId, ...params }),
+                connection.sendRequest("session.model.switchAutoTier", { ...params, sessionId }),
             /**
              * Replaces or clears the host-supplied model allowlist for a running session.
              *
@@ -31184,7 +31450,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The applied host allowlist and effective session model policy after intersection.
              */
             setAllowedModels: async (params: ModelSetAllowedModelsRequest): Promise<ModelSetAllowedModelsResult> =>
-                connection.sendRequest("session.model.setAllowedModels", { sessionId, ...params }),
+                connection.sendRequest("session.model.setAllowedModels", { ...params, sessionId }),
             /**
              * Updates the session's reasoning effort without changing the selected model.
              *
@@ -31193,7 +31459,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Update the session's reasoning effort without changing the selected model. Use `switchTo` instead when you also need to change the model. The runtime stores the effort on the session and applies it to subsequent turns.
              */
             setReasoningEffort: async (params: ModelSetReasoningEffortRequest): Promise<ModelSetReasoningEffortResult> =>
-                connection.sendRequest("session.model.setReasoningEffort", { sessionId, ...params }),
+                connection.sendRequest("session.model.setReasoningEffort", { ...params, sessionId }),
             /**
              * Lists models available to this session using its own auth and integration context. Connected hosts (CLI TUI, GitHub App) should call this through the session client so remote sessions return the remote CLI's available models rather than the caller's.
              *
@@ -31202,7 +31468,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The list of models available to this session.
              */
             list: async (params?: SessionModelListRequest): Promise<SessionModelList> =>
-                connection.sendRequest("session.model.list", { sessionId, ...params }),
+                connection.sendRequest("session.model.list", { ...params, sessionId }),
         },
         /** @experimental */
         mode: {
@@ -31221,7 +31487,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Outcome of a session mode change, including any model switch it triggered and follow-up the host must perform.
              */
             set: async (params: ModeSetRequest): Promise<ModeSetResult> =>
-                connection.sendRequest("session.mode.set", { sessionId, ...params }),
+                connection.sendRequest("session.mode.set", { ...params, sessionId }),
         },
         /** @experimental */
         name: {
@@ -31238,7 +31504,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params New friendly name to apply to the session.
              */
             set: async (params: NameSetRequest): Promise<void> =>
-                connection.sendRequest("session.name.set", { sessionId, ...params }),
+                connection.sendRequest("session.name.set", { ...params, sessionId }),
             /**
              * Persists an auto-generated session summary as the session's name when no user-set name exists.
              *
@@ -31247,7 +31513,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the auto-generated summary was applied as the session's name.
              */
             setAuto: async (params: NameSetAutoRequest): Promise<NameSetAutoResult> =>
-                connection.sendRequest("session.name.setAuto", { sessionId, ...params }),
+                connection.sendRequest("session.name.setAuto", { ...params, sessionId }),
         },
         /** @experimental */
         plan: {
@@ -31264,7 +31530,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Replacement contents to write to the session plan file.
              */
             update: async (params: PlanUpdateRequest): Promise<void> =>
-                connection.sendRequest("session.plan.update", { sessionId, ...params }),
+                connection.sendRequest("session.plan.update", { ...params, sessionId }),
             /**
              * Deletes the session plan file from the workspace.
              */
@@ -31302,7 +31568,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Current workspace metadata for the session, including its absolute filesystem path when available.
              */
             updateMetadata: async (params: WorkspacesUpdateMetadataRequest): Promise<WorkspacesGetWorkspaceResult> =>
-                connection.sendRequest("session.workspaces.updateMetadata", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.updateMetadata", { ...params, sessionId }),
             /**
              * Ensures a local session workspace exists and returns it.
              *
@@ -31311,7 +31577,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Current workspace metadata for the session, including its absolute filesystem path when available.
              */
             ensure: async (params: WorkspacesEnsureRequest): Promise<WorkspacesGetWorkspaceResult> =>
-                connection.sendRequest("session.workspaces.ensure", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.ensure", { ...params, sessionId }),
             /**
              * Lists files stored in the session workspace files directory.
              *
@@ -31327,14 +31593,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Contents of the requested workspace file as a UTF-8 string.
              */
             readFile: async (params: WorkspacesReadFileRequest): Promise<WorkspacesReadFileResult> =>
-                connection.sendRequest("session.workspaces.readFile", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.readFile", { ...params, sessionId }),
             /**
              * Creates or overwrites a file in the session workspace files directory.
              *
              * @param params Relative path and UTF-8 content for the workspace file to create or overwrite.
              */
             createFile: async (params: WorkspacesCreateFileRequest): Promise<void> =>
-                connection.sendRequest("session.workspaces.createFile", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.createFile", { ...params, sessionId }),
             /**
              * Returns metadata for a file or directory in the session workspace files directory.
              *
@@ -31343,28 +31609,28 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Filesystem metadata for a path in the session workspace files directory.
              */
             statFile: async (params: WorkspacesStatFileRequest): Promise<WorkspacesStatFileResult> =>
-                connection.sendRequest("session.workspaces.statFile", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.statFile", { ...params, sessionId }),
             /**
              * Creates a directory in the session workspace files directory.
              *
              * @param params Directory to create within the session workspace files directory.
              */
             createDirectory: async (params: WorkspacesCreateDirectoryRequest): Promise<void> =>
-                connection.sendRequest("session.workspaces.createDirectory", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.createDirectory", { ...params, sessionId }),
             /**
              * Removes a file or directory from the session workspace files directory.
              *
              * @param params File or directory to remove from the session workspace files directory.
              */
             removePath: async (params: WorkspacesRemovePathRequest): Promise<void> =>
-                connection.sendRequest("session.workspaces.removePath", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.removePath", { ...params, sessionId }),
             /**
              * Renames a file or directory within the session workspace files directory.
              *
              * @param params Source and destination paths for a rename within the session workspace files directory.
              */
             renamePath: async (params: WorkspacesRenamePathRequest): Promise<void> =>
-                connection.sendRequest("session.workspaces.renamePath", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.renamePath", { ...params, sessionId }),
             /**
              * Lists workspace checkpoints in chronological order.
              *
@@ -31380,7 +31646,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Checkpoint content as a UTF-8 string, or null when the checkpoint or workspace is missing.
              */
             readCheckpoint: async (params: WorkspacesReadCheckpointRequest): Promise<WorkspacesReadCheckpointResult> =>
-                connection.sendRequest("session.workspaces.readCheckpoint", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.readCheckpoint", { ...params, sessionId }),
             /**
              * Adds a compaction summary checkpoint to the local session workspace.
              *
@@ -31389,7 +31655,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Persisted summary metadata and refreshed workspace metadata.
              */
             addSummary: async (params: WorkspacesAddSummaryRequest): Promise<WorkspacesAddSummaryResult> =>
-                connection.sendRequest("session.workspaces.addSummary", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.addSummary", { ...params, sessionId }),
             /**
              * Truncates local workspace compaction summaries after a rollback.
              *
@@ -31398,7 +31664,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Current workspace metadata for the session, including its absolute filesystem path when available.
              */
             truncateSummaries: async (params: WorkspacesTruncateSummariesRequest): Promise<WorkspacesGetWorkspaceResult> =>
-                connection.sendRequest("session.workspaces.truncateSummaries", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.truncateSummaries", { ...params, sessionId }),
             /**
              * Reads the autopilot objective state file from the local session workspace.
              *
@@ -31414,7 +31680,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of writing the autopilot objective file.
              */
             writeAutopilotObjective: async (params: WorkspacesWriteAutopilotObjectiveRequest): Promise<WorkspacesWriteAutopilotObjectiveResult> =>
-                connection.sendRequest("session.workspaces.writeAutopilotObjective", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.writeAutopilotObjective", { ...params, sessionId }),
             /**
              * Deletes the autopilot objective state file from the local session workspace.
              *
@@ -31437,7 +31703,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Descriptor for the saved paste file, or null when the workspace is unavailable.
              */
             saveLargePaste: async (params: WorkspacesSaveLargePasteRequest): Promise<WorkspacesSaveLargePasteResult> =>
-                connection.sendRequest("session.workspaces.saveLargePaste", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.saveLargePaste", { ...params, sessionId }),
             /**
              * Computes a diff for the session workspace. Never rejects for a busy session: a `session`-mode diff that cannot read the session's file-change captures falls back to an unstaged git diff with `isFallback: true` and reports why in `unavailableReason`.
              *
@@ -31446,7 +31712,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Workspace diff result for the requested mode.
              */
             diff: async (params: WorkspacesDiffRequest): Promise<WorkspaceDiffResult> =>
-                connection.sendRequest("session.workspaces.diff", { sessionId, ...params }),
+                connection.sendRequest("session.workspaces.diff", { ...params, sessionId }),
         },
         /** @experimental */
         autopilotObjective: {
@@ -31475,7 +31741,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Host-driven completion items for the current composer input. Empty when the host returns no items or does not support completions.
              */
             request: async (params: CompletionsRequestRequest): Promise<CompletionsRequestResult> =>
-                connection.sendRequest("session.completions.request", { sessionId, ...params }),
+                connection.sendRequest("session.completions.request", { ...params, sessionId }),
         },
         /** @experimental */
         instructions: {
@@ -31512,7 +31778,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether fleet mode was successfully activated.
              */
             start: async (params: FleetStartRequest): Promise<FleetStartResult> =>
-                connection.sendRequest("session.fleet.start", { sessionId, ...params }),
+                connection.sendRequest("session.fleet.start", { ...params, sessionId }),
         },
         /** @experimental */
         agent: {
@@ -31524,14 +31790,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Agents available to the session.
              */
             list: async (params?: SessionAgentListRequest): Promise<AgentList> =>
-                connection.sendRequest("session.agent.list", { sessionId, ...params }),
+                connection.sendRequest("session.agent.list", { ...params, sessionId }),
             /**
              * Sets an in-memory authored prompt override for an available agent. For built-in agents, this replaces only the static base prompt while preserving runtime-owned dynamic prompt composition and behavior. The special `general-purpose` agent is not overrideable. Overrides are not persisted; resumed and forked sessions start without them, so the host must re-apply them.
              *
              * @param params An in-memory authored prompt override for an available agent.
              */
             setPrompt: async (params: AgentSetPromptRequest): Promise<void> =>
-                connection.sendRequest("session.agent.setPrompt", { sessionId, ...params }),
+                connection.sendRequest("session.agent.setPrompt", { ...params, sessionId }),
             /**
              * Gets the currently selected custom agent for the session.
              *
@@ -31547,7 +31813,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The newly selected custom agent.
              */
             select: async (params: AgentSelectRequest): Promise<AgentSelectResult> =>
-                connection.sendRequest("session.agent.select", { sessionId, ...params }),
+                connection.sendRequest("session.agent.select", { ...params, sessionId }),
             /**
              * Clears the selected custom agent and returns the session to the default agent.
              */
@@ -31571,7 +31837,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Identifier assigned to the newly started background agent task.
              */
             startAgent: async (params: TasksStartAgentRequest): Promise<TasksStartAgentResult> =>
-                connection.sendRequest("session.tasks.startAgent", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.startAgent", { ...params, sessionId }),
             /**
              * Lists background tasks tracked by the session.
              *
@@ -31587,7 +31853,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of registering or reclaiming a client-owned task.
              */
             register: async (params: TasksRegisterRequest): Promise<TasksRegisterResult> =>
-                connection.sendRequest("session.tasks.register", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.register", { ...params, sessionId }),
             /**
              * Publishes generic progress or a terminal outcome for a client-owned task.
              *
@@ -31596,7 +31862,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of publishing a client-owned task update.
              */
             update: async (params: TasksUpdateRequest): Promise<TasksUpdateResult> =>
-                connection.sendRequest("session.tasks.update", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.update", { ...params, sessionId }),
             /**
              * Refreshes metadata for any detached background shells the runtime knows about.
              *
@@ -31619,7 +31885,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Progress information for the task, or null when no task with that ID is tracked.
              */
             getProgress: async (params: TasksGetProgressRequest): Promise<TasksGetProgressResult> =>
-                connection.sendRequest("session.tasks.getProgress", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.getProgress", { ...params, sessionId }),
             /**
              * Returns the first sync-waiting task that can currently be promoted to background mode.
              *
@@ -31635,7 +31901,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the task was successfully promoted to background mode.
              */
             promoteToBackground: async (params: TasksPromoteToBackgroundRequest): Promise<TasksPromoteToBackgroundResult> =>
-                connection.sendRequest("session.tasks.promoteToBackground", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.promoteToBackground", { ...params, sessionId }),
             /**
              * Atomically promotes the first promotable sync-waiting task to background mode and returns it.
              *
@@ -31651,7 +31917,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the background task was successfully cancelled.
              */
             cancel: async (params: TasksCancelRequest): Promise<TasksCancelResult> =>
-                connection.sendRequest("session.tasks.cancel", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.cancel", { ...params, sessionId }),
             /**
              * Removes a completed or cancelled background task from tracking.
              *
@@ -31660,7 +31926,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the task was removed. False when the task does not exist or is still running/idle.
              */
             remove: async (params: TasksRemoveRequest): Promise<TasksRemoveResult> =>
-                connection.sendRequest("session.tasks.remove", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.remove", { ...params, sessionId }),
             /**
              * Sends a message to a background agent task.
              *
@@ -31669,7 +31935,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the message was delivered, with an error message when delivery failed.
              */
             sendMessage: async (params: TasksSendMessageRequest): Promise<TasksSendMessageResult> =>
-                connection.sendRequest("session.tasks.sendMessage", { sessionId, ...params }),
+                connection.sendRequest("session.tasks.sendMessage", { ...params, sessionId }),
         },
         /** @experimental */
         skills: {
@@ -31693,14 +31959,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Name of the skill to enable for the session.
              */
             enable: async (params: SkillsEnableRequest): Promise<void> =>
-                connection.sendRequest("session.skills.enable", { sessionId, ...params }),
+                connection.sendRequest("session.skills.enable", { ...params, sessionId }),
             /**
              * Disables a skill for the session.
              *
              * @param params Name of the skill to disable for the session.
              */
             disable: async (params: SkillsDisableRequest): Promise<void> =>
-                connection.sendRequest("session.skills.disable", { sessionId, ...params }),
+                connection.sendRequest("session.skills.disable", { ...params, sessionId }),
             /**
              * Reloads skill definitions for the session.
              *
@@ -31731,21 +31997,21 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Tools exposed by the connected MCP server. Throws when the server is not connected.
              */
             listTools: async (params: McpListToolsRequest): Promise<McpListToolsResult> =>
-                connection.sendRequest("session.mcp.listTools", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.listTools", { ...params, sessionId }),
             /**
              * Enables an MCP server for the session.
              *
              * @param params Name of the MCP server to enable for the session.
              */
             enable: async (params: McpEnableRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.enable", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.enable", { ...params, sessionId }),
             /**
              * Disables an MCP server for the session.
              *
              * @param params Name of the MCP server to disable for the session.
              */
             disable: async (params: McpDisableRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.disable", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.disable", { ...params, sessionId }),
             /**
              * Reloads MCP server connections for the session.
              */
@@ -31766,7 +32032,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Outcome of an MCP sampling execution: success result, failure error, or cancellation.
              */
             executeSampling: async (params: McpExecuteSamplingParams): Promise<McpSamplingExecutionResult> =>
-                connection.sendRequest("session.mcp.executeSampling", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.executeSampling", { ...params, sessionId }),
             /**
              * Cancels an in-flight MCP sampling execution by request ID.
              *
@@ -31775,7 +32041,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether an in-flight sampling execution with the given requestId was found and cancelled.
              */
             cancelSamplingExecution: async (params: McpCancelSamplingExecutionParams): Promise<McpCancelSamplingExecutionResult> =>
-                connection.sendRequest("session.mcp.cancelSamplingExecution", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.cancelSamplingExecution", { ...params, sessionId }),
             /**
              * Sets how environment-variable values supplied to MCP servers are resolved (direct or indirect).
              *
@@ -31784,7 +32050,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Env-value mode recorded on the session after the update.
              */
             setEnvValueMode: async (params: McpSetEnvValueModeParams): Promise<McpSetEnvValueModeResult> =>
-                connection.sendRequest("session.mcp.setEnvValueMode", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.setEnvValueMode", { ...params, sessionId }),
             /**
              * Removes the auto-managed `github` MCP server when present.
              *
@@ -31798,21 +32064,21 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Server name and optional configuration for an individual MCP server start. Omit `config` for a config-free start-by-name of an already-configured server.
              */
             startServer: async (params: McpStartServerRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.startServer", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.startServer", { ...params, sessionId }),
             /**
              * Restarts an individual MCP server on the live session (stops then starts). Omit `config` for a config-free restart-by-name of an already-configured server; supply `config` to restart with a replacement configuration. Session-scoped and ephemeral: does NOT modify persistent user configuration (`mcp.config.*`).
              *
              * @param params Server name and optional replacement configuration for an individual MCP server restart. Omit `config` for a config-free restart-by-name of an already-configured server.
              */
             restartServer: async (params: McpRestartServerRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.restartServer", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.restartServer", { ...params, sessionId }),
             /**
              * Stops an individual MCP server on the session's host.
              *
              * @param params Server name for an individual MCP server stop.
              */
             stopServer: async (params: McpStopServerRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.stopServer", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.stopServer", { ...params, sessionId }),
             /**
              * Checks whether a named MCP server is currently running on the session's host.
              *
@@ -31821,7 +32087,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Whether the named MCP server is running.
              */
             isServerRunning: async (params: McpIsServerRunningRequest): Promise<McpIsServerRunningResult> =>
-                connection.sendRequest("session.mcp.isServerRunning", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.isServerRunning", { ...params, sessionId }),
             /** @experimental */
             oauth: {
                 /**
@@ -31832,14 +32098,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the pending MCP OAuth response was accepted.
                  */
                 handlePendingRequest: async (params: McpOauthHandlePendingRequest): Promise<McpOauthHandlePendingResult> =>
-                    connection.sendRequest("session.mcp.oauth.handlePendingRequest", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.handlePendingRequest", { ...params, sessionId }),
                 /**
                  * Notifies the session that MCP OAuth authentication succeeded and updated credentials were persisted, so cached tool definitions can be refreshed.
                  *
                  * @param params Identifies the MCP server whose persisted OAuth credentials were updated.
                  */
                 authenticationStateChanged: async (params: McpOauthAuthenticationStateChangedRequest): Promise<void> =>
-                    connection.sendRequest("session.mcp.oauth.authenticationStateChanged", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.authenticationStateChanged", { ...params, sessionId }),
                 /**
                  * Prepares an inert, expiring owned OAuth login bound to the original session requester and exact installation. Does not activate, connect, read credentials or open a browser.
                  *
@@ -31848,16 +32114,23 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns An inert runtime-issued login handle. Preparation alone performs no activation or OAuth work.
                  */
                 prepareLogin: async (params: SessionMcpOauthPrepareLoginRequest): Promise<SessionMcpOauthPrepareLoginResult> =>
-                    connection.sendRequest("session.mcp.oauth.prepareLogin", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.prepareLogin", { ...params, sessionId }),
                 /**
                  * Starts OAuth authentication for a remote MCP server. Owned servers require the original one-use prepareLogin handle and exact installation ID; manual servers retain the existing direct login behaviour.
                  *
-                 * @param params Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.
+                 * @param params Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.
                  *
                  * @returns OAuth authorization URL the caller should open, or empty when cached tokens already authenticated the server.
                  */
                 login: async (params: McpOauthLoginRequest): Promise<McpOauthLoginResult> =>
-                    connection.sendRequest("session.mcp.oauth.login", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.login", { ...params, sessionId }),
+                /**
+                 * Completes a runtime-managed MCP OAuth login after the authorization server redirects to a host-managed callback URL.
+                 *
+                 * @param params Host-delivered callback for a runtime-managed MCP OAuth login.
+                 */
+                complete: async (params: McpOauthCompleteRequest): Promise<void> =>
+                    connection.sendRequest("session.mcp.oauth.complete", { ...params, sessionId }),
                 /**
                  * Passively probes a configured remote MCP server to classify whether OAuth is required or a cached/override token is accepted. Does not start OAuth, emit pending OAuth requests, or mutate MCP connection state.
                  *
@@ -31866,7 +32139,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Passive MCP OAuth probe result. `authenticated` means the server accepted the probe request while an OAuth-origin access token was attached; it does not prove the server required or independently validated that token. The probe does not make a second unauthenticated request. Failed is an expected probe-domain outcome; JSON-RPC errors are reserved for API-call failures.
                  */
                 probe: async (params: McpOauthProbeRequest): Promise<McpOauthProbeResult> =>
-                    connection.sendRequest("session.mcp.oauth.probe", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.probe", { ...params, sessionId }),
                 /**
                  * Cancels the exact owned OAuth login issued to this original session requester, without clearing shared credentials.
                  *
@@ -31875,7 +32148,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Honest terminal cancellation result; persistence or recovery failures remain RPC errors.
                  */
                 cancelLogin: async (params: SessionMcpOauthCancelLoginRequest): Promise<SessionMcpOauthCancelLoginResult> =>
-                    connection.sendRequest("session.mcp.oauth.cancelLogin", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.cancelLogin", { ...params, sessionId }),
                 /**
                  * Responds to a pending MCP OAuth authorization request by its request id.
                  *
@@ -31884,7 +32157,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the pending MCP OAuth response was accepted.
                  */
                 respond: async (params: McpOauthRespondRequest): Promise<McpOauthRespondResult> =>
-                    connection.sendRequest("session.mcp.oauth.respond", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.oauth.respond", { ...params, sessionId }),
             },
             /** @experimental */
             headers: {
@@ -31896,7 +32169,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the pending MCP headers refresh response was accepted.
                  */
                 handlePendingHeadersRefreshRequest: async (params: McpHeadersHandlePendingHeadersRefreshRequestRequest): Promise<McpHeadersHandlePendingHeadersRefreshRequestResult> =>
-                    connection.sendRequest("session.mcp.headers.handlePendingHeadersRefreshRequest", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.headers.handlePendingHeadersRefreshRequest", { ...params, sessionId }),
             },
             /** @experimental */
             apps: {
@@ -31908,7 +32181,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Resource contents returned by the MCP server.
                  */
                 readResource: async (params: McpAppsReadResourceRequest): Promise<McpAppsReadResourceResult> =>
-                    connection.sendRequest("session.mcp.apps.readResource", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.apps.readResource", { ...params, sessionId }),
                 /**
                  * List tools that an MCP App view is allowed to call (SEP-1865 visibility filter). Returns tools whose `_meta.ui.visibility` is unset (default `["model","app"]`) or includes `"app"`.
                  *
@@ -31917,7 +32190,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns App-callable tools from the named MCP server.
                  */
                 listTools: async (params: McpAppsListToolsRequest): Promise<McpAppsListToolsResult> =>
-                    connection.sendRequest("session.mcp.apps.listTools", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.apps.listTools", { ...params, sessionId }),
                 /**
                  * Call an MCP tool from an MCP App view (SEP-1865). Enforces the visibility check that prevents an app iframe from invoking model-only tools. Returns the standard MCP `CallToolResult`.
                  *
@@ -31926,14 +32199,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Standard MCP CallToolResult
                  */
                 callTool: async (params: McpAppsCallToolRequest): Promise<SessionMcpAppsCallToolResult> =>
-                    connection.sendRequest("session.mcp.apps.callTool", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.apps.callTool", { ...params, sessionId }),
                 /**
                  * Replace the host context returned to MCP App guests on `ui/initialize`. Hosts use this to advertise theme, locale, or other metadata to the guest UI.
                  *
                  * @param params Host context to advertise to MCP App guests.
                  */
                 setHostContext: async (params: McpAppsSetHostContextRequest): Promise<void> =>
-                    connection.sendRequest("session.mcp.apps.setHostContext", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.apps.setHostContext", { ...params, sessionId }),
                 /**
                  * Read the current host context advertised to MCP App guests.
                  *
@@ -31949,7 +32222,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Diagnostic snapshot of MCP Apps wiring for the named server.
                  */
                 diagnose: async (params: McpAppsDiagnoseRequest): Promise<McpAppsDiagnoseResult> =>
-                    connection.sendRequest("session.mcp.apps.diagnose", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.apps.diagnose", { ...params, sessionId }),
             },
             /** @experimental */
             resources: {
@@ -31961,7 +32234,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Resource contents returned by the MCP server.
                  */
                 read: async (params: McpResourcesReadRequest): Promise<McpResourcesReadResult> =>
-                    connection.sendRequest("session.mcp.resources.read", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.resources.read", { ...params, sessionId }),
                 /**
                  * Enumerate one page of resources a connected MCP server exposes (proxies MCP `resources/list`). Pass `cursor` to continue from a prior result's `nextCursor`.
                  *
@@ -31970,7 +32243,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns One page of resources advertised by the named MCP server.
                  */
                 list: async (params: McpResourcesListRequest): Promise<McpResourcesListResult> =>
-                    connection.sendRequest("session.mcp.resources.list", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.resources.list", { ...params, sessionId }),
                 /**
                  * Enumerate one page of resource templates a connected MCP server exposes (proxies MCP `resources/templates/list`). Pass `cursor` to continue from a prior result's `nextCursor`.
                  *
@@ -31979,7 +32252,28 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns One page of resource templates advertised by the named MCP server.
                  */
                 listTemplates: async (params: McpResourcesListTemplatesRequest): Promise<McpResourcesListTemplatesResult> =>
-                    connection.sendRequest("session.mcp.resources.listTemplates", { sessionId, ...params }),
+                    connection.sendRequest("session.mcp.resources.listTemplates", { ...params, sessionId }),
+            },
+            /** @experimental */
+            prompts: {
+                /**
+                 * Enumerate one page of prompts a connected MCP server exposes (proxies MCP `prompts/list`). Pass `cursor` to continue from a prior result's `nextCursor`.
+                 *
+                 * @param params MCP server whose prompts to enumerate.
+                 *
+                 * @returns One page of prompts advertised by the named MCP server.
+                 */
+                list: async (params: McpPromptsListRequest): Promise<McpPromptsListResult> =>
+                    connection.sendRequest("session.mcp.prompts.list", { ...params, sessionId }),
+                /**
+                 * Get a prompt's messages from a connected MCP server (proxies MCP `prompts/get`). Content is preserved as opaque JSON. Does not send messages to the model, execute tools, or fetch referenced resources.
+                 *
+                 * @param params MCP server, prompt name, and optional string-valued arguments.
+                 *
+                 * @returns Prompt messages returned by the MCP server without sending them to the model.
+                 */
+                get: async (params: McpPromptsGetRequest): Promise<McpPromptsGetResult> =>
+                    connection.sendRequest("session.mcp.prompts.get", { ...params, sessionId }),
             },
         },
         /** @experimental */
@@ -31992,7 +32286,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Per-source session diagnostics configuration.
              */
             configure: async (params: DiagnosticsConfigureRequest): Promise<DiagnosticsConfiguration> =>
-                connection.sendRequest("session.diagnostics.configure", { sessionId, ...params }),
+                connection.sendRequest("session.diagnostics.configure", { ...params, sessionId }),
             /**
              * Reads a bounded batch of retained session diagnostics for the selected sources. Records are never consumed and each reader advances independently through its opaque cursor.
              *
@@ -32001,7 +32295,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns One cursor-addressed page of retained session diagnostics.
              */
             read: async (params: DiagnosticsReadRequest): Promise<DiagnosticsReadResult> =>
-                connection.sendRequest("session.diagnostics.read", { sessionId, ...params }),
+                connection.sendRequest("session.diagnostics.read", { ...params, sessionId }),
         },
         /** @experimental */
         connectors: {
@@ -32034,7 +32328,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Validated Connector catalog snapshot cached by the session.
              */
             list: async (params: ConnectorAccountRequest): Promise<ConnectorCatalogResult> =>
-                connection.sendRequest("session.connectors.list", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.list", { ...params, sessionId }),
             /**
              * Refreshes and validates the Connector catalog for the pinned opaque account selection.
              *
@@ -32043,7 +32337,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Validated Connector catalog snapshot cached by the session.
              */
             refresh: async (params: ConnectorAccountRequest): Promise<ConnectorCatalogResult> =>
-                connection.sendRequest("session.connectors.refresh", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.refresh", { ...params, sessionId }),
             /**
              * Initiates an idempotent Connector connection request without opening a browser. Returns connected when the service is immediately authoritative, consent_required with a validated URL, or pending with an opaque continuation ID.
              *
@@ -32052,7 +32346,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Typed result of initiating or continuing a Connector connection.
              */
             connect: async (params: ConnectorConnectRequest): Promise<ConnectorConnectResult> =>
-                connection.sendRequest("session.connectors.connect", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.connect", { ...params, sessionId }),
             /**
              * Re-initiates an idempotent Connector connection request without browser or UI effects, with the same typed outcomes as connect.
              *
@@ -32061,7 +32355,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Typed result of initiating or continuing a Connector connection.
              */
             reconnect: async (params: ConnectorConnectRequest): Promise<ConnectorConnectResult> =>
-                connection.sendRequest("session.connectors.reconnect", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.reconnect", { ...params, sessionId }),
             /**
              * Continues a pending Connector connection with caller-supplied attempt, interval, and deadline bounds. The runtime never opens the returned consent URL.
              *
@@ -32070,7 +32364,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Typed result of initiating or continuing a Connector connection.
              */
             continueConnection: async (params: ConnectorContinueRequest): Promise<ConnectorConnectResult> =>
-                connection.sendRequest("session.connectors.continueConnection", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.continueConnection", { ...params, sessionId }),
             /**
              * Disconnects one Connector for the pinned opaque account selection, refreshes the authoritative catalog, and removes its session-owned MCP projection.
              *
@@ -32079,7 +32373,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Authoritative result after disconnect and MCP reconciliation.
              */
             disconnect: async (params: ConnectorConnectRequest): Promise<ConnectorDisconnectResult> =>
-                connection.sendRequest("session.connectors.disconnect", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.disconnect", { ...params, sessionId }),
             /**
              * Reconciles the authoritative cached or freshly requested Connector catalog into the session Connector MCP projection and returns live status.
              *
@@ -32088,7 +32382,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.
              */
             reconcile: async (params: ConnectorReconcileRequest): Promise<ConnectorStatus> =>
-                connection.sendRequest("session.connectors.reconcile", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.reconcile", { ...params, sessionId }),
         },
         /** @experimental */
         managedSettings: {
@@ -32117,14 +32411,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of installing a plugin.
              */
             install: async (params: SessionPluginsInstallRequest): Promise<PluginInstallResult> =>
-                connection.sendRequest("session.plugins.install", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.install", { ...params, sessionId }),
             /**
              * Uninstalls a plugin when permitted by the live session's retained managed policy.
              *
              * @param params Name (or spec) of the plugin to uninstall.
              */
             uninstall: async (params: PluginsUninstallRequest): Promise<void> =>
-                connection.sendRequest("session.plugins.uninstall", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.uninstall", { ...params, sessionId }),
             /**
              * Updates an installed plugin using the live session's authoritative account, working directory, and retained managed policy.
              *
@@ -32133,21 +32427,21 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of updating a single plugin.
              */
             update: async (params: PluginsUpdateRequest): Promise<PluginUpdateResult> =>
-                connection.sendRequest("session.plugins.update", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.update", { ...params, sessionId }),
             /**
              * Enables installed plugins when permitted by the live session's retained managed policy.
              *
              * @param params Plugin names (or specs) to enable in the session's authoritative working directory.
              */
             enable: async (params: SessionPluginsEnableRequest): Promise<void> =>
-                connection.sendRequest("session.plugins.enable", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.enable", { ...params, sessionId }),
             /**
              * Disables installed plugins when permitted by the live session's retained managed policy.
              *
              * @param params Plugin names (or specs) to disable in the session's authoritative working directory.
              */
             disable: async (params: SessionPluginsDisableRequest): Promise<void> =>
-                connection.sendRequest("session.plugins.disable", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.disable", { ...params, sessionId }),
             /** @experimental */
             marketplaces: {
                 /**
@@ -32165,7 +32459,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Result of registering a new marketplace.
                  */
                 add: async (params: PluginsMarketplacesAddRequest): Promise<MarketplaceAddResult> =>
-                    connection.sendRequest("session.plugins.marketplaces.add", { sessionId, ...params }),
+                    connection.sendRequest("session.plugins.marketplaces.add", { ...params, sessionId }),
                 /**
                  * Removes a marketplace when permitted by the live session's retained managed policy.
                  *
@@ -32174,7 +32468,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Outcome of the remove attempt, including dependent-plugin info when applicable.
                  */
                 remove: async (params: PluginsMarketplacesRemoveRequest): Promise<MarketplaceRemoveResult> =>
-                    connection.sendRequest("session.plugins.marketplaces.remove", { sessionId, ...params }),
+                    connection.sendRequest("session.plugins.marketplaces.remove", { ...params, sessionId }),
                 /**
                  * Browses a marketplace resolved through the live session's working directory and retained managed policy.
                  *
@@ -32183,7 +32477,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Plugins advertised by the marketplace.
                  */
                 browse: async (params: PluginsMarketplacesBrowseRequest): Promise<MarketplaceBrowseResult> =>
-                    connection.sendRequest("session.plugins.marketplaces.browse", { sessionId, ...params }),
+                    connection.sendRequest("session.plugins.marketplaces.browse", { ...params, sessionId }),
                 /**
                  * Refreshes marketplaces resolved through the live session's working directory and retained managed policy.
                  *
@@ -32192,7 +32486,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Result of refreshing one or more marketplace catalogs.
                  */
                 refresh: async (params?: SessionPluginsMarketplacesRefreshRequest): Promise<MarketplaceRefreshResult> =>
-                    connection.sendRequest("session.plugins.marketplaces.refresh", { sessionId, ...params }),
+                    connection.sendRequest("session.plugins.marketplaces.refresh", { ...params, sessionId }),
             },
             /**
              * Reloads the session's plugin set, refreshing MCP servers, custom agents, hooks, and skills cache so SDK-driven changes via `server.plugins.*` take effect immediately.
@@ -32200,7 +32494,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Optional flags controlling which side effects the reload performs.
              */
             reload: async (params?: SessionPluginsReloadRequest): Promise<void> =>
-                connection.sendRequest("session.plugins.reload", { sessionId, ...params }),
+                connection.sendRequest("session.plugins.reload", { ...params, sessionId }),
         },
         /** @experimental */
         provider: {
@@ -32212,7 +32506,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns A snapshot of the provider endpoint the session is currently configured to talk to.
              */
             getEndpoint: async (params?: SessionProviderGetEndpointRequest): Promise<ProviderEndpoint> =>
-                connection.sendRequest("session.provider.getEndpoint", { sessionId, ...params }),
+                connection.sendRequest("session.provider.getEndpoint", { ...params, sessionId }),
             /**
              * Adds BYOK providers and/or models to the session's registry at runtime, extending the additive registry built from the session's `providers`/`models` options. Both fields are optional, so a call may add providers only, models only, or both. Within a single call providers are registered before models, so a model may reference a provider added in the same call; across calls a model may reference any provider already registered (from session creation or a prior add). A model whose referenced provider is not registered by the end of the call is rejected. Newly added models become selectable via `model.list` / `model.switchTo` and are inherited by sub-agents spawned afterwards.
              *
@@ -32221,7 +32515,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The selectable model entries synthesized for the models added by this call.
              */
             add: async (params: ProviderAddRequest): Promise<ProviderAddResult> =>
-                connection.sendRequest("session.provider.add", { sessionId, ...params }),
+                connection.sendRequest("session.provider.add", { ...params, sessionId }),
             /**
              * Atomically updates the session's BYOK provider and model registry by applying the supplied snapshot, replacing existing entries, updating models, or removing entries absent from the snapshot.
              *
@@ -32230,7 +32524,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The selectable model entries and selection ids synthesized for the synchronized BYOK models.
              */
             sync: async (params: ProviderSyncRequest): Promise<ProviderSyncResult> =>
-                connection.sendRequest("session.provider.sync", { sessionId, ...params }),
+                connection.sendRequest("session.provider.sync", { ...params, sessionId }),
             /**
              * Withdraws named host-managed models from the session's BYOK registry, leaving every other entry untouched. The scoped counterpart to `provider.sync`: a snapshot can only describe entries the caller knows about, so using it to remove one model silently withdraws rows registered by another source, such as a plugin calling `provider.add` at runtime. Naming what to remove leaves unrelated entries alone. Selection ids that are not registered are ignored, so withdrawal is idempotent. A provider is removed only when one of the withdrawn models was the last entry referencing it; a provider that simply has no models, which is the normal state while its rows are supplied by catalog discovery, is left in place.
              *
@@ -32239,7 +32533,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns What the withdrawal actually removed from the registry.
              */
             withdraw: async (params: ProviderWithdrawRequest): Promise<ProviderWithdrawResult> =>
-                connection.sendRequest("session.provider.withdraw", { sessionId, ...params }),
+                connection.sendRequest("session.provider.withdraw", { ...params, sessionId }),
         },
         /** @experimental */
         options: {
@@ -32251,7 +32545,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the session options patch was applied successfully.
              */
             update: async (params: SessionUpdateOptionsParams): Promise<SessionUpdateOptionsResult> =>
-                connection.sendRequest("session.options.update", { sessionId, ...params }),
+                connection.sendRequest("session.options.update", { ...params, sessionId }),
         },
         /** @experimental */
         lsp: {
@@ -32261,7 +32555,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Parameters for (re)loading the merged LSP configuration set.
              */
             initialize: async (params: LspInitializeRequest): Promise<void> =>
-                connection.sendRequest("session.lsp.initialize", { sessionId, ...params }),
+                connection.sendRequest("session.lsp.initialize", { ...params, sessionId }),
         },
         /** @experimental */
         extensions: {
@@ -32278,14 +32572,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Source-qualified extension identifier to enable for the session.
              */
             enable: async (params: ExtensionsEnableRequest): Promise<void> =>
-                connection.sendRequest("session.extensions.enable", { sessionId, ...params }),
+                connection.sendRequest("session.extensions.enable", { ...params, sessionId }),
             /**
              * Disables an extension for the session.
              *
              * @param params Source-qualified extension identifier to disable for the session.
              */
             disable: async (params: ExtensionsDisableRequest): Promise<void> =>
-                connection.sendRequest("session.extensions.disable", { sessionId, ...params }),
+                connection.sendRequest("session.extensions.disable", { ...params, sessionId }),
             /**
              * Reloads extension definitions and processes for the session.
              */
@@ -32297,7 +32591,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Parameters for session.extensions.sendAttachmentsToMessage.
              */
             sendAttachmentsToMessage: async (params: SendAttachmentsToMessageParams): Promise<void> =>
-                connection.sendRequest("session.extensions.sendAttachmentsToMessage", { sessionId, ...params }),
+                connection.sendRequest("session.extensions.sendAttachmentsToMessage", { ...params, sessionId }),
         },
         /** @experimental */
         tools: {
@@ -32309,7 +32603,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Canonical result returned by a session tool.
              */
             execute: async (params: ToolsExecuteRequest): Promise<ToolResult> =>
-                connection.sendRequest("session.tools.execute", { sessionId, ...params }),
+                connection.sendRequest("session.tools.execute", { ...params, sessionId }),
             /**
              * Returns the Rust-owned built-in tool descriptors used to construct the session's offered tool set.
              *
@@ -32318,7 +32612,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Rust-owned built-in tool descriptors for the session.
              */
             getBuiltinDescriptors: async (params: ToolsGetBuiltinDescriptorsRequest): Promise<ToolsGetBuiltinDescriptorsResult> =>
-                connection.sendRequest("session.tools.getBuiltinDescriptors", { sessionId, ...params }),
+                connection.sendRequest("session.tools.getBuiltinDescriptors", { ...params, sessionId }),
             /**
              * Projects a completed task_complete tool call into its label-safe session event payload.
              *
@@ -32327,7 +32621,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Task completion notification with summary from the agent
              */
             taskCompleteEventData: async (params: ToolsTaskCompleteEventDataRequest): Promise<TaskCompleteData> =>
-                connection.sendRequest("session.tools.taskCompleteEventData", { sessionId, ...params }),
+                connection.sendRequest("session.tools.taskCompleteEventData", { ...params, sessionId }),
             /**
              * Provides the result for a pending external tool call.
              *
@@ -32336,7 +32630,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the external tool call result was handled successfully.
              */
             handlePendingToolCall: async (params: HandlePendingToolCallRequest): Promise<HandlePendingToolCallResult> =>
-                connection.sendRequest("session.tools.handlePendingToolCall", { sessionId, ...params }),
+                connection.sendRequest("session.tools.handlePendingToolCall", { ...params, sessionId }),
             /**
              * Resolves, builds, and validates the runtime tool list for the session.
              *
@@ -32359,7 +32653,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Empty result after replacing the calling connection's externally implemented tools.
              */
             set: async (params: ToolsSetRequest): Promise<ToolsSetResult> =>
-                connection.sendRequest("session.tools.set", { sessionId, ...params }),
+                connection.sendRequest("session.tools.set", { ...params, sessionId }),
             /**
              * Sets the current session's live subagent settings override, which takes precedence over persisted user settings until cleared. Persisted user settings remain the source of truth for future sessions.
              *
@@ -32368,7 +32662,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Empty result after applying subagent settings
              */
             updateSubagentSettings: async (params: UpdateSubagentSettingsRequest): Promise<ToolsUpdateSubagentSettingsResult> =>
-                connection.sendRequest("session.tools.updateSubagentSettings", { sessionId, ...params }),
+                connection.sendRequest("session.tools.updateSubagentSettings", { ...params, sessionId }),
         },
         /** @experimental */
         commands: {
@@ -32380,7 +32674,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Slash commands available in the session, after applying any include/exclude filters.
              */
             list: async (params?: SessionCommandsListRequest): Promise<CommandList> =>
-                connection.sendRequest("session.commands.list", { sessionId, ...params }),
+                connection.sendRequest("session.commands.list", { ...params, sessionId }),
             /**
              * Invokes a slash command in the session.
              *
@@ -32389,7 +32683,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of invoking the slash command (text output, prompt to send to the agent, completion, or subcommand selection).
              */
             invoke: async (params: CommandsInvokeRequest): Promise<SlashCommandInvocationResult> =>
-                connection.sendRequest("session.commands.invoke", { sessionId, ...params }),
+                connection.sendRequest("session.commands.invoke", { ...params, sessionId }),
             /**
              * Reports completion of a pending client-handled slash command.
              *
@@ -32398,7 +32692,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending client-handled command was completed successfully.
              */
             handlePendingCommand: async (params: CommandsHandlePendingCommandRequest): Promise<CommandsHandlePendingCommandResult> =>
-                connection.sendRequest("session.commands.handlePendingCommand", { sessionId, ...params }),
+                connection.sendRequest("session.commands.handlePendingCommand", { ...params, sessionId }),
             /**
              * Executes a slash command synchronously and returns any error.
              *
@@ -32407,7 +32701,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Error message produced while executing the command, if any.
              */
             execute: async (params: ExecuteCommandParams): Promise<ExecuteCommandResult> =>
-                connection.sendRequest("session.commands.execute", { sessionId, ...params }),
+                connection.sendRequest("session.commands.execute", { ...params, sessionId }),
             /**
              * Enqueues a slash command for FIFO processing on the local session.
              *
@@ -32416,7 +32710,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the command was accepted into the local execution queue.
              */
             enqueue: async (params: EnqueueCommandParams): Promise<EnqueueCommandResult> =>
-                connection.sendRequest("session.commands.enqueue", { sessionId, ...params }),
+                connection.sendRequest("session.commands.enqueue", { ...params, sessionId }),
             /**
              * Reports whether the host actually executed a queued command and whether to continue processing.
              *
@@ -32425,7 +32719,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the queued-command response was matched to a pending request.
              */
             respondToQueuedCommand: async (params: CommandsRespondToQueuedCommandRequest): Promise<CommandsRespondToQueuedCommandResult> =>
-                connection.sendRequest("session.commands.respondToQueuedCommand", { sessionId, ...params }),
+                connection.sendRequest("session.commands.respondToQueuedCommand", { ...params, sessionId }),
         },
         /** @experimental */
         telemetry: {
@@ -32442,7 +32736,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @param params Feature override key/value pairs to attach to subsequent telemetry events from this session.
              */
             setFeatureOverrides: async (params: TelemetrySetFeatureOverridesRequest): Promise<void> =>
-                connection.sendRequest("session.telemetry.setFeatureOverrides", { sessionId, ...params }),
+                connection.sendRequest("session.telemetry.setFeatureOverrides", { ...params, sessionId }),
         },
         /** @experimental */
         ui: {
@@ -32454,7 +32748,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Completed transient query. Ordered chunks and the terminal outcome are also delivered through `ui.ephemeral_query` session events while it runs.
              */
             ephemeralQuery: async (params: UIEphemeralQueryRequest): Promise<UIEphemeralQueryResult> =>
-                connection.sendRequest("session.ui.ephemeralQuery", { sessionId, ...params }),
+                connection.sendRequest("session.ui.ephemeralQuery", { ...params, sessionId }),
             /**
              * Requests structured input from a UI-capable client.
              *
@@ -32463,7 +32757,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The elicitation response (accept with form values, decline, or cancel)
              */
             elicitation: async (params: UIElicitationRequest): Promise<UIElicitationResponse> =>
-                connection.sendRequest("session.ui.elicitation", { sessionId, ...params }),
+                connection.sendRequest("session.ui.elicitation", { ...params, sessionId }),
             /**
              * Provides the user response for a pending elicitation request.
              *
@@ -32472,7 +32766,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the elicitation response was accepted; false if it was already resolved by another client.
              */
             handlePendingElicitation: async (params: UIHandlePendingElicitationRequest): Promise<UIElicitationResult> =>
-                connection.sendRequest("session.ui.handlePendingElicitation", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingElicitation", { ...params, sessionId }),
             /**
              * Resolves a pending `user_input.requested` event with the user's response.
              *
@@ -32481,7 +32775,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending UI request was resolved by this call.
              */
             handlePendingUserInput: async (params: UIHandlePendingUserInputRequest): Promise<UIHandlePendingResult> =>
-                connection.sendRequest("session.ui.handlePendingUserInput", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingUserInput", { ...params, sessionId }),
             /**
              * Resolves a pending `sampling.requested` event with a sampling result, or rejects it.
              *
@@ -32490,7 +32784,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending UI request was resolved by this call.
              */
             handlePendingSampling: async (params: UIHandlePendingSamplingRequest): Promise<UIHandlePendingResult> =>
-                connection.sendRequest("session.ui.handlePendingSampling", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingSampling", { ...params, sessionId }),
             /**
              * Resolves a pending `auto_mode_switch.requested` event with the user's accept/decline decision.
              *
@@ -32499,7 +32793,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending UI request was resolved by this call.
              */
             handlePendingAutoModeSwitch: async (params: UIHandlePendingAutoModeSwitchRequest): Promise<UIHandlePendingResult> =>
-                connection.sendRequest("session.ui.handlePendingAutoModeSwitch", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingAutoModeSwitch", { ...params, sessionId }),
             /**
              * Resolves a pending `session_limits_exhausted.requested` event with the user's selected limit action.
              *
@@ -32508,7 +32802,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending UI request was resolved by this call.
              */
             handlePendingSessionLimitsExhausted: async (params: UIHandlePendingSessionLimitsExhaustedRequest): Promise<UIHandlePendingResult> =>
-                connection.sendRequest("session.ui.handlePendingSessionLimitsExhausted", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingSessionLimitsExhausted", { ...params, sessionId }),
             /**
              * Resolves a pending `exit_plan_mode.requested` event with the user's response.
              *
@@ -32517,7 +32811,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the pending UI request was resolved by this call.
              */
             handlePendingExitPlanMode: async (params: UIHandlePendingExitPlanModeRequest): Promise<UIHandlePendingResult> =>
-                connection.sendRequest("session.ui.handlePendingExitPlanMode", { sessionId, ...params }),
+                connection.sendRequest("session.ui.handlePendingExitPlanMode", { ...params, sessionId }),
             /**
              * Registers an in-process handler for auto-mode-switch requests so the server bridge skips dispatch.
              *
@@ -32533,7 +32827,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the handle was active and the registration count was decremented.
              */
             unregisterDirectAutoModeSwitchHandler: async (params: UIUnregisterDirectAutoModeSwitchHandlerRequest): Promise<UIUnregisterDirectAutoModeSwitchHandlerResult> =>
-                connection.sendRequest("session.ui.unregisterDirectAutoModeSwitchHandler", { sessionId, ...params }),
+                connection.sendRequest("session.ui.unregisterDirectAutoModeSwitchHandler", { ...params, sessionId }),
         },
         /** @experimental */
         permissions: {
@@ -32545,7 +32839,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             configure: async (params: PermissionsConfigureParams): Promise<PermissionsConfigureResult> =>
-                connection.sendRequest("session.permissions.configure", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.configure", { ...params, sessionId }),
             /**
              * Provides a decision for a pending tool permission request.
              *
@@ -32554,7 +32848,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the permission decision was applied; false when the request was already resolved.
              */
             handlePendingPermissionRequest: async (params: PermissionDecisionRequest): Promise<PermissionRequestResult> =>
-                connection.sendRequest("session.permissions.handlePendingPermissionRequest", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.handlePendingPermissionRequest", { ...params, sessionId }),
             /**
              * Reconstructs the set of pending tool permission requests from the session's event history.
              *
@@ -32570,7 +32864,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             setApproveAll: async (params: PermissionsSetApproveAllRequest): Promise<PermissionsSetApproveAllResult> =>
-                connection.sendRequest("session.permissions.setApproveAll", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.setApproveAll", { ...params, sessionId }),
             /**
              * Sets the permission mode for the session. `manual` follows the normal approval flow, `assisted` attaches LLM safety recommendations, and `allow-all` automatically approves permission requests. The result returns the authoritative post-mutation mode so callers can update local state without racing the `session.permissions_changed` notification.
              *
@@ -32579,7 +32873,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the requested permission mode was applied and reports the authoritative post-mutation mode.
              */
             setMode: async (params: PermissionsSetModeRequest): Promise<PermissionsSetModeResult> =>
-                connection.sendRequest("session.permissions.setMode", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.setMode", { ...params, sessionId }),
             /**
              * Returns the current permission mode for the session.
              *
@@ -32595,7 +32889,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             modifyRules: async (params: PermissionsModifyRulesParams): Promise<PermissionsModifyRulesResult> =>
-                connection.sendRequest("session.permissions.modifyRules", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.modifyRules", { ...params, sessionId }),
             /**
              * Sets whether the client wants permission prompts bridged into session events.
              *
@@ -32604,7 +32898,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             setRequired: async (params: PermissionsSetRequiredRequest): Promise<PermissionsSetRequiredResult> =>
-                connection.sendRequest("session.permissions.setRequired", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.setRequired", { ...params, sessionId }),
             /**
              * Clears session-scoped tool approvals and, for full resets, exact session-approved paths.
              *
@@ -32613,7 +32907,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             resetSessionApprovals: async (params: PermissionsResetSessionApprovalsRequest): Promise<PermissionsResetSessionApprovalsResult> =>
-                connection.sendRequest("session.permissions.resetSessionApprovals", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.resetSessionApprovals", { ...params, sessionId }),
             /**
              * Notifies the runtime that a permission prompt UI has been shown to the user.
              *
@@ -32622,7 +32916,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             notifyPromptShown: async (params: PermissionPromptShownNotification): Promise<PermissionsNotifyPromptShownResult> =>
-                connection.sendRequest("session.permissions.notifyPromptShown", { sessionId, ...params }),
+                connection.sendRequest("session.permissions.notifyPromptShown", { ...params, sessionId }),
             /** @experimental */
             paths: {
                 /**
@@ -32640,7 +32934,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the operation succeeded.
                  */
                 add: async (params: PermissionPathsAddParams): Promise<PermissionsPathsAddResult> =>
-                    connection.sendRequest("session.permissions.paths.add", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.paths.add", { ...params, sessionId }),
                 /**
                  * Updates the session's primary working directory used by the permission policy.
                  *
@@ -32649,7 +32943,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the operation succeeded.
                  */
                 updatePrimary: async (params: PermissionPathsUpdatePrimaryParams): Promise<PermissionsPathsUpdatePrimaryResult> =>
-                    connection.sendRequest("session.permissions.paths.updatePrimary", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.paths.updatePrimary", { ...params, sessionId }),
                 /**
                  * Reports whether a path falls within any of the session's allowed directories.
                  *
@@ -32658,7 +32952,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the supplied path is within the session's allowed directories.
                  */
                 isPathWithinAllowedDirectories: async (params: PermissionPathsAllowedCheckParams): Promise<PermissionPathsAllowedCheckResult> =>
-                    connection.sendRequest("session.permissions.paths.isPathWithinAllowedDirectories", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.paths.isPathWithinAllowedDirectories", { ...params, sessionId }),
                 /**
                  * Reports whether a path falls within the session's workspace (primary) directory.
                  *
@@ -32667,7 +32961,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the supplied path is within the session's workspace directory.
                  */
                 isPathWithinWorkspace: async (params: PermissionPathsWorkspaceCheckParams): Promise<PermissionPathsWorkspaceCheckResult> =>
-                    connection.sendRequest("session.permissions.paths.isPathWithinWorkspace", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.paths.isPathWithinWorkspace", { ...params, sessionId }),
             },
             /** @experimental */
             locations: {
@@ -32679,7 +32973,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Resolved location-permissions key and type.
                  */
                 resolve: async (params: PermissionLocationResolveParams): Promise<PermissionLocationResolveResult> =>
-                    connection.sendRequest("session.permissions.locations.resolve", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.locations.resolve", { ...params, sessionId }),
                 /**
                  * Applies persisted location-scoped tool approvals and allowed directories for a working directory to this session's permission service.
                  *
@@ -32688,7 +32982,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Summary of persisted location permissions applied to the session.
                  */
                 apply: async (params: PermissionLocationApplyParams): Promise<PermissionLocationApplyResult> =>
-                    connection.sendRequest("session.permissions.locations.apply", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.locations.apply", { ...params, sessionId }),
                 /**
                  * Persists a tool approval for a permission location and applies its rules to this session's live permission service.
                  *
@@ -32697,7 +32991,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the operation succeeded.
                  */
                 addToolApproval: async (params: PermissionLocationAddToolApprovalParams): Promise<PermissionsLocationsAddToolApprovalResult> =>
-                    connection.sendRequest("session.permissions.locations.addToolApproval", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.locations.addToolApproval", { ...params, sessionId }),
             },
             /** @experimental */
             folderTrust: {
@@ -32709,7 +33003,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Folder trust check result.
                  */
                 isTrusted: async (params: FolderTrustCheckParams): Promise<FolderTrustCheckResult> =>
-                    connection.sendRequest("session.permissions.folderTrust.isTrusted", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.folderTrust.isTrusted", { ...params, sessionId }),
                 /**
                  * Adds a folder to the user's trusted folders list.
                  *
@@ -32718,7 +33012,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the operation succeeded.
                  */
                 addTrusted: async (params: FolderTrustAddParams): Promise<PermissionsFolderTrustAddTrustedResult> =>
-                    connection.sendRequest("session.permissions.folderTrust.addTrusted", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.folderTrust.addTrusted", { ...params, sessionId }),
             },
             /** @experimental */
             urls: {
@@ -32730,7 +33024,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
                  * @returns Indicates whether the operation succeeded.
                  */
                 setUnrestrictedMode: async (params: PermissionUrlsSetUnrestrictedModeParams): Promise<PermissionsUrlsSetUnrestrictedModeResult> =>
-                    connection.sendRequest("session.permissions.urls.setUnrestrictedMode", { sessionId, ...params }),
+                    connection.sendRequest("session.permissions.urls.setUnrestrictedMode", { ...params, sessionId }),
             },
         },
         /**
@@ -32743,7 +33037,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
          * @experimental
          */
         log: async (params: LogRequest): Promise<LogResult> =>
-            connection.sendRequest("session.log", { sessionId, ...params }),
+            connection.sendRequest("session.log", { ...params, sessionId }),
         /** @experimental */
         metadata: {
             /**
@@ -32768,7 +33062,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Client-owned, case-sensitive string metadata persisted with a local session. Clients should namespace keys by owner. Keys must be non-empty and at most 256 UTF-8 bytes; keys under `copilot/` and `github/` are reserved. Values may contain at most 16 KiB of UTF-8 data. A bag may contain at most 128 entries and its serialized sidecar may contain at most 64 KiB. The runtime stores but never interprets these values.
              */
             updateClientMetadata: async (params: MetadataUpdateClientMetadataRequest): Promise<ClientMetadata> =>
-                connection.sendRequest("session.metadata.updateClientMetadata", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.updateClientMetadata", { ...params, sessionId }),
             /**
              * Reports whether the local session is currently processing user/agent messages.
              *
@@ -32791,7 +33085,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Token breakdown for the session's current context window, or null if uninitialized.
              */
             contextInfo: async (params: MetadataContextInfoRequest): Promise<MetadataContextInfoResult> =>
-                connection.sendRequest("session.metadata.contextInfo", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.contextInfo", { ...params, sessionId }),
             /**
              * Returns the experimental per-source attribution breakdown of the session's current context window as a flat list of entries (skills, subagents, MCP servers, built-in tools, plugin rollups, system/tool-definition costs, with nesting via parentId), plus the successful compaction count. The heaviest individual messages are available separately via `metadata.getContextHeaviestMessages`. Returns null until the session has initialized its system prompt and tool metadata.
              *
@@ -32807,7 +33101,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns The heaviest individual messages in the session's context window, most-expensive first.
              */
             getContextHeaviestMessages: async (params: MetadataContextHeaviestMessagesRequest): Promise<MetadataContextHeaviestMessagesResult> =>
-                connection.sendRequest("session.metadata.getContextHeaviestMessages", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.getContextHeaviestMessages", { ...params, sessionId }),
             /**
              * Records a working-directory/git context change and emits a `session.context_changed` event. For a local session, a report whose `cwd` diverges from the session's current working directory is ignored (the call still succeeds but records nothing and emits no event): a local session's working directory is authoritative and is moved via `metadata.setWorkingDirectory` (or an SDK `session.resume` that supplies a `workingDirectory`), not by this method.
              *
@@ -32816,7 +33110,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Notify the session that its working directory context has changed. Emits a `session.context_changed` event so consumers (telemetry, OTel tracker, ACP, the timeline UI) can react. Use this when the host has detected a cwd/branch/repo change outside the session's normal lifecycle (e.g., after a shell command in interactive mode). For a local session, a report whose `cwd` diverges from the session's current working directory is ignored (the call still succeeds but records nothing and emits no event); move a local session's working directory via `metadata.setWorkingDirectory` instead.
              */
             recordContextChange: async (params: MetadataRecordContextChangeRequest): Promise<MetadataRecordContextChangeResult> =>
-                connection.sendRequest("session.metadata.recordContextChange", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.recordContextChange", { ...params, sessionId }),
             /**
              * Updates the session's working directory. For local sessions the target is validated first (an absolute path that exists on disk) and the permission primary directory is re-based; a rejected validation fails the call before any session state changes.
              *
@@ -32825,7 +33119,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Update the session's working directory. Used by the host when the user explicitly changes cwd (e.g., the `/cd` slash command). The host is responsible for any related side-effects (file index, etc.); it does NOT change the process working directory (a session's cwd is per-session, not process-global). For local sessions the runtime validates the target first (an absolute path that exists on disk) and re-bases the permission primary directory; a rejected validation fails the call before anything is mutated, persisted, or emitted. Location-scoped permission rules are then re-keyed to the new directory (best-effort). Remote sessions only record the path.
              */
             setWorkingDirectory: async (params: MetadataSetWorkingDirectoryRequest): Promise<MetadataSetWorkingDirectoryResult> =>
-                connection.sendRequest("session.metadata.setWorkingDirectory", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.setWorkingDirectory", { ...params, sessionId }),
             /**
              * Re-tokenizes the session's existing messages against a model and returns aggregate token totals.
              *
@@ -32834,7 +33128,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Re-tokenize the session's existing messages against `modelId` and return the token totals. Useful for hosts that want an initial estimate of context usage on session resume, before the next agent turn fires `session.context_info_changed` events. Returns zeros for an empty session.
              */
             recomputeContextTokens: async (params: MetadataRecomputeContextTokensRequest): Promise<MetadataRecomputeContextTokensResult> =>
-                connection.sendRequest("session.metadata.recomputeContextTokens", { sessionId, ...params }),
+                connection.sendRequest("session.metadata.recomputeContextTokens", { ...params, sessionId }),
         },
         /** @experimental */
         contentExclusion: {
@@ -32846,19 +33140,19 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Batch content-exclusion result. Callers must fail closed when policy evaluation is unavailable.
              */
             checkPaths: async (params: ContentExclusionCheckPathsRequest): Promise<ContentExclusionCheckPathsResult> =>
-                connection.sendRequest("session.contentExclusion.checkPaths", { sessionId, ...params }),
+                connection.sendRequest("session.contentExclusion.checkPaths", { ...params, sessionId }),
         },
         /** @experimental */
         shell: {
             /**
-             * Starts a shell command and streams output through session notifications. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.
+             * Starts a shell command, returning an RPC error if it cannot be spawned. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.
              *
-             * @param params Shell command to run, with optional working directory and timeout in milliseconds.
+             * @param params Shell command to run, with optional working directory and timeout in milliseconds. Spawn failures return an RPC error.
              *
-             * @returns Identifier of the spawned process, used to correlate streamed output and exit notifications.
+             * @returns Identifier of the spawned shell process, usable with shell.kill while the process is running.
              */
             exec: async (params: ShellExecRequest): Promise<ShellExecResult> =>
-                connection.sendRequest("session.shell.exec", { sessionId, ...params }),
+                connection.sendRequest("session.shell.exec", { ...params, sessionId }),
             /**
              * Sends a signal to a shell process previously started via "shell.exec". The signal targets the command's whole process group (POSIX) or job object (Windows), so descendants still in that group are signalled too, not just the direct child. On POSIX a descendant that moved itself into a new session or process group (for example via "setsid") is no longer in the signalled group and survives.
              *
@@ -32867,7 +33161,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the signal was delivered; false if the process was unknown or already exited.
              */
             kill: async (params: ShellKillRequest): Promise<ShellKillResult> =>
-                connection.sendRequest("session.shell.kill", { sessionId, ...params }),
+                connection.sendRequest("session.shell.kill", { ...params, sessionId }),
             /**
              * Executes a user-requested shell command through the session runtime.
              *
@@ -32876,7 +33170,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of a user-requested shell command.
              */
             executeUserRequested: async (params: ShellExecuteUserRequestedRequest): Promise<UserRequestedShellCommandResult> =>
-                connection.sendRequest("session.shell.executeUserRequested", { sessionId, ...params }),
+                connection.sendRequest("session.shell.executeUserRequested", { ...params, sessionId }),
             /**
              * Cancels a user-requested shell command by request ID.
              *
@@ -32885,7 +33179,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Cancellation result for a user-requested shell command.
              */
             cancelUserRequested: async (params: ShellCancelUserRequestedRequest): Promise<CancelUserRequestedShellCommandResult> =>
-                connection.sendRequest("session.shell.cancelUserRequested", { sessionId, ...params }),
+                connection.sendRequest("session.shell.cancelUserRequested", { ...params, sessionId }),
         },
         /** @experimental */
         history: {
@@ -32897,7 +33191,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Compaction outcome with the number of tokens and messages removed, summary text, and the resulting context window breakdown.
              */
             compact: async (params?: SessionHistoryCompactRequest): Promise<HistoryCompactResult> =>
-                connection.sendRequest("session.history.compact", { sessionId, ...params }),
+                connection.sendRequest("session.history.compact", { ...params, sessionId }),
             /**
              * Truncates persisted session history to a specific event.
              *
@@ -32906,7 +33200,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Number of events that were removed by the truncation.
              */
             truncate: async (params: HistoryTruncateRequest): Promise<HistoryTruncateResult> =>
-                connection.sendRequest("session.history.truncate", { sessionId, ...params }),
+                connection.sendRequest("session.history.truncate", { ...params, sessionId }),
             /**
              * Lists the user turns that the session can rewind to. Never rejects for a busy session: rewind reads need the session's file-change captures to be settled, so a session that still holds active work answers with `unavailableReason: "session-busy"` and no points, which the caller can retry.
              *
@@ -32922,7 +33216,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Files and aggregate changes for a prospective rewind.
              */
             previewRewind: async (params: HistoryPreviewRewindRequest): Promise<HistoryPreviewRewindResult> =>
-                connection.sendRequest("session.history.previewRewind", { sessionId, ...params }),
+                connection.sendRequest("session.history.previewRewind", { ...params, sessionId }),
             /**
              * Rewinds the session conversation, optionally restoring files changed by the discarded turns. Not crash-atomic: file restore and conversation truncation are separate stores, applied in that order, so a process crash between them can leave the workspace rewound while the conversation still contains the discarded turns. There is no recovery journal; re-running the same rewind is the recovery path for a crash before truncation lands, since file restore is idempotent (already-restored files are reported as skipped) and truncation is re-derived from the still-retained boundary event. After truncation lands that boundary no longer exists, so the same request is rejected; the only stage that can still be outstanding is snapshot pruning, whose failure leaves orphan snapshots the capture store tolerates. The reverse inconsistency cannot occur, because truncation is never applied before file restore succeeds.
              *
@@ -32931,7 +33225,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Structured outcome of a rewind request.
              */
             rewind: async (params: HistoryRewindRequest): Promise<HistoryRewindResult> =>
-                connection.sendRequest("session.history.rewind", { sessionId, ...params }),
+                connection.sendRequest("session.history.rewind", { ...params, sessionId }),
             /**
              * Cancels any in-progress background compaction on a local session.
              *
@@ -32961,7 +33255,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns What a successful clear removed. A clear that could not be applied rejects instead of reporting a count.
              */
             clearContext: async (params: HistoryClearContextRequest): Promise<HistoryClearContextResult> =>
-                connection.sendRequest("session.history.clearContext", { sessionId, ...params }),
+                connection.sendRequest("session.history.clearContext", { ...params, sessionId }),
         },
         /** @experimental */
         queue: {
@@ -32980,7 +33274,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of moving a queued item.
              */
             moveItem: async (params: QueueMoveItemRequest): Promise<QueueMoveItemResult> =>
-                connection.sendRequest("session.queue.moveItem", { sessionId, ...params }),
+                connection.sendRequest("session.queue.moveItem", { ...params, sessionId }),
             /**
              * Inserts a new queued message at a public visible position.
              *
@@ -32989,7 +33283,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of inserting a queued message.
              */
             insertAt: async (params: QueueInsertAtRequest): Promise<QueueInsertAtResult> =>
-                connection.sendRequest("session.queue.insertAt", { sessionId, ...params }),
+                connection.sendRequest("session.queue.insertAt", { ...params, sessionId }),
             /**
              * Removes an addressable queued item by its stable id.
              *
@@ -32998,7 +33292,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of removing a queued item.
              */
             removeAt: async (params: QueueRemoveAtRequest): Promise<QueueRemoveAtResult> =>
-                connection.sendRequest("session.queue.removeAt", { sessionId, ...params }),
+                connection.sendRequest("session.queue.removeAt", { ...params, sessionId }),
             /**
              * Updates the text of an addressable single-message queue item.
              *
@@ -33007,7 +33301,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of editing a queued message.
              */
             updateText: async (params: QueueUpdateTextRequest): Promise<QueueUpdateTextResult> =>
-                connection.sendRequest("session.queue.updateText", { sessionId, ...params }),
+                connection.sendRequest("session.queue.updateText", { ...params, sessionId }),
             /**
              * Atomically withdraws an unchanged user message of a local session: from the queued or steering lane while unconsumed, or from the running turn it started while the model has not answered it and nothing the user sent after it is pending. Withdrawing from the running turn interrupts that turn and removes its events from history. A client retaining the original draft may restore it only when removed is true.
              *
@@ -33016,7 +33310,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of withdrawing a user message.
              */
             withdrawMessage: async (params: QueueWithdrawMessageRequest): Promise<QueueWithdrawMessageResult> =>
-                connection.sendRequest("session.queue.withdrawMessage", { sessionId, ...params }),
+                connection.sendRequest("session.queue.withdrawMessage", { ...params, sessionId }),
             /**
              * Atomically appends text and attachments to an unchanged, unconsumed local steering message. Returns updated=false if delivery or withdrawal already claimed the message.
              *
@@ -33025,7 +33319,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of editing a queued message.
              */
             appendSteering: async (params: QueueAppendSteeringRequest): Promise<QueueUpdateTextResult> =>
-                connection.sendRequest("session.queue.appendSteering", { sessionId, ...params }),
+                connection.sendRequest("session.queue.appendSteering", { ...params, sessionId }),
             /**
              * Duplicates an addressable queued item immediately after its source.
              *
@@ -33034,14 +33328,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of duplicating a queued item.
              */
             duplicateAt: async (params: QueueDuplicateAtRequest): Promise<QueueDuplicateAtResult> =>
-                connection.sendRequest("session.queue.duplicateAt", { sessionId, ...params }),
+                connection.sendRequest("session.queue.duplicateAt", { ...params, sessionId }),
             /**
              * Acquires or releases the queued-lane drain pause.
              *
              * @param params Parameters for acquiring or releasing the queued-lane drain pause. Acquisition is exclusive and non-idempotent: `paused: true` against an already-paused session fails with `queue_already_paused`. The pause is never released automatically — it is not tied to the caller's lifetime, so a client that exits without sending `paused: false` leaves the lane frozen. Release is unowned: `paused: false` clears the pause for any caller, including one that never acquired it.
              */
             setDrainPaused: async (params: QueueSetDrainPausedRequest): Promise<void> =>
-                connection.sendRequest("session.queue.setDrainPaused", { sessionId, ...params }),
+                connection.sendRequest("session.queue.setDrainPaused", { ...params, sessionId }),
             /**
              * Moves an addressable queued message into the live turn's steering lane.
              *
@@ -33050,7 +33344,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Result of trying to steer a queued message into a live turn.
              */
             sendNow: async (params: QueueSendNowRequest): Promise<QueueSendNowResult> =>
-                connection.sendRequest("session.queue.sendNow", { sessionId, ...params }),
+                connection.sendRequest("session.queue.sendNow", { ...params, sessionId }),
             /**
              * Removes the most recently queued user-facing item (LIFO).
              *
@@ -33074,7 +33368,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Batch of session events returned by a read, with cursor and continuation metadata.
              */
             read: async (params: EventLogReadRequest): Promise<EventsReadResult> =>
-                connection.sendRequest("session.eventLog.read", { sessionId, ...params }),
+                connection.sendRequest("session.eventLog.read", { ...params, sessionId }),
             /**
              * Returns a snapshot of the current tail cursor without consuming events.
              *
@@ -33090,7 +33384,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Opaque handle representing an event-type interest registration.
              */
             registerInterest: async (params: RegisterEventInterestParams): Promise<RegisterEventInterestResult> =>
-                connection.sendRequest("session.eventLog.registerInterest", { sessionId, ...params }),
+                connection.sendRequest("session.eventLog.registerInterest", { ...params, sessionId }),
             /**
              * Releases a consumer's previously-registered interest in an event type.
              *
@@ -33099,7 +33393,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Indicates whether the operation succeeded.
              */
             releaseInterest: async (params: ReleaseEventInterestParams): Promise<EventLogReleaseInterestResult> =>
-                connection.sendRequest("session.eventLog.releaseInterest", { sessionId, ...params }),
+                connection.sendRequest("session.eventLog.releaseInterest", { ...params, sessionId }),
         },
         /** @experimental */
         usage: {
@@ -33121,7 +33415,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Prediction result. Available results include prediction details; unavailable results include an explicit reason.
              */
             predict: async (params?: SessionLimitPredictionPredictRequest): Promise<SessionLimitPredictionResult> =>
-                connection.sendRequest("session.limitPrediction.predict", { sessionId, ...params }),
+                connection.sendRequest("session.limitPrediction.predict", { ...params, sessionId }),
         },
         /** @experimental */
         remote: {
@@ -33133,7 +33427,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns GitHub URL for the session and a flag indicating whether remote steering is enabled.
              */
             enable: async (params: RemoteEnableRequest): Promise<RemoteEnableResult> =>
-                connection.sendRequest("session.remote.enable", { sessionId, ...params }),
+                connection.sendRequest("session.remote.enable", { ...params, sessionId }),
             /**
              * Disables remote session export and steering.
              */
@@ -33147,7 +33441,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Persist a steerability change as a `session.remote_steerable_changed` event. Used by the host (CLI / SDK consumer) when it has just finished enabling or disabling steering on a remote exporter that the runtime does not directly own.
              */
             notifySteerableChanged: async (params: RemoteNotifySteerableChangedRequest): Promise<RemoteNotifySteerableChangedResult> =>
-                connection.sendRequest("session.remote.notifySteerableChanged", { sessionId, ...params }),
+                connection.sendRequest("session.remote.notifySteerableChanged", { ...params, sessionId }),
         },
         /** @experimental */
         visibility: {
@@ -33166,7 +33460,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Effective sharing status and shareable GitHub URL after updating session visibility.
              */
             set: async (params: VisibilitySetRequest): Promise<VisibilitySetResult> =>
-                connection.sendRequest("session.visibility.set", { sessionId, ...params }),
+                connection.sendRequest("session.visibility.set", { ...params, sessionId }),
         },
         /** @experimental */
         schedule: {
@@ -33185,7 +33479,7 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              * @returns Remove a scheduled prompt by id. The result entry is omitted if the id was unknown.
              */
             stop: async (params: ScheduleStopRequest): Promise<ScheduleStopResult> =>
-                connection.sendRequest("session.schedule.stop", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.stop", { ...params, sessionId }),
         },
     };
 }
@@ -33205,7 +33499,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
          * @experimental
          */
         sendSystemNotification: async (params: SendSystemNotificationRequest): Promise<void> =>
-            connection.sendRequest("session.sendSystemNotification", { sessionId, ...params }),
+            connection.sendRequest("session.sendSystemNotification", { ...params, sessionId }),
         /** @experimental */
         gitHubAuth: {
             /**
@@ -33237,14 +33531,14 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Authentication credentials accepted only at native protocol ingress. Runtime outputs use credential-free `AuthIdentity` metadata.
              */
             login: async (params: SessionAuthLoginRequest): Promise<AuthInfo> =>
-                connection.sendRequest("session.gitHubAuth.login", { sessionId, ...params }),
+                connection.sendRequest("session.gitHubAuth.login", { ...params, sessionId }),
             /**
              * Switches the session to another available authentication.
              *
              * @param params Parameters for switching the session's active authentication.
              */
             switchToAuth: async (params: SessionAuthSwitchRequest): Promise<void> =>
-                connection.sendRequest("session.gitHubAuth.switchToAuth", { sessionId, ...params }),
+                connection.sendRequest("session.gitHubAuth.switchToAuth", { ...params, sessionId }),
             /**
              * Logs out the session's current GitHub authentication.
              *
@@ -33260,7 +33554,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Whether the requested authentication was logged out.
              */
             logoutUser: async (params: SessionAuthLogoutUserRequest): Promise<SessionGitHubAuthLogoutUserResult> =>
-                connection.sendRequest("session.gitHubAuth.logoutUser", { sessionId, ...params }),
+                connection.sendRequest("session.gitHubAuth.logoutUser", { ...params, sessionId }),
             /**
              * Gets validation errors from the most recent authentication attempt.
              *
@@ -33279,14 +33573,14 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
                  * @param params Internal canvas provider registration parameters.
                  */
                 register: async (params: CanvasProviderRegisterRequest): Promise<void> =>
-                    connection.sendRequest("session.canvas.provider.register", { sessionId, ...params }),
+                    connection.sendRequest("session.canvas.provider.register", { ...params, sessionId }),
                 /**
                  * Unregisters an internal canvas provider connection.
                  *
                  * @param params Internal canvas provider unregistration parameters.
                  */
                 unregister: async (params: CanvasProviderUnregisterRequest): Promise<void> =>
-                    connection.sendRequest("session.canvas.provider.unregister", { sessionId, ...params }),
+                    connection.sendRequest("session.canvas.provider.unregister", { ...params, sessionId }),
             },
         },
         /** @experimental */
@@ -33299,7 +33593,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Complete current or terminal workflow run envelope.
              */
             runFromTool: async (params: WorkflowToolRunRequest): Promise<WorkflowRunResult> =>
-                connection.sendRequest("session.workflow.runFromTool", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.runFromTool", { ...params, sessionId }),
             /**
              * Internal tool-originated dynamic workflow resume.
              *
@@ -33308,14 +33602,14 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Resolved persisted workflow identity and resumed run envelope.
              */
             resumeFromTool: async (params: WorkflowToolResumeRequest): Promise<WorkflowResumeResult> =>
-                connection.sendRequest("session.workflow.resumeFromTool", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.resumeFromTool", { ...params, sessionId }),
             /**
              * Atomically pauses an owned dynamic workflow attempt at a durable checkpoint.
              *
              * @param params Parameters for an owned durable pause checkpoint.
              */
             pauseAtCheckpoint: async (params: WorkflowPauseCheckpointRequest): Promise<SessionWorkflowPauseAtCheckpointResult> =>
-                connection.sendRequest("session.workflow.pauseAtCheckpoint", { sessionId, ...params }),
+                connection.sendRequest("session.workflow.pauseAtCheckpoint", { ...params, sessionId }),
         },
         /** @experimental */
         model: {
@@ -33327,7 +33621,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns The model identifier active on the session after the switch.
              */
             applyStartupOverlay: async (params: ModelApplyStartupOverlayRequest): Promise<ModelSwitchToResult> =>
-                connection.sendRequest("session.model.applyStartupOverlay", { sessionId, ...params }),
+                connection.sendRequest("session.model.applyStartupOverlay", { ...params, sessionId }),
         },
         /** @experimental */
         mcp: {
@@ -33339,7 +33633,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns MCP server startup filtering result.
              */
             reloadWithConfig: async (params: McpReloadWithConfigRequest): Promise<McpStartServersResult> =>
-                connection.sendRequest("session.mcp.reloadWithConfig", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.reloadWithConfig", { ...params, sessionId }),
             /**
              * Configures the built-in GitHub MCP server for the session's current auth context.
              *
@@ -33348,21 +33642,21 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of configuring GitHub MCP.
              */
             configureGitHub: async (params: McpConfigureGitHubRequest): Promise<McpConfigureGitHubResult> =>
-                connection.sendRequest("session.mcp.configureGitHub", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.configureGitHub", { ...params, sessionId }),
             /**
              * Registers a pre-connected external MCP client (e.g. IDE) on the session's host. The caller retains lifecycle ownership of the client and transport. Marked internal because the `client` and `transport` arguments are in-process MCP SDK instances that cannot be serialized across the JSON-RPC boundary; once the CLI moves on top of the SDK, external clients will be expressed as transport configs the runtime can construct itself.
              *
              * @param params Registration parameters for an external MCP client.
              */
             registerExternalClient: async (params: McpRegisterExternalClientRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.registerExternalClient", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.registerExternalClient", { ...params, sessionId }),
             /**
              * Unregisters a previously registered external MCP client by server name. Marked internal as the paired companion of `registerExternalClient`: only in-process callers that registered a client this way can meaningfully unregister it. Disappears alongside `registerExternalClient`: once external clients are described to the runtime as config rather than handed in as instances, lifecycle (including deregistration) is owned entirely by the runtime.
              *
              * @param params Server name identifying the external client to remove.
              */
             unregisterExternalClient: async (params: McpUnregisterExternalClientRequest): Promise<void> =>
-                connection.sendRequest("session.mcp.unregisterExternalClient", { sessionId, ...params }),
+                connection.sendRequest("session.mcp.unregisterExternalClient", { ...params, sessionId }),
         },
         /** @experimental */
         connectors: {
@@ -33374,7 +33668,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Authoritative session connector state. Account IDs are opaque routing identifiers and credentials are never included.
              */
             reconcileForStartup: async (params: ConnectorAccountRequest): Promise<ConnectorStatus> =>
-                connection.sendRequest("session.connectors.reconcileForStartup", { sessionId, ...params }),
+                connection.sendRequest("session.connectors.reconcileForStartup", { ...params, sessionId }),
             /**
              * Removes the runtime-owned Connector MCP projection without changing service-side connections.
              *
@@ -33393,7 +33687,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Whether finalizing the invocation effect succeeded, and the failure reason when it did not.
              */
             finalizeInvocationEffect: async (params: CommandsFinalizeInvocationEffectRequest): Promise<CommandsFinalizeInvocationEffectResult> =>
-                connection.sendRequest("session.commands.finalizeInvocationEffect", { sessionId, ...params }),
+                connection.sendRequest("session.commands.finalizeInvocationEffect", { ...params, sessionId }),
         },
         /** @experimental */
         settings: {
@@ -33412,7 +33706,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of evaluating a Rust-owned settings predicate.
              */
             evaluatePredicate: async (params: SessionSettingsEvaluatePredicateRequest): Promise<SessionSettingsEvaluatePredicateResult> =>
-                connection.sendRequest("session.settings.evaluatePredicate", { sessionId, ...params }),
+                connection.sendRequest("session.settings.evaluatePredicate", { ...params, sessionId }),
         },
         /** @experimental */
         queue: {
@@ -33438,7 +33732,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Whether a deferred-idle drain should run.
              */
             beginDeferredIdleDrain: async (params: QueueBeginDeferredIdleDrainRequest): Promise<QueueBeginDeferredIdleDrainResult> =>
-                connection.sendRequest("session.queue.beginDeferredIdleDrain", { sessionId, ...params }),
+                connection.sendRequest("session.queue.beginDeferredIdleDrain", { ...params, sessionId }),
             /**
              * Finishes a native deferred-idle drain and reports whether to drain queue work or emit idle.
              *
@@ -33447,14 +33741,14 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Action selected by the native deferred-idle drain.
              */
             finishDeferredIdleDrain: async (params: QueueFinishDeferredIdleDrainRequest): Promise<QueueFinishDeferredIdleDrainResult> =>
-                connection.sendRequest("session.queue.finishDeferredIdleDrain", { sessionId, ...params }),
+                connection.sendRequest("session.queue.finishDeferredIdleDrain", { ...params, sessionId }),
             /**
              * Marks session.idle as deferred by native background work state.
              *
              * @param params Inputs for marking session.idle deferred in native state.
              */
             deferSessionIdle: async (params: QueueDeferSessionIdleRequest): Promise<void> =>
-                connection.sendRequest("session.queue.deferSessionIdle", { sessionId, ...params }),
+                connection.sendRequest("session.queue.deferSessionIdle", { ...params, sessionId }),
             /**
              * Consumes queued native system notifications matching an internal filter.
              *
@@ -33463,7 +33757,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Indicates whether a user-facing pending item was removed.
              */
             consumeSystemNotifications: async (params: QueueConsumeSystemNotificationsRequest): Promise<QueueRemoveMostRecentResult> =>
-                connection.sendRequest("session.queue.consumeSystemNotifications", { sessionId, ...params }),
+                connection.sendRequest("session.queue.consumeSystemNotifications", { ...params, sessionId }),
             /**
              * Enqueues the internal resume-pending wake item when orphan handling needs a follow-up turn.
              *
@@ -33499,7 +33793,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of registering or re-arming a scheduled prompt.
              */
             add: async (params: ScheduleAddRequest): Promise<ScheduleAddResult> =>
-                connection.sendRequest("session.schedule.add", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.add", { ...params, sessionId }),
             /**
              * Registers a recurring cron scheduled prompt.
              *
@@ -33508,7 +33802,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of registering or re-arming a scheduled prompt.
              */
             addCron: async (params: ScheduleAddCronRequest): Promise<ScheduleAddResult> =>
-                connection.sendRequest("session.schedule.addCron", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.addCron", { ...params, sessionId }),
             /**
              * Registers an absolute-time scheduled prompt.
              *
@@ -33517,7 +33811,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of registering or re-arming a scheduled prompt.
              */
             addAt: async (params: ScheduleAddAtRequest): Promise<ScheduleAddResult> =>
-                connection.sendRequest("session.schedule.addAt", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.addAt", { ...params, sessionId }),
             /**
              * Registers a self-paced scheduled prompt.
              *
@@ -33526,7 +33820,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of registering or re-arming a scheduled prompt.
              */
             addSelfPaced: async (params: ScheduleAddSelfPacedRequest): Promise<ScheduleAddResult> =>
-                connection.sendRequest("session.schedule.addSelfPaced", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.addSelfPaced", { ...params, sessionId }),
             /**
              * Re-arms an active self-paced scheduled prompt.
              *
@@ -33535,7 +33829,7 @@ export function createInternalSessionRpc(connection: MessageConnection, sessionI
              * @returns Result of registering or re-arming a scheduled prompt.
              */
             rearmSelfPaced: async (params: ScheduleRearmSelfPacedRequest): Promise<ScheduleAddResult> =>
-                connection.sendRequest("session.schedule.rearmSelfPaced", { sessionId, ...params }),
+                connection.sendRequest("session.schedule.rearmSelfPaced", { ...params, sessionId }),
         },
     };
 }

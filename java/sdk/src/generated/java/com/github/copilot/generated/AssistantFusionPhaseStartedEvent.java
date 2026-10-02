@@ -10,6 +10,7 @@ package com.github.copilot.generated;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.github.copilot.CopilotExperimental;
 import javax.annotation.processing.Generated;
 
 /**
@@ -49,6 +50,7 @@ public final class AssistantFusionPhaseStartedEvent extends SessionEvent {
         /** Concrete model executing the phase. */
         @JsonProperty("model") String model,
         /** Explicit reasoning effort selected for this phase, if supplied. */
+        @CopilotExperimental
         @JsonProperty("reasoningEffort") String reasoningEffort
     ) {
     }

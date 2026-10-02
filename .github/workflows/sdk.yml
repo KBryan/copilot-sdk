@@ -4,6 +4,7 @@ name: "SDK build and test"
 
 env:
   COPILOT_BAZEL_ANG_ENABLED: ${{ vars.COPILOT_BAZEL_ANG_ENABLED }}
+  COPILOT_BAZEL_ANG_SCOPE: ${{ vars.COPILOT_BAZEL_ANG_SCOPE }}
   HUSKY: 0
   POWERSHELL_UPDATECHECK: Off
   SETUP_NODE_TIMEOUT_MINUTES: 10
@@ -49,8 +50,9 @@ jobs:
           fi
 
   # TEMPORARY MERGE QUEUE REDUCTION: pull requests and main pushes retain the
-  # full platform matrix. Merge groups rerun Linux x64 as the representative
-  # compatibility lane. Remove the merge_group gates below to restore it.
+  # full SDK matrix. Merge groups rerun only Linux x64 Node.js out-of-process
+  # CAPI coverage. Remove the merge_group gates here and in sdk-platform.yml
+  # and sdk-nodejs.yml to restore the full matrix.
   build-runtime-windows-x64-addons:
     name: "Build runtime addons (win32-x64)"
     needs: detect-layout
@@ -454,7 +456,7 @@ jobs:
                 exit 1
               fi
             done
-            echo "Linux x64 SDK compatibility and generated clients passed"
+            echo "Linux x64 Node.js SDK compatibility and generated clients passed"
             exit 0
           fi
 

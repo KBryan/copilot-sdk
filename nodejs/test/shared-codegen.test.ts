@@ -1,7 +1,9 @@
 import type { JSONSchema7 } from "json-schema";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
@@ -17,6 +19,37 @@ import {
 } from "../../scripts/codegen/utils.ts";
 
 describe("shared schema definition codegen utilities", () => {
+    it.each(["typescript", "python", "go", "csharp"])(
+        "runs the %s generator through a linked entrypoint",
+        async (language) => {
+            const root = await mkdtemp(join(tmpdir(), "copilot-codegen-entrypoint-"));
+            onTestFinished(() => rm(root, { recursive: true, force: true }));
+            const codegenRoot = fileURLToPath(new URL("../../scripts/codegen", import.meta.url));
+            const linkedRoot = join(root, "codegen");
+            await symlink(
+                codegenRoot,
+                linkedRoot,
+                process.platform === "win32" ? "junction" : "dir"
+            );
+            const missingSchema = join(root, "missing-schema.json");
+            const result = spawnSync(
+                process.execPath,
+                [
+                    join(codegenRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+                    join(linkedRoot, `${language}.ts`),
+                    missingSchema,
+                    missingSchema,
+                ],
+                { cwd: codegenRoot, encoding: "utf8", timeout: 30_000 }
+            );
+
+            expect(result.error).toBeUndefined();
+            expect(result.status, result.stderr).toBe(1);
+            expect(result.stderr).toContain("generation failed:");
+            expect(result.stderr).toContain("missing-schema.json");
+        }
+    );
+
     it("selects checked-out schemas for normal nested generation with a clean environment", async () => {
         const root = await mkdtemp(join(tmpdir(), "copilot-nested-codegen-"));
         onTestFinished(() => rm(root, { recursive: true, force: true }));

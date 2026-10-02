@@ -1743,6 +1743,7 @@ class SessionAutoModeResolvedData:
     reasoning_bucket: AutoModeResolvedReasoningBucket | None = None
     router_latency_ms: float | None = None
     routing_method: str | None = None
+    selection_reason: str | None = None
     sticky_override: bool | None = None
 
     @staticmethod
@@ -1762,6 +1763,7 @@ class SessionAutoModeResolvedData:
         reasoning_bucket = from_union([from_none, lambda x: parse_enum(AutoModeResolvedReasoningBucket, x)], obj.get("reasoningBucket"))
         router_latency_ms = from_union([from_none, from_float], obj.get("routerLatencyMs"))
         routing_method = from_union([from_none, from_str], obj.get("routingMethod"))
+        selection_reason = from_union([from_none, from_str], obj.get("selectionReason"))
         sticky_override = from_union([from_none, from_bool], obj.get("stickyOverride"))
         return SessionAutoModeResolvedData(
             chosen_model=chosen_model,
@@ -1778,6 +1780,7 @@ class SessionAutoModeResolvedData:
             reasoning_bucket=reasoning_bucket,
             router_latency_ms=router_latency_ms,
             routing_method=routing_method,
+            selection_reason=selection_reason,
             sticky_override=sticky_override,
         )
 
@@ -1810,6 +1813,8 @@ class SessionAutoModeResolvedData:
             result["routerLatencyMs"] = from_union([from_none, to_float], self.router_latency_ms)
         if self.routing_method is not None:
             result["routingMethod"] = from_union([from_none, from_str], self.routing_method)
+        if self.selection_reason is not None:
+            result["selectionReason"] = from_union([from_none, from_str], self.selection_reason)
         if self.sticky_override is not None:
             result["stickyOverride"] = from_union([from_none, from_bool], self.sticky_override)
         return result
@@ -8213,6 +8218,8 @@ class PromptCacheBreakData:
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _tools_redefined: list[str] | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
+    _tools_redefined_parts: list[str] | None = None
+    # Internal: this field is an internal SDK API and is not part of the public surface.
     _tools_redefined_raw: list[str] | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _tools_removed: list[str] | None = None
@@ -8243,6 +8250,7 @@ class PromptCacheBreakData:
         _tools_added = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsAdded"))
         _tools_added_raw = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsAddedRaw"))
         _tools_redefined = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsRedefined"))
+        _tools_redefined_parts = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsRedefinedParts"))
         _tools_redefined_raw = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsRedefinedRaw"))
         _tools_removed = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsRemoved"))
         _tools_removed_raw = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("toolsRemovedRaw"))
@@ -8267,6 +8275,7 @@ class PromptCacheBreakData:
             _tools_added=_tools_added,
             _tools_added_raw=_tools_added_raw,
             _tools_redefined=_tools_redefined,
+            _tools_redefined_parts=_tools_redefined_parts,
             _tools_redefined_raw=_tools_redefined_raw,
             _tools_removed=_tools_removed,
             _tools_removed_raw=_tools_removed_raw,
@@ -8307,6 +8316,8 @@ class PromptCacheBreakData:
             result["toolsAddedRaw"] = from_union([from_none, lambda x: from_list(from_str, x)], self._tools_added_raw)
         if self._tools_redefined is not None:
             result["toolsRedefined"] = from_union([from_none, lambda x: from_list(from_str, x)], self._tools_redefined)
+        if self._tools_redefined_parts is not None:
+            result["toolsRedefinedParts"] = from_union([from_none, lambda x: from_list(from_str, x)], self._tools_redefined_parts)
         if self._tools_redefined_raw is not None:
             result["toolsRedefinedRaw"] = from_union([from_none, lambda x: from_list(from_str, x)], self._tools_redefined_raw)
         if self._tools_removed is not None:
@@ -12434,21 +12445,27 @@ class ToolExecutionProgressData:
     "Tool execution progress notification with status message"
     progress_message: str
     tool_call_id: str
+    # Experimental: this field is part of an experimental API and may change or be removed.
+    structured_content: Any = None
 
     @staticmethod
     def from_dict(obj: Any) -> "ToolExecutionProgressData":
         assert isinstance(obj, dict)
         progress_message = from_str(obj.get("progressMessage"))
         tool_call_id = from_str(obj.get("toolCallId"))
+        structured_content = obj.get("structuredContent")
         return ToolExecutionProgressData(
             progress_message=progress_message,
             tool_call_id=tool_call_id,
+            structured_content=structured_content,
         )
 
     def to_dict(self) -> dict:
         result: dict = {}
         result["progressMessage"] = from_str(self.progress_message)
         result["toolCallId"] = from_str(self.tool_call_id)
+        if self.structured_content is not None:
+            result["structuredContent"] = self.structured_content
         return result
 
 

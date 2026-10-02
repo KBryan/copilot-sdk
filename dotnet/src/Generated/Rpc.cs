@@ -15257,7 +15257,11 @@ internal sealed class SessionMcpOauthPrepareLoginRequest
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class McpOauthLoginResult
 {
-    /// <summary>URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. When present, the runtime starts the callback listener before returning and continues the flow in the background; completion is signaled via session.mcp_server_status_changed.</summary>
+    /// <summary>Opaque authorization identifier returned only for a host-managed redirect URI. The runtime also sends it as the OAuth state value, so the callback endpoint can read state and pass it with the full callback URL to session.mcp.oauth.complete.</summary>
+    [JsonPropertyName("authorizationId")]
+    public string? AuthorizationId { get; set; }
+
+    /// <summary>URL the caller should open in a browser to complete OAuth. Omitted when cached tokens were still valid and no browser interaction was needed — the server is already reconnected in that case. For the default loopback flow, the runtime starts its listener before returning. With redirectUri, the host receives the callback and completes it through session.mcp.oauth.complete. The runtime continues the flow in the background and signals completion via session.mcp_server_status_changed.</summary>
     [Url]
     [StringSyntax(StringSyntaxAttribute.Uri)]
     [JsonPropertyName("authorizationUrl")]
@@ -15272,7 +15276,7 @@ public sealed class McpOauthLoginResult
     public McpOwnedOauthLoginStatus? Status { get; set; }
 }
 
-/// <summary>Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.</summary>
+/// <summary>Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class McpOauthLoginRequest
 {
@@ -15315,6 +15319,12 @@ public sealed class McpOauthLoginRequest
     [JsonPropertyName("publicClient")]
     public bool? PublicClient { get; set; }
 
+    /// <summary>Optional externally visible HTTPS redirect URI for a host-managed callback endpoint. When supplied, the runtime still owns discovery, PKCE, token exchange, persistence, and reconnect, but does not bind a loopback listener or terminate HTTPS. The URI must not contain query parameters or a fragment and must be registered for the selected CIMD, DCR, or static OAuth client.</summary>
+    [Url]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    [JsonPropertyName("redirectUri")]
+    public string? RedirectUri { get; set; }
+
     /// <summary>Name of the remote MCP server to authenticate.</summary>
     [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
@@ -15323,7 +15333,7 @@ public sealed class McpOauthLoginRequest
     public required string ServerName { get; set; }
 }
 
-/// <summary>Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.</summary>
+/// <summary>Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class McpOauthLoginRequestWithSession
 {
@@ -15366,12 +15376,39 @@ internal sealed class McpOauthLoginRequestWithSession
     [JsonPropertyName("publicClient")]
     public bool? PublicClient { get; set; }
 
+    /// <summary>Optional externally visible HTTPS redirect URI for a host-managed callback endpoint. When supplied, the runtime still owns discovery, PKCE, token exchange, persistence, and reconnect, but does not bind a loopback listener or terminate HTTPS. The URI must not contain query parameters or a fragment and must be registered for the selected CIMD, DCR, or static OAuth client.</summary>
+    [Url]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    [JsonPropertyName("redirectUri")]
+    public string? RedirectUri { get; set; }
+
     /// <summary>Name of the remote MCP server to authenticate.</summary>
     [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
     [MinLength(1)]
     [JsonPropertyName("serverName")]
     public string ServerName { get; set; } = string.Empty;
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>Host-delivered callback for a runtime-managed MCP OAuth login.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class McpOauthCompleteRequest
+{
+    /// <summary>Opaque identifier returned by session.mcp.oauth.login for the pending external callback.</summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
+    [MinLength(1)]
+    [JsonPropertyName("authorizationId")]
+    public string AuthorizationId { get; set; } = string.Empty;
+
+    /// <summary>Full externally visible HTTPS callback URL received by the host, including the authorization response query parameters. Applications behind a reverse proxy must reconstruct the public URL rather than passing an internal proxy URL.</summary>
+    [Url]
+    [StringSyntax(StringSyntaxAttribute.Uri)]
+    [JsonPropertyName("callbackUrl")]
+    public string CallbackUrl { get; set; } = string.Empty;
 
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -16151,6 +16188,198 @@ internal sealed class McpResourcesListTemplatesRequest
     public string? Cursor { get; set; }
 
     /// <summary>Name of the MCP server whose resource templates to enumerate.</summary>
+    [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
+    [MinLength(1)]
+    [JsonPropertyName("serverName")]
+    public string ServerName { get; set; } = string.Empty;
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>An argument accepted by an MCP prompt.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptArgument
+{
+    /// <summary>Argument-level metadata.</summary>
+    [JsonPropertyName("_meta")]
+    public IDictionary<string, JsonElement>? Meta { get; set; }
+
+    /// <summary>Server-provided non-standard argument fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>Description of the argument.</summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>Name of the argument.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Whether the argument is required; omission is distinct from false.</summary>
+    [JsonPropertyName("required")]
+    public bool? Required { get; set; }
+}
+
+/// <summary>An MCP prompt icon with standard size hints and preserved non-standard fields.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptIcon
+{
+    /// <summary>Server-provided non-standard icon fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>Icon MIME type, when known.</summary>
+    [JsonPropertyName("mimeType")]
+    public string? MimeType { get; set; }
+
+    /// <summary>Icon sizes, such as `48x48` or `any`.</summary>
+    [JsonPropertyName("sizes")]
+    public IList<string>? Sizes { get; set; }
+
+    /// <summary>Icon URI.</summary>
+    [JsonPropertyName("src")]
+    public string Src { get; set; } = string.Empty;
+
+    /// <summary>Theme hint for this icon.</summary>
+    [JsonPropertyName("theme")]
+    public string? Theme { get; set; }
+}
+
+/// <summary>An MCP prompt descriptor. Server-provided non-standard fields are exposed under `additionalProperties`.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPrompt
+{
+    /// <summary>Prompt-level metadata.</summary>
+    [JsonPropertyName("_meta")]
+    public IDictionary<string, JsonElement>? Meta { get; set; }
+
+    /// <summary>Server-provided non-standard descriptor fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>Arguments accepted by the prompt.</summary>
+    [JsonPropertyName("arguments")]
+    public IList<McpPromptArgument>? Arguments { get; set; }
+
+    /// <summary>Description of what this prompt provides.</summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>Icons associated with this prompt.</summary>
+    [JsonPropertyName("icons")]
+    public IList<McpPromptIcon>? Icons { get; set; }
+
+    /// <summary>The programmatic name of the prompt.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Human-readable display title.</summary>
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+}
+
+/// <summary>One page of prompts advertised by the named MCP server.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptsListResult
+{
+    /// <summary>MCP result metadata.</summary>
+    [JsonPropertyName("_meta")]
+    public IDictionary<string, JsonElement>? Meta { get; set; }
+
+    /// <summary>Server-provided non-standard result fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>Opaque cursor for the next page, if the server has more prompts.</summary>
+    [JsonPropertyName("nextCursor")]
+    public string? NextCursor { get; set; }
+
+    /// <summary>Prompts advertised by the server.</summary>
+    [JsonPropertyName("prompts")]
+    public IList<McpPrompt> Prompts { get => field ??= []; set; }
+}
+
+/// <summary>MCP server whose prompts to enumerate.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class McpPromptsListRequest
+{
+    /// <summary>Opaque MCP pagination cursor from a prior `nextCursor` value.</summary>
+    [JsonPropertyName("cursor")]
+    public string? Cursor { get; set; }
+
+    /// <summary>Name of the MCP server whose prompts to enumerate.</summary>
+    [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
+    [MinLength(1)]
+    [JsonPropertyName("serverName")]
+    public string ServerName { get; set; } = string.Empty;
+
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>An MCP prompt message with opaque JSON content preserved without flattening or content-type filtering.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptMessage
+{
+    /// <summary>Message-level metadata.</summary>
+    [JsonPropertyName("_meta")]
+    public IDictionary<string, JsonElement>? Meta { get; set; }
+
+    /// <summary>Server-provided non-standard message fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>The original MCP content block, including nested metadata and unfamiliar content types.</summary>
+    [JsonPropertyName("content")]
+    public JsonElement Content { get; set; }
+
+    /// <summary>The role of the message sender.</summary>
+    [JsonPropertyName("role")]
+    public McpPromptRole Role { get; set; }
+}
+
+/// <summary>Prompt messages returned by the MCP server without sending them to the model.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptsGetResult
+{
+    /// <summary>MCP result metadata.</summary>
+    [JsonPropertyName("_meta")]
+    public IDictionary<string, JsonElement>? Meta { get; set; }
+
+    /// <summary>Server-provided non-standard result fields.</summary>
+    [JsonPropertyName("additionalProperties")]
+    public IDictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    /// <summary>Description of the prompt.</summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>Ordered prompt messages.</summary>
+    [JsonPropertyName("messages")]
+    public IList<McpPromptMessage> Messages { get => field ??= []; set; }
+}
+
+/// <summary>MCP server, prompt name, and optional string-valued arguments.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class McpPromptsGetRequest
+{
+    /// <summary>String-valued arguments to pass to the prompt.</summary>
+    [JsonPropertyName("arguments")]
+    public IDictionary<string, string>? Arguments { get; set; }
+
+    /// <summary>The programmatic name of the prompt.</summary>
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
+    [MinLength(1)]
+    [JsonPropertyName("promptName")]
+    public string PromptName { get; set; } = string.Empty;
+
+    /// <summary>Name of the MCP server hosting the prompt.</summary>
     [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
     [MinLength(1)]
@@ -22908,16 +23137,16 @@ internal sealed class ContentExclusionCheckPathsRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
-/// <summary>Identifier of the spawned process, used to correlate streamed output and exit notifications.</summary>
+/// <summary>Identifier of the spawned shell process, usable with shell.kill while the process is running.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class ShellExecResult
 {
-    /// <summary>Unique identifier for tracking streamed output.</summary>
+    /// <summary>Identifier usable with shell.kill while the process is running.</summary>
     [JsonPropertyName("processId")]
     public string ProcessId { get; set; } = string.Empty;
 }
 
-/// <summary>Shell command to run, with optional working directory and timeout in milliseconds.</summary>
+/// <summary>Shell command to run, with optional working directory and timeout in milliseconds. Spawn failures return an RPC error.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class ShellExecRequest
 {
@@ -35299,6 +35528,69 @@ public readonly struct McpAppsHostContextDetailsTheme : IEquatable<McpAppsHostCo
 }
 
 
+/// <summary>The sender role of an MCP prompt message.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct McpPromptRole : IEquatable<McpPromptRole>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="McpPromptRole"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="McpPromptRole"/>.</param>
+    [JsonConstructor]
+    public McpPromptRole(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="McpPromptRole"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>A message from the user.</summary>
+    public static McpPromptRole User { get; } = new("user");
+
+    /// <summary>A message from the assistant.</summary>
+    public static McpPromptRole Assistant { get; } = new("assistant");
+
+    /// <summary>Returns a value indicating whether two <see cref="McpPromptRole"/> instances are equivalent.</summary>
+    public static bool operator ==(McpPromptRole left, McpPromptRole right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="McpPromptRole"/> instances are not equivalent.</summary>
+    public static bool operator !=(McpPromptRole left, McpPromptRole right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is McpPromptRole other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(McpPromptRole other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{McpPromptRole}"/> for serializing <see cref="McpPromptRole"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<McpPromptRole>
+    {
+        /// <inheritdoc />
+        public override McpPromptRole Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, McpPromptRole value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(McpPromptRole));
+        }
+    }
+}
+
+
 /// <summary>Session-scoped diagnostic threshold. Capture is disabled by default and is never persisted with the session.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 [JsonConverter(typeof(Converter))]
@@ -45224,6 +45516,12 @@ public sealed class McpApi
         field ??
         Interlocked.CompareExchange(ref field, new(_session), null) ??
         field;
+
+    /// <summary>Prompts APIs.</summary>
+    public McpPromptsApi Prompts =>
+        field ??
+        Interlocked.CompareExchange(ref field, new(_session), null) ??
+        field;
 }
 
 /// <summary>Provides session-scoped McpOauth APIs.</summary>
@@ -45303,7 +45601,7 @@ public sealed class McpOauthApi
     }
 
     /// <summary>Starts OAuth authentication for a remote MCP server. Owned servers require the original one-use prepareLogin handle and exact installation ID; manual servers retain the existing direct login behaviour.</summary>
-    /// <param name="request">Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback success-page copy, and static OAuth client selection.</param>
+    /// <param name="request">Remote MCP server name and optional overrides controlling reauthentication, OAuth client display name, callback handling, and static OAuth client selection.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>OAuth authorization URL the caller should open, or empty when cached tokens already authenticated the server.</returns>
     public async Task<McpOauthLoginResult> LoginAsync(McpOauthLoginRequest request, CancellationToken cancellationToken = default)
@@ -45311,8 +45609,22 @@ public sealed class McpOauthApi
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.ServerName);
         _session.ThrowIfDisposed();
-        var wireRequest = new McpOauthLoginRequestWithSession { SessionId = _session.SessionId, ServerName = request.ServerName, ForceReauth = request.ForceReauth, ClientName = request.ClientName, CallbackSuccessMessage = request.CallbackSuccessMessage, ClientId = request.ClientId, ClientSecret = request.ClientSecret, PublicClient = request.PublicClient, GrantType = request.GrantType, LoginId = request.LoginId, ExpectedInstallationId = request.ExpectedInstallationId };
+        var wireRequest = new McpOauthLoginRequestWithSession { SessionId = _session.SessionId, ServerName = request.ServerName, ForceReauth = request.ForceReauth, ClientName = request.ClientName, CallbackSuccessMessage = request.CallbackSuccessMessage, ClientId = request.ClientId, ClientSecret = request.ClientSecret, PublicClient = request.PublicClient, GrantType = request.GrantType, RedirectUri = request.RedirectUri, LoginId = request.LoginId, ExpectedInstallationId = request.ExpectedInstallationId };
         return await CopilotClient.InvokeRpcAsync<McpOauthLoginResult>(_session.Rpc, "session.mcp.oauth.login", [wireRequest], cancellationToken);
+    }
+
+    /// <summary>Completes a runtime-managed MCP OAuth login after the authorization server redirects to a host-managed callback URL.</summary>
+    /// <param name="authorizationId">Opaque identifier returned by session.mcp.oauth.login for the pending external callback.</param>
+    /// <param name="callbackUrl">Full externally visible HTTPS callback URL received by the host, including the authorization response query parameters. Applications behind a reverse proxy must reconstruct the public URL rather than passing an internal proxy URL.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    public async Task CompleteAsync(string authorizationId, string callbackUrl, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authorizationId);
+        ArgumentNullException.ThrowIfNull(callbackUrl);
+        _session.ThrowIfDisposed();
+
+        var request = new McpOauthCompleteRequest { SessionId = _session.SessionId, AuthorizationId = authorizationId, CallbackUrl = callbackUrl };
+        await CopilotClient.InvokeRpcAsync(_session.Rpc, "session.mcp.oauth.complete", [request], cancellationToken);
     }
 
     /// <summary>Passively probes a configured remote MCP server to classify whether OAuth is required or a cached/override token is accepted. Does not start OAuth, emit pending OAuth requests, or mutate MCP connection state.</summary>
@@ -45545,6 +45857,48 @@ public sealed class McpResourcesApi
 
         var request = new McpResourcesListTemplatesRequest { SessionId = _session.SessionId, ServerName = serverName, Cursor = cursor };
         return await CopilotClient.InvokeRpcAsync<McpResourcesListTemplatesResult>(_session.Rpc, "session.mcp.resources.listTemplates", [request], cancellationToken);
+    }
+}
+
+/// <summary>Provides session-scoped McpPrompts APIs.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpPromptsApi
+{
+    private readonly CopilotSession _session;
+
+    internal McpPromptsApi(CopilotSession session)
+    {
+        _session = session;
+    }
+
+    /// <summary>Enumerate one page of prompts a connected MCP server exposes (proxies MCP `prompts/list`). Pass `cursor` to continue from a prior result's `nextCursor`.</summary>
+    /// <param name="serverName">Name of the MCP server whose prompts to enumerate.</param>
+    /// <param name="cursor">Opaque MCP pagination cursor from a prior `nextCursor` value.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>One page of prompts advertised by the named MCP server.</returns>
+    public async Task<McpPromptsListResult> ListAsync(string serverName, string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serverName);
+        _session.ThrowIfDisposed();
+
+        var request = new McpPromptsListRequest { SessionId = _session.SessionId, ServerName = serverName, Cursor = cursor };
+        return await CopilotClient.InvokeRpcAsync<McpPromptsListResult>(_session.Rpc, "session.mcp.prompts.list", [request], cancellationToken);
+    }
+
+    /// <summary>Get a prompt's messages from a connected MCP server (proxies MCP `prompts/get`). Content is preserved as opaque JSON. Does not send messages to the model, execute tools, or fetch referenced resources.</summary>
+    /// <param name="serverName">Name of the MCP server hosting the prompt.</param>
+    /// <param name="promptName">The programmatic name of the prompt.</param>
+    /// <param name="arguments">String-valued arguments to pass to the prompt.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Prompt messages returned by the MCP server without sending them to the model.</returns>
+    public async Task<McpPromptsGetResult> GetAsync(string serverName, string promptName, IDictionary<string, string>? arguments = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serverName);
+        ArgumentNullException.ThrowIfNull(promptName);
+        _session.ThrowIfDisposed();
+
+        var request = new McpPromptsGetRequest { SessionId = _session.SessionId, ServerName = serverName, PromptName = promptName, Arguments = arguments };
+        return await CopilotClient.InvokeRpcAsync<McpPromptsGetResult>(_session.Rpc, "session.mcp.prompts.get", [request], cancellationToken);
     }
 }
 
@@ -47217,12 +47571,12 @@ public sealed class ShellApi
         _session = session;
     }
 
-    /// <summary>Starts a shell command and streams output through session notifications. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.</summary>
+    /// <summary>Starts a shell command, returning an RPC error if it cannot be spawned. The command runs as the leader of its own process group (POSIX) or in a dedicated job object (Windows), so a forced termination — via "shell.kill", the request timeout, or session disposal — signals that whole group/job rather than only the direct child. Two gaps are worth planning for: a command that exits on its own does not trigger that teardown, and on POSIX a descendant that moves itself into a new session or process group (for example via "setsid") leaves the signalled group, so either can leave a background process running.</summary>
     /// <param name="command">Shell command to execute.</param>
     /// <param name="cwd">Working directory (defaults to session working directory).</param>
     /// <param name="timeout">Timeout in milliseconds (default: 30000).</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Identifier of the spawned process, used to correlate streamed output and exit notifications.</returns>
+    /// <returns>Identifier of the spawned shell process, usable with shell.kill while the process is running.</returns>
     public async Task<ShellExecResult> ExecAsync(string command, string? cwd = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -49245,6 +49599,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(McpListToolsRequest))]
 [JsonSerializable(typeof(McpListToolsResult))]
 [JsonSerializable(typeof(McpOauthAuthenticationStateChangedRequest))]
+[JsonSerializable(typeof(McpOauthCompleteRequest))]
 [JsonSerializable(typeof(McpOauthHandlePendingRequest))]
 [JsonSerializable(typeof(McpOauthHandlePendingResult))]
 [JsonSerializable(typeof(McpOauthLoginRequest))]
@@ -49270,6 +49625,14 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(McpPlanUninstallRequest))]
 [JsonSerializable(typeof(McpPrepareInstallRequest))]
 [JsonSerializable(typeof(McpPreparedInstall))]
+[JsonSerializable(typeof(McpPrompt))]
+[JsonSerializable(typeof(McpPromptArgument))]
+[JsonSerializable(typeof(McpPromptIcon))]
+[JsonSerializable(typeof(McpPromptMessage))]
+[JsonSerializable(typeof(McpPromptsGetRequest))]
+[JsonSerializable(typeof(McpPromptsGetResult))]
+[JsonSerializable(typeof(McpPromptsListRequest))]
+[JsonSerializable(typeof(McpPromptsListResult))]
 [JsonSerializable(typeof(McpRegisterExternalClientRequest))]
 [JsonSerializable(typeof(McpReloadWithConfigRequest))]
 [JsonSerializable(typeof(McpRemoveGitHubResult))]

@@ -326,6 +326,9 @@ type PromptCacheBreakData struct {
 	// Telemetry-safe names of tools whose definition changed since the prior call
 	// Internal: ToolsRedefined is part of the SDK's internal API surface and is not intended for external use.
 	ToolsRedefined []string `json:"toolsRedefined,omitzero"`
+	// Changed definition parts of redefined tools, as `tool:part` entries; property-level parts only for telemetry-safe tools, whose other names are hashed
+	// Internal: ToolsRedefinedParts is part of the SDK's internal API surface and is not intended for external use.
+	ToolsRedefinedParts []string `json:"toolsRedefinedParts,omitzero"`
 	// Raw names of tools redefined since the prior call, restricted because a tool name can be user-authored
 	// Internal: ToolsRedefinedRaw is part of the SDK's internal API surface and is not intended for external use.
 	ToolsRedefinedRaw []string `json:"toolsRedefinedRaw,omitzero"`
@@ -503,6 +506,8 @@ type SessionAutoModeResolvedData struct {
 	RouterLatencyMs *float64 `json:"routerLatencyMs,omitempty"`
 	// The routing method the server applied, when Auto Intent ran
 	RoutingMethod *string `json:"routingMethod,omitempty"`
+	// Short human-readable sentence from the routing service explaining why this model was chosen, for display alongside the model. Present only when the service supplied one: it is omitted for on-device selections, when the service did not provide an explanation, and when a replayed decision made no routing call. The text is display-only and drawn from a fixed catalogue; several distinct routing categories share identical wording, so it cannot be used to recover the category or keyed on programmatically.
+	SelectionReason *string `json:"selectionReason,omitempty"`
 	// Whether a sticky model choice overrode the router result
 	StickyOverride *bool `json:"stickyOverride,omitempty"`
 }
@@ -3115,6 +3120,9 @@ func (*ToolExecutionCompleteData) Type() SessionEventType {
 type ToolExecutionProgressData struct {
 	// Human-readable progress status message (e.g., from an MCP server)
 	ProgressMessage string `json:"progressMessage"`
+	// Client-only structured progress metadata. Not model-facing tool output.
+	// Experimental: StructuredContent is part of an experimental API and may change or be removed.
+	StructuredContent any `json:"structuredContent,omitempty"`
 	// Tool call ID this progress notification belongs to
 	ToolCallID string `json:"toolCallId"`
 }

@@ -1,3 +1,7 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *--------------------------------------------------------------------------------------------*/
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -71,6 +75,40 @@ function renderPayload(dataSchema: JSONSchema7): string {
         dataSchema,
     }, "com.github.copilot.generated");
 }
+
+test("experimental event properties retain their marker without marking the stable event", () => {
+    const structuredContent: JSONSchema7 & { stability: string } = {
+        description: "Client-only structured progress metadata.",
+        stability: "experimental",
+    };
+    const source = renderPayload({
+        type: "object",
+        properties: {
+            toolCallId: { type: "string" },
+            progressMessage: { type: "string" },
+            structuredContent,
+        },
+        required: ["toolCallId", "progressMessage"],
+    });
+
+    assert.match(source, /import com\.github\.copilot\.CopilotExperimental;/);
+    assert.match(source, /@CopilotExperimental\s+@JsonProperty\("structuredContent"\) Object structuredContent/);
+    assert.deepEqual(source.match(/@CopilotExperimental/g), ["@CopilotExperimental"]);
+    assert.match(source, /@JsonProperty\("progressMessage"\) String progressMessage,/);
+});
+
+test("stable event properties do not acquire experimental markers", () => {
+    const source = renderPayload({
+        type: "object",
+        properties: {
+            progressMessage: { type: "string", description: "Experimental is ordinary text here." },
+            structuredContent: { description: "Client-only structured progress metadata." },
+        },
+    });
+
+    assert.match(source, /@JsonProperty\("structuredContent"\) Object structuredContent/);
+    assert.doesNotMatch(source, /CopilotExperimental/);
+});
 
 for (const keyword of ["anyOf", "oneOf"] as const) {
     test(`root ${keyword} payload preserves raw JSON and existing data descriptors`, () => {

@@ -1554,7 +1554,29 @@ export class CopilotSession {
 
         for (const tool of tools) {
             if (tool.handler) {
-                this.toolHandlers.set(tool.name, tool.handler);
+                const handler = tool.handler;
+                if (
+                    tool.name === "apply_patch" &&
+                    tool.overridesBuiltInTool &&
+                    toJsonSchema(tool.parameters)?.type === "string"
+                ) {
+                    this.toolHandlers.set(tool.name, (args, invocation) => {
+                        if (typeof args === "string") {
+                            return handler(args, invocation);
+                        }
+                        if (
+                            typeof args === "object" &&
+                            args !== null &&
+                            "input" in args &&
+                            typeof args.input === "string"
+                        ) {
+                            return handler(args.input, invocation);
+                        }
+                        throw new TypeError("apply_patch string override requires a string input");
+                    });
+                } else {
+                    this.toolHandlers.set(tool.name, handler);
+                }
             }
         }
     }
@@ -2228,6 +2250,8 @@ export class CopilotSession {
             sessionEnd: this.hooks.onSessionEnd as GenericHandler | undefined,
             errorOccurred: this.hooks.onErrorOccurred as GenericHandler | undefined,
             agentStop: this.hooks.onAgentStop as GenericHandler | undefined,
+            subagentStart: this.hooks.onSubagentStart as GenericHandler | undefined,
+            subagentStop: this.hooks.onSubagentStop as GenericHandler | undefined,
         };
 
         const handler = handlerMap[hookType];

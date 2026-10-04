@@ -249,6 +249,7 @@ def _consume_task_exception(task: asyncio.Task[Any]) -> None:
 
 class SessionFsCapabilities(TypedDict, total=False):
     sqlite: bool
+    binary: bool
 
 
 class SessionFsConfig(TypedDict):
@@ -416,12 +417,13 @@ SYSTEM_MESSAGE_SECTIONS: dict[SystemMessageSection, str] = {
     "tool_instructions": "Per-tool usage instructions",
     "custom_instructions": "Repository and organization custom instructions",
     "runtime_instructions": (
-        "Runtime-provided context and instructions"
-        " (e.g. system notifications, memories, workspace context,"
-        " mode-specific instructions, content-exclusion policy)"
+        "Runtime-provided system-prompt context and instructions, such as system"
+        " notifications, memories, workspace context, and content-exclusion policy."
+        " Mode-specific instructions can travel in transition messages instead."
     ),
     "last_instructions": (
-        "End-of-prompt instructions: parallel tool calling, persistence, task completion"
+        "End-of-prompt instructions: parallel tool calling, persistence, task completion,"
+        " and configured subagent-model guidance when the task tool is available"
     ),
 }
 
@@ -1226,6 +1228,67 @@ AgentStopHandler = Callable[
 ]
 
 
+class SubagentStartHookInput(TypedDict):
+    """Input when a subagent starts; session metadata belongs to its parent."""
+
+    sessionId: str
+    timestamp: datetime
+    workingDirectory: str
+    transcriptPath: str
+    agentName: str
+    agentDisplayName: NotRequired[str]
+    agentDescription: NotRequired[str]
+
+
+class SubagentStartHookOutput(TypedDict, total=False):
+    """Context prepended to the subagent's initial prompt."""
+
+    additionalContext: str
+
+
+SubagentStartHandler = Callable[
+    [SubagentStartHookInput, dict[str, str]],
+    SubagentStartHookOutput | None | Awaitable[SubagentStartHookOutput | None],
+]
+
+
+class SubagentStopHookInput(TypedDict):
+    """Input after a subagent turn completes; session metadata belongs to its parent."""
+
+    sessionId: str
+    timestamp: datetime
+    workingDirectory: str
+    transcriptPath: str
+    agentName: str
+    agentType: str
+    stopReason: Literal["end_turn"]
+    response: str
+    agentId: NotRequired[str]
+    agentDisplayName: NotRequired[str]
+    agentDescription: NotRequired[str]
+
+
+class _SubagentStopBlockHookOutput(TypedDict):
+    decision: Literal["block"]
+    reason: str
+    modifiedResponse: NotRequired[str]
+
+
+class _SubagentStopAllowHookOutput(TypedDict, total=False):
+    decision: Literal["allow"]
+    modifiedResponse: str
+
+
+SubagentStopHookOutput = _SubagentStopBlockHookOutput | _SubagentStopAllowHookOutput
+"""Block with a nonempty reason, or allow with an optional response rewrite."""
+
+
+SubagentStopHandler = Callable[
+    [SubagentStopHookInput, dict[str, str]],
+    SubagentStopHookOutput | None | Awaitable[SubagentStopHookOutput | None],
+]
+
+
 class SessionHooks(TypedDict, total=False):
     """Configuration for session hooks"""
 
@@ -1239,6 +1302,8 @@ class SessionHooks(TypedDict, total=False):
     on_session_end: SessionEndHandler
     on_error_occurred: ErrorOccurredHandler
     on_agent_stop: AgentStopHandler
+    on_subagent_start: SubagentStartHandler
+    on_subagent_stop: SubagentStopHandler
 
 
 # ============================================================================
@@ -3287,6 +3352,8 @@ class CopilotSession:
             "sessionEnd": hooks.get("on_session_end"),
             "errorOccurred": hooks.get("on_error_occurred"),
             "agentStop": hooks.get("on_agent_stop"),
+            "subagentStart": hooks.get("on_subagent_start"),
+            "subagentStop": hooks.get("on_subagent_stop"),
         }
 
         handler = handler_map.get(hook_type)

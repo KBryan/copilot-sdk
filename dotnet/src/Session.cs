@@ -1200,6 +1200,17 @@ public sealed partial class CopilotSession : IAsyncDisposable
 
         static string GetSingleParameterName(AIFunction tool)
         {
+            if (tool.Name == "apply_patch" &&
+                tool.AdditionalProperties.TryGetValue(CopilotTool.OverridesBuiltInToolKey, out var isOverride) &&
+                isOverride is true &&
+                tool.JsonSchema.TryGetProperty("type", out var schemaType) &&
+                schemaType.ValueKind == JsonValueKind.String &&
+                schemaType.GetString() == "string")
+            {
+                // AIFunction uses named arguments even when the override declares a scalar schema.
+                return "input";
+            }
+
             if (tool.JsonSchema.TryGetProperty("properties", out var properties) &&
                 properties.ValueKind == JsonValueKind.Object)
             {
@@ -2003,6 +2014,16 @@ public sealed partial class CopilotSession : IAsyncDisposable
                         JsonSerializer.Deserialize(input.GetRawText(), SessionJsonContext.Default.AgentStopHookInput)!,
                         invocation)
                     : null,
+                "subagentStart" => hooks.OnSubagentStart != null
+                    ? await hooks.OnSubagentStart(
+                        JsonSerializer.Deserialize(input.GetRawText(), SessionJsonContext.Default.SubagentStartHookInput)!,
+                        invocation)
+                    : null,
+                "subagentStop" => hooks.OnSubagentStop != null
+                    ? await hooks.OnSubagentStop(
+                        JsonSerializer.Deserialize(input.GetRawText(), SessionJsonContext.Default.SubagentStopHookInput)!,
+                        invocation)
+                    : null,
                 _ => null
             };
         }
@@ -2509,6 +2530,10 @@ public sealed partial class CopilotSession : IAsyncDisposable
     [JsonSerializable(typeof(SessionEndHookOutput))]
     [JsonSerializable(typeof(SessionStartHookInput))]
     [JsonSerializable(typeof(SessionStartHookOutput))]
+    [JsonSerializable(typeof(SubagentStartHookInput))]
+    [JsonSerializable(typeof(SubagentStartHookOutput))]
+    [JsonSerializable(typeof(SubagentStopHookInput))]
+    [JsonSerializable(typeof(SubagentStopHookOutput))]
     [JsonSerializable(typeof(SystemMessageTransformRpcResponse))]
     [JsonSerializable(typeof(SystemMessageTransformSection))]
     [JsonSerializable(typeof(Attachment))]

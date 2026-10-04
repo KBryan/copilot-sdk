@@ -6902,6 +6902,90 @@ async fn hooks_invoke_returns_empty_for_unregistered_hook() {
     assert_eq!(response["result"]["output"], serde_json::json!({}));
 }
 
+#[tokio::test]
+async fn hooks_invoke_subagent_lifecycle_does_not_warn_as_unknown() {
+    use github_copilot_sdk::hooks::SessionHooks;
+
+    struct EmptyHooks;
+    #[async_trait]
+    impl SessionHooks for EmptyHooks {}
+
+    let (capture, _guard) = capture_traces();
+    let (_session, mut server) = create_session_pair_with_hooks(Arc::new(EmptyHooks)).await;
+
+    for (request_id, hook_type, input) in [
+        (
+            302,
+            "subagentStart",
+            serde_json::json!({
+                "sessionId": server.session_id,
+                "timestamp": 1234567890,
+                "cwd": "/tmp",
+                "transcriptPath": "/tmp/transcript.jsonl",
+                "agentName": "task"
+            }),
+        ),
+        (
+            303,
+            "subagentStop",
+            serde_json::json!({
+                "sessionId": server.session_id,
+                "timestamp": 1234567890,
+                "cwd": "/tmp",
+                "transcriptPath": "/tmp/transcript.jsonl",
+                "agentName": "task",
+                "agentType": "task",
+                "stopReason": "end_turn",
+                "response": "done"
+            }),
+        ),
+    ] {
+        server
+            .send_request(
+                request_id,
+                "hooks.invoke",
+                serde_json::json!({
+                    "sessionId": server.session_id,
+                    "hookType": hook_type,
+                    "input": input
+                }),
+            )
+            .await;
+        let response = timeout(TIMEOUT, server.read_response()).await.unwrap();
+        assert_eq!(response["id"], request_id);
+        assert_eq!(response["result"], serde_json::json!({ "output": {} }));
+    }
+
+    server
+        .send_request(
+            304,
+            "hooks.invoke",
+            serde_json::json!({
+                "sessionId": server.session_id,
+                "hookType": "unrecognizedHook",
+                "input": {}
+            }),
+        )
+        .await;
+    let response = timeout(TIMEOUT, server.read_response()).await.unwrap();
+    assert_eq!(response["result"], serde_json::json!({ "output": {} }));
+
+    let warnings: Vec<_> = capture
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|event| event.message_contains("unknown hook type"))
+        .cloned()
+        .collect();
+    assert_eq!(warnings.len(), 1, "unknown hook warnings: {warnings:?}");
+    assert!(
+        warnings[0].field_is("hook_type", "unrecognizedHook"),
+        "unexpected hook warning: {:?}",
+        warnings[0]
+    );
+}
+
 async fn create_session_pair_with_system_message_transforms(
     transforms: Arc<dyn github_copilot_sdk::transforms::SystemMessageTransform>,
 ) -> (github_copilot_sdk::session::Session, FakeServer) {
@@ -7747,10 +7831,57 @@ async fn command_execute_handler_error_propagates_to_ack() {
 // SessionFsProvider tests --------------------------------------------------
 
 use github_copilot_sdk::session_fs::{
-    DirEntry, DirEntryKind, FileInfo, FsError, FsErrorKind, SessionFsConventions,
-    SessionFsProvider, SessionFsSqliteProvider, SessionFsSqliteQueryResult,
+    DirEntry, DirEntryKind, FileInfo, FsError, FsErrorKind, SessionFsCapabilities, SessionFsConfig,
+    SessionFsConventions, SessionFsProvider, SessionFsSqliteProvider, SessionFsSqliteQueryResult,
     SessionFsSqliteQueryType, SessionFsSqliteTransactionError, SessionFsSqliteTransactionStatement,
 };
+
+#[tokio::test]
+async fn binary_capability_rejects_text_only_provider_on_create_and_resume() {
+    for resume in [false, true] {
+        let (client_write, mut server_read) = duplex(8192);
+        let (server_write, client_read) = duplex(8192);
+        let config = SessionFsConfig::new("/workspace", "/sessions", SessionFsConventions::Posix)
+            .with_capabilities(SessionFsCapabilities::new().with_binary(true));
+        let client = Client::from_streams_with_session_fs_config(
+            client_read,
+            client_write,
+            std::env::temp_dir(),
+            config,
+        )
+        .unwrap();
+        let provider = Arc::new(RecordingFsProvider::new());
+        let result = timeout(TIMEOUT, async {
+            if resume {
+                client
+                    .resume_session(
+                        github_copilot_sdk::ResumeSessionConfig::new(SessionId::new(
+                            "text-only-provider",
+                        ))
+                        .with_session_fs_provider(provider),
+                    )
+                    .await
+            } else {
+                client
+                    .create_session(SessionConfig::default().with_session_fs_provider(provider))
+                    .await
+            }
+        })
+        .await
+        .expect("provider validation must complete before an RPC");
+        let error = result.err().expect("text-only provider must be rejected");
+        assert!(matches!(error.kind(), ErrorKind::InvalidConfig));
+        assert!(error.to_string().contains("binary"), "{error}");
+        assert_eq!(client.registered_session_count_for_test(), 0);
+        assert!(
+            timeout(Duration::from_millis(50), read_framed(&mut server_read))
+                .await
+                .is_err(),
+            "invalid provider must not send a session RPC",
+        );
+        drop(server_write);
+    }
+}
 
 struct RecordingFsProvider {
     files: parking_lot::Mutex<std::collections::HashMap<String, String>>,

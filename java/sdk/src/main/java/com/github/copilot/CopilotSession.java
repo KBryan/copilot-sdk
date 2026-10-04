@@ -112,6 +112,8 @@ import com.github.copilot.rpc.SessionHooks;
 import com.github.copilot.rpc.SessionStartHookInput;
 import com.github.copilot.rpc.SessionUiApi;
 import com.github.copilot.rpc.SessionUiCapabilities;
+import com.github.copilot.rpc.SubagentStartHookInput;
+import com.github.copilot.rpc.SubagentStopHookInput;
 import com.github.copilot.rpc.ToolDefinition;
 import com.github.copilot.rpc.ToolResultObject;
 import com.github.copilot.rpc.TranscriptRecoveryReport;
@@ -2287,6 +2289,26 @@ public final class CopilotSession implements AutoCloseable {
                     if (hooks.getOnAgentStop() != null) {
                         AgentStopHookInput stopInput = MAPPER.treeToValue(input, AgentStopHookInput.class);
                         var stopResult = hooks.getOnAgentStop().handle(stopInput, invocation);
+                        if (stopResult == null) {
+                            return CompletableFuture.completedFuture(null);
+                        }
+                        return stopResult.thenApply(output -> (Object) output);
+                    }
+                    break;
+                case "subagentStart" :
+                    if (hooks.getOnSubagentStart() != null) {
+                        SubagentStartHookInput startInput = MAPPER.treeToValue(input, SubagentStartHookInput.class);
+                        var startResult = hooks.getOnSubagentStart().handle(startInput, invocation);
+                        if (startResult == null) {
+                            return CompletableFuture.completedFuture(null);
+                        }
+                        return startResult.thenApply(output -> (Object) output);
+                    }
+                    break;
+                case "subagentStop" :
+                    if (hooks.getOnSubagentStop() != null) {
+                        SubagentStopHookInput stopInput = MAPPER.treeToValue(input, SubagentStopHookInput.class);
+                        var stopResult = hooks.getOnSubagentStop().handle(stopInput, invocation);
                         if (stopResult == null) {
                             return CompletableFuture.completedFuture(null);
                         }

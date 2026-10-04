@@ -896,6 +896,26 @@ func (s *Session) handleHooksInvoke(hookType string, rawInput json.RawMessage) (
 		}
 		return hooks.OnAgentStop(input, invocation)
 
+	case "subagentStart":
+		if hooks.OnSubagentStart == nil {
+			return nil, nil
+		}
+		var input SubagentStartHookInput
+		if err := json.Unmarshal(rawInput, &input); err != nil {
+			return nil, fmt.Errorf("invalid hook input: %w", err)
+		}
+		return hooks.OnSubagentStart(input, invocation)
+
+	case "subagentStop":
+		if hooks.OnSubagentStop == nil {
+			return nil, nil
+		}
+		var input SubagentStopHookInput
+		if err := json.Unmarshal(rawInput, &input); err != nil {
+			return nil, fmt.Errorf("invalid hook input: %w", err)
+		}
+		return hooks.OnSubagentStop(input, invocation)
+
 	default:
 		return nil, nil
 	}

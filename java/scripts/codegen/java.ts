@@ -24,6 +24,8 @@ const OUTPUT_ROOT = process.env.COPILOT_CODEGEN_OUTPUT_ROOT ?? REPO_ROOT;
 
 /** Event types to exclude from generation (internal/legacy types) */
 const EXCLUDED_EVENT_TYPES = new Set(["session.import_legacy"]);
+// Existing event unions are Object in the shipped Java API; opt in new unions without changing those signatures.
+const PROMOTED_SESSION_EVENT_UNION_TYPES = new Set(["HumanResponseRecordedResponse"]);
 
 function isSchemaInternal(schema: JSONSchema7 | null | undefined): boolean {
     return typeof schema === "object" &&
@@ -37,8 +39,8 @@ function isSchemaExperimental(schema: JSONSchema7 | null | undefined): boolean {
         (schema as Record<string, unknown>).stability === "experimental";
 }
 
-function appendExperimentalTypeApiNote(lines: string[], schema: JSONSchema7): void {
-    if (isSchemaExperimental(schema)) {
+function appendExperimentalTypeApiNote(lines: string[], schema: JSONSchema7, experimental = isSchemaExperimental(schema)): void {
+    if (experimental) {
         lines.push(` *`);
         lines.push(` * @apiNote This type is experimental and may change in a future version.`);
     }
@@ -512,6 +514,23 @@ function isSealedStandaloneUnionCandidate(
 function referencedDefinitionName(schema: JSONSchema7 | boolean | undefined): string | null {
     if (!schema || typeof schema !== "object" || !schema.$ref?.startsWith("#/definitions/")) return null;
     return schema.$ref.slice("#/definitions/".length);
+}
+
+export function collectDirectDiscriminatedUnionTypeNames(
+    root: JSONSchema7 | null,
+    definitions: Record<string, JSONSchema7>,
+    promotedTypeNames: ReadonlySet<string>,
+): Set<string> {
+    const typeNames = new Set<string>();
+    for (const property of Object.values(root?.properties ?? {})) {
+        const name = referencedDefinitionName(property);
+        if (!name || !promotedTypeNames.has(name)) continue;
+        const variants = resolveUnionVariants(definitions[name], definitions);
+        if (variants && variants.length > 1 && findDiscriminator(variants)) {
+            typeNames.add(name);
+        }
+    }
+    return typeNames;
 }
 
 function discriminatedUnionReferencesInVariants(
@@ -1490,9 +1509,10 @@ interface EventVariant {
     description?: string;
     stability?: string;
     deprecated?: boolean;
+    dataDeprecated?: boolean;
 }
 
-function extractEventVariants(schema: JSONSchema7): EventVariant[] {
+export function extractEventVariants(schema: JSONSchema7): EventVariant[] {
     const definitions = schema.definitions as Record<string, JSONSchema7>;
     const sessionEvent = definitions?.SessionEvent;
     if (!sessionEvent?.anyOf) throw new Error("Schema must have SessionEvent definition with anyOf");
@@ -1522,7 +1542,8 @@ function extractEventVariants(schema: JSONSchema7): EventVariant[] {
                 dataSchema: dataSchema ?? null,
                 description: resolved.description,
                 stability: (variant as unknown as Record<string, unknown>).stability as string | undefined,
-                deprecated: (variant as unknown as Record<string, unknown>).deprecated === true,
+                deprecated: (resolved as unknown as Record<string, unknown>).deprecated === true,
+                dataDeprecated: dataSchema !== undefined && "deprecated" in dataSchema && dataSchema.deprecated === true,
             };
         })
         .filter((v) => !EXCLUDED_EVENT_TYPES.has(v.typeName) && !isSchemaInternal(v.dataSchema));
@@ -1536,9 +1557,19 @@ async function generateSessionEvents(schemaPath: string): Promise<void> {
     // Set module-level definitions for $ref resolution
     currentDefinitions = (schema.definitions ?? {}) as Record<string, JSONSchema7>;
     pendingStandaloneTypes.clear();
+    promotedNestedUnionTypes.clear();
     promotedSealedUnionTypes.clear();
 
     const variants = extractEventVariants(schema);
+    for (const variant of variants) {
+        for (const typeName of collectDirectDiscriminatedUnionTypeNames(
+            variant.dataSchema,
+            currentDefinitions,
+            PROMOTED_SESSION_EVENT_UNION_TYPES,
+        )) {
+            promotedNestedUnionTypes.add(typeName);
+        }
+    }
     const packageName = "com.github.copilot.generated";
     const packageDir = `sdk/src/generated/java/com/github/copilot/generated`;
 
@@ -1710,9 +1741,14 @@ function renderNestedType(nested: JavaClassDef, indentLevel: number, nestedTypes
     const lines: string[] = [];
 
     if (nested.kind === "enum") {
+        const allowUnknown = isOpenCustomizationReloadEnum(nested.name);
         lines.push("");
         if (nested.description) {
             lines.push(`${ind}/** ${nested.description} */`);
+        }
+        if (allowUnknown) {
+            lines.push(...renderOpenEnumClass(nested.name, nested.values || [], ind, true));
+            return lines;
         }
         lines.push(`${ind}public enum ${nested.name} {`);
         for (let i = 0; i < (nested.values || []).length; i++) {
@@ -1897,6 +1933,9 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
         lines.push(hasUnionData
             ? `    /** Raw union payload for {@link ${variant.className}}, preserving every variant's fields. */`
             : `    /** Data payload for {@link ${variant.className}}. */`);
+        if (variant.dataDeprecated) {
+            lines.push(`    @Deprecated`);
+        }
         lines.push(`    @JsonIgnoreProperties(ignoreUnknown = true)`);
         lines.push(`    @JsonInclude(JsonInclude.Include.NON_NULL)`);
         if (hasUnionData) {
@@ -1997,6 +2036,50 @@ async function generatePendingStandaloneTypes(
     }
 }
 
+function isOpenCustomizationReloadEnum(name: string): boolean {
+    return name === "CustomizationReloadStatus" || name === "CustomizationReloadSubsystem";
+}
+
+function renderOpenEnumClass(
+    name: string,
+    values: string[],
+    ind: string,
+    nested = false,
+    visibility: "public" | "internal" = "public"
+): string[] {
+    const lines: string[] = [];
+    const visModifier = visibility === "public" ? "public " : "";
+    lines.push(`${ind}${visModifier}${nested ? "static " : ""}final class ${name} {`);
+    for (const value of values) {
+        lines.push(`${ind}    /** The {@code ${value}} variant. */`);
+        lines.push(`${ind}    public static final ${name} ${toEnumConstant(value)} = new ${name}("${value}");`);
+    }
+    lines.push(`${ind}    /** The default value when no recognized variant is available. */`);
+    lines.push(`${ind}    public static final ${name} UNKNOWN = new ${name}("unknown");`);
+    lines.push("");
+    lines.push(`${ind}    private final String value;`);
+    lines.push(`${ind}    private ${name}(String value) { this.value = value; }`);
+    lines.push(`${ind}    @com.fasterxml.jackson.annotation.JsonValue`);
+    lines.push(`${ind}    public String getValue() { return value; }`);
+    lines.push(`${ind}    @com.fasterxml.jackson.annotation.JsonCreator`);
+    lines.push(`${ind}    public static ${name} fromValue(String value) {`);
+    for (const value of values) {
+        lines.push(`${ind}        if (${toEnumConstant(value)}.value.equals(value)) return ${toEnumConstant(value)};`);
+    }
+    lines.push(`${ind}        if (UNKNOWN.value.equals(value)) return UNKNOWN;`);
+    lines.push(`${ind}        if (value != null) return new ${name}(value);`);
+    lines.push(`${ind}        throw new IllegalArgumentException("Unknown ${name} value: " + value);`);
+    lines.push(`${ind}    }`);
+    lines.push(`${ind}    @Override`);
+    lines.push(`${ind}    public boolean equals(Object other) {`);
+    lines.push(`${ind}        return other instanceof ${name} that && value.equals(that.value);`);
+    lines.push(`${ind}    }`);
+    lines.push(`${ind}    @Override`);
+    lines.push(`${ind}    public int hashCode() { return value.hashCode(); }`);
+    lines.push(`${ind}}`);
+    return lines;
+}
+
 async function generateStandaloneEnum(
     name: string,
     schema: JSONSchema7,
@@ -2006,7 +2089,9 @@ async function generateStandaloneEnum(
     visibility: "public" | "internal" = "public"
 ): Promise<void> {
     const values = schema.enum as string[];
-    const experimental = isSchemaExperimental(schema);
+    const extensibleFileEditKind = name === "ToolExecutionCompleteFileEditKind";
+    const allowUnknown = isOpenCustomizationReloadEnum(name);
+    const experimental = isSchemaExperimental(schema) || allowUnknown;
     const lines: string[] = [];
     lines.push(COPYRIGHT);
     lines.push("");
@@ -2023,7 +2108,7 @@ async function generateStandaloneEnum(
     if (schema.description || experimental) {
         lines.push(`/**`);
         lines.push(` * ${schema.description ?? `Values for {@code ${name}}.`}`);
-        appendExperimentalTypeApiNote(lines, schema);
+        appendExperimentalTypeApiNote(lines, schema, experimental);
         lines.push(` *`);
         lines.push(` * @since 1.0.0`);
         lines.push(` */`);
@@ -2033,26 +2118,65 @@ async function generateStandaloneEnum(
     }
     lines.push(GENERATED_ANNOTATION);
     const visModifier = visibility === "public" ? "public " : "";
-    lines.push(`${visModifier}enum ${name} {`);
-    for (let i = 0; i < values.length; i++) {
-        const v = values[i];
-        const comma = i < values.length - 1 ? "," : ";";
-        lines.push(`    /** The {@code ${v}} variant. */`);
-        lines.push(`    ${toEnumConstant(v)}("${v}")${comma}`);
+    if (extensibleFileEditKind) {
+        lines.push(`${visModifier}final class ${name} {`);
+        for (const value of values) {
+            lines.push(`    /** The {@code ${value}} variant. */`);
+            lines.push(`    public static final ${name} ${toEnumConstant(value)} = new ${name}("${value}");`);
+        }
+        lines.push(`    /** An explicit unknown file operation kind. */`);
+        lines.push(`    public static final ${name} UNKNOWN = new ${name}("unknown");`);
+        lines.push("");
+        lines.push(`    private final String value;`);
+        lines.push(`    private ${name}(String value) { this.value = value; }`);
+        lines.push(`    @com.fasterxml.jackson.annotation.JsonValue`);
+        lines.push(`    public String getValue() { return value; }`);
+        lines.push(`    @com.fasterxml.jackson.annotation.JsonCreator`);
+        lines.push(`    public static ${name} fromValue(String value) {`);
+        lines.push(`        if (value == null) throw new IllegalArgumentException("Missing ${name} value");`);
+        for (const v of values) {
+            lines.push(`        if ("${v}".equals(value)) return ${toEnumConstant(v)};`);
+        }
+        lines.push(`        if ("unknown".equals(value)) return UNKNOWN;`);
+        lines.push(`        return new ${name}(value);`);
+        lines.push(`    }`);
+        lines.push(`    @Override`);
+        lines.push(`    public boolean equals(Object other) {`);
+        lines.push(`        return other instanceof ${name} kind && value.equals(kind.value);`);
+        lines.push(`    }`);
+        lines.push(`    @Override`);
+        lines.push(`    public int hashCode() { return value.hashCode(); }`);
+        lines.push(`    @Override`);
+        lines.push(`    public String toString() { return value; }`);
+        lines.push(`}`);
+        lines.push("");
+        await writeGeneratedFile(`${packageDir}/${name}.java`, lines.join("\n"));
+        return;
     }
-    lines.push("");
-    lines.push(`    private final String value;`);
-    lines.push(`    ${name}(String value) { this.value = value; }`);
-    lines.push(`    @com.fasterxml.jackson.annotation.JsonValue`);
-    lines.push(`    public String getValue() { return value; }`);
-    lines.push(`    @com.fasterxml.jackson.annotation.JsonCreator`);
-    lines.push(`    public static ${name} fromValue(String value) {`);
-    lines.push(`        for (${name} v : values()) {`);
-    lines.push(`            if (v.value.equals(value)) return v;`);
-    lines.push(`        }`);
-    lines.push(`        throw new IllegalArgumentException("Unknown ${name} value: " + value);`);
-    lines.push(`    }`);
-    lines.push(`}`);
+    if (allowUnknown) {
+        lines.push(...renderOpenEnumClass(name, values, "", false, visibility));
+    } else {
+        lines.push(`${visModifier}enum ${name} {`);
+        for (let i = 0; i < values.length; i++) {
+            const v = values[i];
+            const comma = i < values.length - 1 ? "," : ";";
+            lines.push(`    /** The {@code ${v}} variant. */`);
+            lines.push(`    ${toEnumConstant(v)}("${v}")${comma}`);
+        }
+        lines.push("");
+        lines.push(`    private final String value;`);
+        lines.push(`    ${name}(String value) { this.value = value; }`);
+        lines.push(`    @com.fasterxml.jackson.annotation.JsonValue`);
+        lines.push(`    public String getValue() { return value; }`);
+        lines.push(`    @com.fasterxml.jackson.annotation.JsonCreator`);
+        lines.push(`    public static ${name} fromValue(String value) {`);
+        lines.push(`        for (${name} v : values()) {`);
+        lines.push(`            if (v.value.equals(value)) return v;`);
+        lines.push(`        }`);
+        lines.push(`        throw new IllegalArgumentException("Unknown ${name} value: " + value);`);
+        lines.push(`    }`);
+        lines.push(`}`);
+    }
     lines.push("");
 
     await writeGeneratedFile(`${packageDir}/${name}.java`, lines.join("\n"));
@@ -2068,7 +2192,7 @@ async function generateStandaloneRecord(
 ): Promise<void> {
     const nestedTypes = new Map<string, { code: string }>();
     const { code, imports } = generateRpcClass(name, schema, nestedTypes, packageName, visibility);
-    const experimental = isSchemaExperimental(schema);
+    const experimental = isSchemaExperimental(schema) || name === "CustomizationReloadOutcome";
 
     const lines: string[] = [];
     lines.push(COPYRIGHT);
@@ -2098,7 +2222,7 @@ async function generateStandaloneRecord(
     if (schema.description || experimental) {
         lines.push(`/**`);
         lines.push(` * ${schema.description ?? `Data type {@code ${name}}.`}`);
-        appendExperimentalTypeApiNote(lines, schema);
+        appendExperimentalTypeApiNote(lines, schema, experimental);
         lines.push(` *`);
         lines.push(` * @since 1.0.0`);
         lines.push(` */`);
@@ -2143,6 +2267,46 @@ function collectRpcMethods(node: Record<string, unknown>): [string, RpcMethod][]
 /** Convert an RPC method name to a Java class name prefix (e.g., "models.list" -> "ModelsList") */
 function rpcMethodToClassName(rpcMethod: string): string {
     return rpcMethod.split(/[._-]/).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+}
+
+// Only alias deliberately equivalent results; globally collapsing shared refs changes existing Java API types.
+const SHARED_RESULT_OWNERS = new Map([
+    ["session.instructions.reload", "session.instructions.getSources"],
+]);
+const NAMED_RESULT_TYPES = new Map([
+    ["session.customizations.reload", "CustomizationsReloadResult"],
+]);
+
+function rpcResultClassName(rpcMethod: string): string {
+    return NAMED_RESULT_TYPES.get(rpcMethod) ?? `${rpcMethodToClassName(SHARED_RESULT_OWNERS.get(rpcMethod) ?? rpcMethod)}Result`;
+}
+
+function validateSharedResultOwners(sections: Record<string, unknown>[]): void {
+    const methods = new Map(sections.flatMap((section) =>
+        collectRpcMethods(section).map(([, method]) => [method.rpcMethod, method] as const)
+    ));
+    for (const [alias, owner] of SHARED_RESULT_OWNERS) {
+        const aliasMethod = methods.get(alias);
+        if (!aliasMethod) continue;
+        const ref = aliasMethod.result?.$ref;
+        if (
+            !ref?.startsWith("#/definitions/") ||
+            ref !== methods.get(owner)?.result?.$ref ||
+            !currentDefinitions[ref.slice("#/definitions/".length)]?.properties
+        ) {
+            throw new Error(`Incompatible Java RPC result alias: ${alias} must share an object result with ${owner}`);
+        }
+    }
+    for (const [methodName, typeName] of NAMED_RESULT_TYPES) {
+        const method = methods.get(methodName);
+        if (!method) continue;
+        if (
+            method.result?.$ref !== `#/definitions/${typeName}` ||
+            !currentDefinitions[typeName]?.properties
+        ) {
+            throw new Error(`Incompatible Java RPC result name: ${methodName} must reference the object ${typeName}`);
+        }
+    }
 }
 
 function schemaAllowsNull(schema: JSONSchema7): boolean {
@@ -2218,6 +2382,8 @@ export function generateRpcClass(
     const legacyFieldNames =
         className === "McpOauthRequiredStaticClientConfig"
             ? ["clientId", "clientSecret", "publicClient", "grantType"]
+            : className === "SessionFsSetProviderCapabilities"
+              ? ["sqlite"]
             : undefined;
     if (legacyFieldNames) {
         const legacyFields = legacyFieldNames.map((fieldName) => {
@@ -2228,13 +2394,14 @@ export function generateRpcClass(
             return field;
         });
         const omittedFields = fields.filter((field) => !legacyFieldNames.includes(field.javaName));
-        if (omittedFields.length !== 1 || omittedFields[0].javaName !== "scope") {
+        const expectedAddedField = className === "SessionFsSetProviderCapabilities" ? "binary" : "scope";
+        if (omittedFields.length !== 1 || omittedFields[0].javaName !== expectedAddedField) {
             throw new Error(`Unexpected compatibility fields for ${className}`);
         }
 
         lines.push(``);
         lines.push(`    /**`);
-        lines.push(`     * Creates a static OAuth client configuration without an explicit scope.`);
+        lines.push(`     * Creates ${className === "SessionFsSetProviderCapabilities" ? "provider capabilities without binary reads" : "a static OAuth client configuration without an explicit scope"}.`);
         lines.push(`     *`);
         for (const field of legacyFields) {
             const description = (field.description || field.propName)
@@ -2528,6 +2695,7 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
         promotedSealedUnionTypes.add(typeName);
         promotedNestedUnionTypes.add(typeName);
     }
+    validateSharedResultOwners(sections.map(([, section]) => section));
 
     for (const [, sectionNode] of sections) {
         for (const [, method] of collectRpcMethods(sectionNode)) {
@@ -2603,7 +2771,7 @@ async function collectRpcTypes(schema: RpcSchema): Promise<void> {
                         continue;
                     }
                     // Object with properties → generate a record class
-                    const resultClassName = `${className}Result`;
+                    const resultClassName = rpcResultClassName(method.rpcMethod);
                     if (!generatedClasses.has(resultClassName)) {
                         generatedClasses.set(resultClassName, true);
                         allFiles.push(await generateRpcDataClass(resultClassName, resultSchema, packageName, packageDir, method.rpcMethod, "result", method.stability, method.deprecated === true, new Set(), method.visibility === "internal" ? "internal" : "public"));
@@ -2863,7 +3031,7 @@ function wrapperResultClassName(method: RpcMethodNode): string {
             }
             // Preserve public method-specific names; internal methods share the named definition.
             if (resolved.type === "object" && resolved.properties && Object.keys(resolved.properties).length > 0) {
-                return method.visibility === "internal" ? refName : rpcMethodToClassName(method.rpcMethod) + "Result";
+                return method.visibility === "internal" ? refName : rpcResultClassName(method.rpcMethod);
             }
             // Empty object (no properties) that is a named definition → use definition name
             if (resolved.type === "object" && !resolved.properties) {
@@ -2886,7 +3054,7 @@ function wrapperResultClassName(method: RpcMethodNode): string {
         result.properties &&
         Object.keys(result.properties).length > 0
     ) {
-        return rpcMethodToClassName(method.rpcMethod) + "Result";
+        return rpcResultClassName(method.rpcMethod);
     }
 
     if (result && typeof result === "object" && result.type === "array") {
@@ -3497,6 +3665,11 @@ export async function renderRpcWrappers(schema: RpcSchema): Promise<Map<string, 
 async function emitRpcWrappers(schema: RpcSchema): Promise<void> {
     // Set module-level definitions for $ref resolution in wrapper helpers
     currentDefinitions = (schema.definitions ?? {}) as Record<string, JSONSchema7>;
+    validateSharedResultOwners([
+        ...[schema.server, schema.session, schema.clientSession].filter(
+            (section): section is Record<string, unknown> => section !== undefined
+        ),
+    ]);
 
     const packageName = "com.github.copilot.generated.rpc";
     const packageDir = `sdk/src/generated/java/com/github/copilot/generated/rpc`;

@@ -177,23 +177,67 @@ public sealed class SetToolsTests
         await using var server = await SetToolsFakeServer.StartAsync();
         var releaseSet = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         server.BeforeSetToolsResponseAsync = _ => releaseSet.Task;
+        using var acceptanceContext = new DeferredSynchronizationContext();
         await using var client = new CopilotClient(new CopilotClientOptions { Connection = RuntimeConnection.ForUri(server.Url) });
         await using var session = await client.CreateSessionAsync(new SessionConfig
         {
-            Tools = [Tool("cancel_tool", "old")],
+            Tools = [AIFunctionFactory.Create(() =>
+            {
+                acceptanceContext.Resume();
+                return "old";
+            }, new AIFunctionFactoryOptions { Name = "cancel_tool", Description = "Returns old" })],
         });
 
-        using var cts = new CancellationTokenSource();
-        var replacement = session.SetToolsAsync([Tool("cancel_tool", "new")], cts.Token);
-        await server.WaitForRequestAsync("session.tools.set");
-        await cts.CancelAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => replacement);
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            var replacement = acceptanceContext.Run(() => session.SetToolsAsync([Tool("cancel_tool", "new")], cts.Token));
+            await server.WaitForRequestAsync("session.tools.set");
+            await cts.CancelAsync();
+            await acceptanceContext.RunNextAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => replacement);
 
-        releaseSet.SetResult();
-        await server.WaitForSetToolsResponseCountAsync(1);
+            releaseSet.SetResult();
+            await acceptanceContext.WaitForPendingAsync();
+            using var acceptanceTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            string? result;
+            try
+            {
+                result = await InvokeToolUntilAsync(server, session, "cancel_tool", "cancel-request", "new", acceptanceTimeout.Token);
+            }
+            catch (OperationCanceledException ex) when (acceptanceTimeout.IsCancellationRequested)
+            {
+                throw new TimeoutException(ex.Message, ex);
+            }
+            Assert.Equal("new", result);
+        }
+        finally
+        {
+            releaseSet.TrySetResult();
+            acceptanceContext.Resume();
+        }
+    }
 
-        var result = await InvokeToolAsync(server, session, "cancel_tool", "cancel-request");
-        Assert.Equal("new", result);
+    [Fact]
+    public async Task InvokeToolUntilAsync_Rejects_Expected_Result_After_Deadline()
+    {
+        using var deadline = new CancellationTokenSource();
+        await using var server = await SetToolsFakeServer.StartAsync();
+        await using var client = new CopilotClient(new CopilotClientOptions { Connection = RuntimeConnection.ForUri(server.Url) });
+        await using var session = await client.CreateSessionAsync(new SessionConfig
+        {
+            Tools = [AIFunctionFactory.Create(() =>
+            {
+                deadline.Cancel();
+                return "new";
+            }, new AIFunctionFactoryOptions { Name = "late_tool", Description = "Returns after the wait deadline" })],
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            InvokeToolUntilAsync(server, session, "late_tool", "late-request", "new", deadline.Token));
+
+        var response = await server.WaitForRequestAsync("session.tools.handlePendingToolCall", "late-request-0");
+        Assert.Equal("new", response.Params.GetProperty("result").GetProperty("textResultForLlm").GetString());
     }
 
     [Fact]
@@ -244,14 +288,69 @@ public sealed class SetToolsTests
         return (AIFunction?)method.Invoke(session, [name]);
     }
 
-    private static async Task<string?> InvokeToolAsync(SetToolsFakeServer server, CopilotSession session, string toolName, string requestId)
+    private static async Task<string?> InvokeToolAsync(
+        SetToolsFakeServer server,
+        CopilotSession session,
+        string toolName,
+        string requestId,
+        CancellationToken cancellationToken = default)
     {
-        await SendToolRequestAsync(server, session, toolName, requestId);
-        var request = await server.WaitForRequestAsync("session.tools.handlePendingToolCall", requestId);
+        await SendToolRequestAsync(server, session, toolName, requestId, cancellationToken);
+        var request = await server.WaitForRequestAsync("session.tools.handlePendingToolCall", requestId, cancellationToken);
         return request.Params.GetProperty("result").GetProperty("textResultForLlm").GetString();
     }
 
-    private static Task SendToolRequestAsync(SetToolsFakeServer server, CopilotSession session, string toolName, string requestId)
+    /// <summary>
+    /// Invokes <paramref name="toolName"/> until the replacement handler answers it, or a timeout expires.
+    /// </summary>
+    /// <remarks>
+    /// Writing a <c>session.tools.set</c> response happens before the client has read it, completed the RPC,
+    /// and published the replacement handlers. Tests that
+    /// await a successful <c>SetToolsAsync</c> task complete after that publish and need no polling; the
+    /// cancellation test cannot, because the caller's await threw and the replacement task runs detached.
+    /// Polling does not weaken the assertion: a replacement that never installs still fails, on the timeout.
+    /// </remarks>
+    private static async Task<string?> InvokeToolUntilAsync(
+        SetToolsFakeServer server,
+        CopilotSession session,
+        string toolName,
+        string requestId,
+        string expected,
+        CancellationToken cancellationToken)
+    {
+        var attempt = 0;
+        string? result = null;
+        try
+        {
+            while (true)
+            {
+                // Each invocation needs its own id: the server records one pending call per request id.
+                result = await InvokeToolAsync(server, session, toolName, $"{requestId}-{attempt++}", cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (result == expected)
+                {
+                    return result;
+                }
+
+                Assert.Equal("old", result);
+                await Task.Delay(20, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(
+                $"Accepted replacement did not install '{expected}'; last tool result was '{result ?? "<no response>"}'.",
+                ex,
+                cancellationToken);
+        }
+    }
+
+    private static Task SendToolRequestAsync(
+        SetToolsFakeServer server,
+        CopilotSession session,
+        string toolName,
+        string requestId,
+        CancellationToken cancellationToken = default)
     {
         using var arguments = JsonDocument.Parse("{}");
         return server.SendSessionEventAsync(session.SessionId, "external_tool.requested", new Dictionary<string, object?>
@@ -261,10 +360,86 @@ public sealed class SetToolsTests
             ["toolCallId"] = requestId + "-call",
             ["toolName"] = toolName,
             ["arguments"] = arguments.RootElement.Clone(),
-        });
+        }, cancellationToken);
     }
 
     private sealed record RpcRequestRecord(string Method, JsonElement Params);
+
+    private sealed class DeferredSynchronizationContext : SynchronizationContext, IDisposable
+    {
+        private readonly object _gate = new();
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+        private readonly SemaphoreSlim _available = new(0);
+        private bool _resumed;
+
+        public Task Run(Func<Task> action)
+        {
+            var previous = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                return action();
+            }
+            finally
+            {
+                SetSynchronizationContext(previous);
+            }
+        }
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            lock (_gate)
+            {
+                if (!_resumed)
+                {
+                    _callbacks.Enqueue((callback, state));
+                    _available.Release();
+                    return;
+                }
+            }
+            ThreadPool.QueueUserWorkItem(_ => callback(state));
+        }
+
+        public async Task WaitForPendingAsync()
+        {
+            if (!await _available.WaitAsync(TimeSpan.FromSeconds(5)))
+            {
+                throw new TimeoutException("The client did not post its tool-replacement continuation.");
+            }
+        }
+
+        public async Task RunNextAsync()
+        {
+            await WaitForPendingAsync();
+            (SendOrPostCallback Callback, object? State) next;
+            lock (_gate)
+            {
+                next = _callbacks.Dequeue();
+            }
+            next.Callback(next.State);
+        }
+
+        public void Resume()
+        {
+            (SendOrPostCallback Callback, object? State)[] pending;
+            lock (_gate)
+            {
+                _resumed = true;
+                pending = _callbacks.ToArray();
+                _callbacks.Clear();
+            }
+            foreach (var (callback, state) in pending)
+            {
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+            }
+        }
+
+        public void Dispose()
+        {
+            Resume();
+            _available.Dispose();
+        }
+    }
 
     private sealed class SetToolsFakeServer : IAsyncDisposable
     {
@@ -282,7 +457,6 @@ public sealed class SetToolsTests
         private string? _nextSetToolsRejection;
         private readonly Dictionary<int, string> _setToolsRejections = [];
         private int _setToolsCalls;
-        private int _setToolsResponses;
 
         private SetToolsFakeServer(TcpListener listener)
         {
@@ -339,11 +513,16 @@ public sealed class SetToolsTests
             _setToolsRejections[callNumber] = message;
         }
 
-        public async Task<RpcRequestRecord> WaitForRequestAsync(string method, string? requestId = null)
+        public async Task<RpcRequestRecord> WaitForRequestAsync(
+            string method,
+            string? requestId = null,
+            CancellationToken cancellationToken = default)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
             while (!timeout.IsCancellationRequested)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var request = Requests.FirstOrDefault(request =>
                     request.Method == method &&
                     (requestId is null || request.Params.GetProperty("requestId").GetString() == requestId));
@@ -352,30 +531,20 @@ public sealed class SetToolsTests
                     return request;
                 }
 
-                await Task.Delay(20, CancellationToken.None);
+                await Task.Delay(20, cancellationToken);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException($"Timed out waiting for RPC method '{method}'.");
         }
 
-        public async Task WaitForSetToolsResponseCountAsync(int count)
+        public async Task SendSessionEventAsync(
+            string sessionId,
+            string type,
+            Dictionary<string, object?> data,
+            CancellationToken cancellationToken = default)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            while (!timeout.IsCancellationRequested)
-            {
-                if (Volatile.Read(ref _setToolsResponses) >= count)
-                {
-                    return;
-                }
-
-                await Task.Delay(20, CancellationToken.None);
-            }
-
-            throw new TimeoutException($"Timed out waiting for {count} session.tools.set response(s).");
-        }
-
-        public Task SendSessionEventAsync(string sessionId, string type, Dictionary<string, object?> data)
-        {
+            using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
             var stream = _stream ?? throw new InvalidOperationException("Client is not connected.");
             var evt = new Dictionary<string, object?>
             {
@@ -385,7 +554,7 @@ public sealed class SetToolsTests
                 ["type"] = type,
                 ["data"] = data,
             };
-            return WriteMessageAsync(stream, new Dictionary<string, object?>
+            await WriteMessageAsync(stream, new Dictionary<string, object?>
             {
                 ["jsonrpc"] = "2.0",
                 ["method"] = "session.event",
@@ -394,7 +563,7 @@ public sealed class SetToolsTests
                     ["sessionId"] = sessionId,
                     ["event"] = evt,
                 },
-            }, _cts.Token);
+            }, linkedCancellation.Token);
         }
 
         public async ValueTask DisposeAsync()
@@ -468,7 +637,6 @@ public sealed class SetToolsTests
                 {
                     RejectedMessages.Add(rejection);
                     await WriteErrorAsync(stream, id, -32602, rejection, cancellationToken);
-                    Interlocked.Increment(ref _setToolsResponses);
                     return;
                 }
             }
@@ -501,11 +669,6 @@ public sealed class SetToolsTests
                 ["id"] = id,
                 ["result"] = result,
             }, cancellationToken);
-
-            if (method == "session.tools.set")
-            {
-                Interlocked.Increment(ref _setToolsResponses);
-            }
         }
 
         private Task WriteErrorAsync(Stream stream, JsonElement id, int code, string message, CancellationToken cancellationToken)

@@ -205,6 +205,7 @@ class SessionEventType(Enum):
     TOOL_USER_REQUESTED = "tool.user_requested"
     TOOL_EXECUTION_START = "tool.execution_start"
     TOOL_EXECUTION_PARTIAL_RESULT = "tool.execution_partial_result"
+    TOOL_SHELL_OUTPUT = "tool.shell_output"
     TOOL_EXECUTION_PROGRESS = "tool.execution_progress"
     TOOL_EXECUTION_COMPLETE = "tool.execution_complete"
     TOOL_SEARCH_ACTIVATED = "tool_search.activated"
@@ -275,6 +276,7 @@ class SessionEventType(Enum):
     CAPABILITIES_CHANGED = "capabilities.changed"
     EXIT_PLAN_MODE_REQUESTED = "exit_plan_mode.requested"
     EXIT_PLAN_MODE_COMPLETED = "exit_plan_mode.completed"
+    HUMAN_RESPONSE_RECORDED = "human_response.recorded"
     SESSION_TOOLS_UPDATED = "session.tools_updated"
     SESSION_BACKGROUND_TASKS_CHANGED = "session.background_tasks_changed"
     # Experimental: this event is part of an experimental API and may change or be removed.
@@ -426,6 +428,30 @@ class ToolExecutionCompleteContentTerminal:
             result["cwd"] = from_union([from_none, from_str], self.cwd)
         if self.exit_code is not None:
             result["exitCode"] = from_union([from_none, to_int], self.exit_code)
+        return result
+
+
+# Deprecated: this type is deprecated and will be removed in a future version.
+@dataclass
+class ToolExecutionPartialResultData:
+    "Deprecated merged replacement snapshot of shell output. Use tool.shell_output for append-only, stream-tagged output instead."
+    partial_output: str
+    tool_call_id: str
+
+    @staticmethod
+    def from_dict(obj: Any) -> "ToolExecutionPartialResultData":
+        assert isinstance(obj, dict)
+        partial_output = from_str(obj.get("partialOutput"))
+        tool_call_id = from_str(obj.get("toolCallId"))
+        return ToolExecutionPartialResultData(
+            partial_output=partial_output,
+            tool_call_id=tool_call_id,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["partialOutput"] = from_str(self.partial_output)
+        result["toolCallId"] = from_str(self.tool_call_id)
         return result
 
 
@@ -695,15 +721,18 @@ class AssistantMessageReasoningBlocks:
     "Neutral provider-tagged reasoning content blocks preserved verbatim for round-tripping"
     provider: str
     blocks: list[Any] | None = None
+    ordered_blocks: list[Any] | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "AssistantMessageReasoningBlocks":
         assert isinstance(obj, dict)
         provider = from_str(obj.get("provider"))
         blocks = from_union([from_none, lambda x: from_list(lambda x: x, x)], obj.get("blocks"))
+        ordered_blocks = from_union([from_none, lambda x: from_list(lambda x: x, x)], obj.get("orderedBlocks"))
         return AssistantMessageReasoningBlocks(
             provider=provider,
             blocks=blocks,
+            ordered_blocks=ordered_blocks,
         )
 
     def to_dict(self) -> dict:
@@ -711,6 +740,8 @@ class AssistantMessageReasoningBlocks:
         result["provider"] = from_str(self.provider)
         if self.blocks is not None:
             result["blocks"] = from_union([from_none, lambda x: from_list(lambda x: x, x)], self.blocks)
+        if self.ordered_blocks is not None:
+            result["orderedBlocks"] = from_union([from_none, lambda x: from_list(lambda x: x, x)], self.ordered_blocks)
         return result
 
 
@@ -2559,6 +2590,30 @@ class TaskBlocker:
         result["permissionRecovery"] = to_class(PermissionRecoveryData, self.permission_recovery)
         result["reason"] = to_enum(PermissionRecoveryReason, self.reason)
         result["resumable"] = from_bool(self.resumable)
+        return result
+
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class ToolExecutionCompleteFileEdit:
+    "A file mutation that was actually committed by a built-in file editing tool."
+    kind: ToolExecutionCompleteFileEditKind
+    path: str
+
+    @staticmethod
+    def from_dict(obj: Any) -> "ToolExecutionCompleteFileEdit":
+        assert isinstance(obj, dict)
+        kind = parse_enum(ToolExecutionCompleteFileEditKind, obj.get("kind"))
+        path = from_str(obj.get("path"))
+        return ToolExecutionCompleteFileEdit(
+            kind=kind,
+            path=path,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["kind"] = to_enum(ToolExecutionCompleteFileEditKind, self.kind)
+        result["path"] = from_str(self.path)
         return result
 
 
@@ -5459,6 +5514,137 @@ class HookStartData:
             result["input"] = self.input
         if self.parent_tool_call_id is not None:
             result["parentToolCallId"] = from_union([from_none, from_str], self.parent_tool_call_id)
+        return result
+
+
+@dataclass
+class HumanResponseRecordedData:
+    "Durable request-correlated evidence for a typed response to a runtime-owned question or plan review."
+    actor: HumanResponseActor
+    request_id: str
+    response: HumanResponseRecordedResponse
+    tool_call_id: str | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "HumanResponseRecordedData":
+        assert isinstance(obj, dict)
+        actor = parse_enum(HumanResponseActor, obj.get("actor"))
+        request_id = from_str(obj.get("requestId"))
+        response = HumanResponseRecordedResponse.from_dict(obj.get("response"))
+        tool_call_id = from_union([from_none, from_str], obj.get("toolCallId"))
+        return HumanResponseRecordedData(
+            actor=actor,
+            request_id=request_id,
+            response=response,
+            tool_call_id=tool_call_id,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["actor"] = to_enum(HumanResponseActor, self.actor)
+        result["requestId"] = from_str(self.request_id)
+        result["response"] = to_class(HumanResponseRecordedResponse, self.response)
+        if self.tool_call_id is not None:
+            result["toolCallId"] = from_union([from_none, from_str], self.tool_call_id)
+        return result
+
+
+@dataclass
+class HumanResponseRecordedResponse:
+    "Exact runtime-owned question or reviewed plan paired with the typed response that settled it."
+    response_kind: HumanResponseRecordedResponseResponseKind
+    actions: list[ExitPlanModeAction] | None = None
+    allow_freeform: bool | None = None
+    answer: str | None = None
+    approved: bool | None = None
+    auto_approve_edits: bool | None = None
+    choices: list[str] | None = None
+    content: dict[str, Any] | None = None
+    feedback: str | None = None
+    message: str | None = None
+    plan_content: str | None = None
+    question: str | None = None
+    recommended_action: ExitPlanModeAction | None = None
+    requested_schema: ElicitationRequestedSchema | None = None
+    selected_action: ExitPlanModeAction | None = None
+    summary: str | None = None
+    was_freeform: bool | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "HumanResponseRecordedResponse":
+        assert isinstance(obj, dict)
+        response_kind = parse_enum(HumanResponseRecordedResponseResponseKind, obj.get("responseKind"))
+        actions = from_union([from_none, lambda x: from_list(lambda x: parse_enum(ExitPlanModeAction, x), x)], obj.get("actions"))
+        allow_freeform = from_union([from_none, from_bool], obj.get("allowFreeform"))
+        answer = from_union([from_none, from_str], obj.get("answer"))
+        approved = from_union([from_none, from_bool], obj.get("approved"))
+        auto_approve_edits = from_union([from_none, from_bool], obj.get("autoApproveEdits"))
+        choices = from_union([from_none, lambda x: from_list(from_str, x)], obj.get("choices"))
+        content = from_union([from_none, lambda x: from_dict(lambda x: x, x)], obj.get("content"))
+        feedback = from_union([from_none, from_str], obj.get("feedback"))
+        message = from_union([from_none, from_str], obj.get("message"))
+        plan_content = from_union([from_none, from_str], obj.get("planContent"))
+        question = from_union([from_none, from_str], obj.get("question"))
+        recommended_action = from_union([from_none, lambda x: parse_enum(ExitPlanModeAction, x)], obj.get("recommendedAction"))
+        requested_schema = from_union([from_none, ElicitationRequestedSchema.from_dict], obj.get("requestedSchema"))
+        selected_action = from_union([from_none, lambda x: parse_enum(ExitPlanModeAction, x)], obj.get("selectedAction"))
+        summary = from_union([from_none, from_str], obj.get("summary"))
+        was_freeform = from_union([from_none, from_bool], obj.get("wasFreeform"))
+        return HumanResponseRecordedResponse(
+            response_kind=response_kind,
+            actions=actions,
+            allow_freeform=allow_freeform,
+            answer=answer,
+            approved=approved,
+            auto_approve_edits=auto_approve_edits,
+            choices=choices,
+            content=content,
+            feedback=feedback,
+            message=message,
+            plan_content=plan_content,
+            question=question,
+            recommended_action=recommended_action,
+            requested_schema=requested_schema,
+            selected_action=selected_action,
+            summary=summary,
+            was_freeform=was_freeform,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["responseKind"] = to_enum(HumanResponseRecordedResponseResponseKind, self.response_kind)
+        if self.actions is not None:
+            result["actions"] = from_union([from_none, lambda x: from_list(lambda x: to_enum(ExitPlanModeAction, x), x)], self.actions)
+        if self.allow_freeform is not None:
+            result["allowFreeform"] = from_union([from_none, from_bool], self.allow_freeform)
+        if self.answer is not None:
+            result["answer"] = from_union([from_none, from_str], self.answer)
+        if self.approved is not None:
+            result["approved"] = from_union([from_none, from_bool], self.approved)
+        if self.auto_approve_edits is not None:
+            result["autoApproveEdits"] = from_union([from_none, from_bool], self.auto_approve_edits)
+        if self.choices is not None:
+            result["choices"] = from_union([from_none, lambda x: from_list(from_str, x)], self.choices)
+        if self.content is not None:
+            result["content"] = from_union([from_none, lambda x: from_dict(lambda x: x, x)], self.content)
+        if self.feedback is not None:
+            result["feedback"] = from_union([from_none, from_str], self.feedback)
+        if self.message is not None:
+            result["message"] = from_union([from_none, from_str], self.message)
+        if self.plan_content is not None:
+            result["planContent"] = from_union([from_none, from_str], self.plan_content)
+        if self.question is not None:
+            result["question"] = from_union([from_none, from_str], self.question)
+        if self.recommended_action is not None:
+            result["recommendedAction"] = from_union([from_none, lambda x: to_enum(ExitPlanModeAction, x)], self.recommended_action)
+        if self.requested_schema is not None:
+            result["requestedSchema"] = from_union([from_none, lambda x: to_class(ElicitationRequestedSchema, x)], self.requested_schema)
+        if self.selected_action is not None:
+            result["selectedAction"] = from_union([from_none, lambda x: to_enum(ExitPlanModeAction, x)], self.selected_action)
+        if self.summary is not None:
+            result["summary"] = from_union([from_none, from_str], self.summary)
+        if self.was_freeform is not None:
+            result["wasFreeform"] = from_union([from_none, from_bool], self.was_freeform)
         return result
 
 
@@ -9631,6 +9817,7 @@ class SessionModelChangeData:
     previous_reasoning_summary: ReasoningSummary | None = None
     previous_verbosity: Verbosity | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     source: ModelChangeSource | None = None
     verbosity: Verbosity | None = None
@@ -9648,6 +9835,7 @@ class SessionModelChangeData:
         previous_reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("previousReasoningSummary"))
         previous_verbosity = from_union([from_none, lambda x: parse_enum(Verbosity, x)], obj.get("previousVerbosity"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         source = from_union([from_none, lambda x: parse_enum(ModelChangeSource, x)], obj.get("source"))
         verbosity = from_union([from_none, lambda x: parse_enum(Verbosity, x)], obj.get("verbosity"))
@@ -9662,6 +9850,7 @@ class SessionModelChangeData:
             previous_reasoning_summary=previous_reasoning_summary,
             previous_verbosity=previous_verbosity,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             source=source,
             verbosity=verbosity,
@@ -9688,6 +9877,8 @@ class SessionModelChangeData:
             result["previousVerbosity"] = from_union([from_none, lambda x: to_enum(Verbosity, x)], self.previous_verbosity)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_model is not None:
+            result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
             result["reasoningSummary"] = from_union([from_none, lambda x: to_enum(ReasoningSummary, x)], self.reasoning_summary)
         if self.source is not None:
@@ -9809,6 +10000,7 @@ class SessionResumeData:
     continue_pending_work: bool | None = None
     events_file_size_bytes: int | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     remote_steerable: bool | None = None
     selected_model: str | None = None
@@ -9828,6 +10020,7 @@ class SessionResumeData:
         continue_pending_work = from_union([from_none, from_bool], obj.get("continuePendingWork"))
         events_file_size_bytes = from_union([from_none, from_int], obj.get("eventsFileSizeBytes"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         remote_steerable = from_union([from_none, from_bool], obj.get("remoteSteerable"))
         selected_model = from_union([from_none, from_str], obj.get("selectedModel"))
@@ -9844,6 +10037,7 @@ class SessionResumeData:
             continue_pending_work=continue_pending_work,
             events_file_size_bytes=events_file_size_bytes,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             remote_steerable=remote_steerable,
             selected_model=selected_model,
@@ -9870,6 +10064,8 @@ class SessionResumeData:
             result["eventsFileSizeBytes"] = from_union([from_none, to_int], self.events_file_size_bytes)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_model is not None:
+            result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
             result["reasoningSummary"] = from_union([from_none, lambda x: to_enum(ReasoningSummary, x)], self.reasoning_summary)
         if self.remote_steerable is not None:
@@ -10163,6 +10359,7 @@ class SessionStartData:
     detached_from_spawning_parent_session_id: str | None = None
     github_mcp_tool_config: GitHubMcpToolConfig | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     remote_steerable: bool | None = None
     selected_model: str | None = None
@@ -10184,6 +10381,7 @@ class SessionStartData:
         detached_from_spawning_parent_session_id = from_union([from_none, from_str], obj.get("detachedFromSpawningParentSessionId"))
         github_mcp_tool_config = from_union([from_none, GitHubMcpToolConfig.from_dict], obj.get("githubMcpToolConfig"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         remote_steerable = from_union([from_none, from_bool], obj.get("remoteSteerable"))
         selected_model = from_union([from_none, from_str], obj.get("selectedModel"))
@@ -10202,6 +10400,7 @@ class SessionStartData:
             detached_from_spawning_parent_session_id=detached_from_spawning_parent_session_id,
             github_mcp_tool_config=github_mcp_tool_config,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             remote_steerable=remote_steerable,
             selected_model=selected_model,
@@ -10230,6 +10429,8 @@ class SessionStartData:
             result["githubMcpToolConfig"] = from_union([from_none, lambda x: to_class(GitHubMcpToolConfig, x)], self.github_mcp_tool_config)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_model is not None:
+            result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
             result["reasoningSummary"] = from_union([from_none, lambda x: to_enum(ReasoningSummary, x)], self.reasoning_summary)
         if self.remote_steerable is not None:
@@ -11976,6 +12177,8 @@ class ToolExecutionCompleteData:
     tool_call_id: str
     error: ToolExecutionCompleteError | None = None
     # Experimental: this field is part of an experimental API and may change or be removed.
+    file_edits: list[ToolExecutionCompleteFileEdit] | None = None
+    # Experimental: this field is part of an experimental API and may change or be removed.
     fusion: FusionAttribution | None = None
     interaction_id: str | None = None
     is_user_requested: bool | None = None
@@ -11999,6 +12202,7 @@ class ToolExecutionCompleteData:
         success = from_bool(obj.get("success"))
         tool_call_id = from_str(obj.get("toolCallId"))
         error = from_union([from_none, ToolExecutionCompleteError.from_dict], obj.get("error"))
+        file_edits = from_union([from_none, lambda x: from_list(ToolExecutionCompleteFileEdit.from_dict, x)], obj.get("fileEdits"))
         fusion = from_union([from_none, FusionAttribution.from_dict], obj.get("fusion"))
         interaction_id = from_union([from_none, from_str], obj.get("interactionId"))
         is_user_requested = from_union([from_none, from_bool], obj.get("isUserRequested"))
@@ -12016,6 +12220,7 @@ class ToolExecutionCompleteData:
             success=success,
             tool_call_id=tool_call_id,
             error=error,
+            file_edits=file_edits,
             fusion=fusion,
             interaction_id=interaction_id,
             is_user_requested=is_user_requested,
@@ -12037,6 +12242,8 @@ class ToolExecutionCompleteData:
         result["toolCallId"] = from_str(self.tool_call_id)
         if self.error is not None:
             result["error"] = from_union([from_none, lambda x: to_class(ToolExecutionCompleteError, x)], self.error)
+        if self.file_edits is not None:
+            result["fileEdits"] = from_union([from_none, lambda x: from_list(lambda x: to_class(ToolExecutionCompleteFileEdit, x), x)], self.file_edits)
         if self.fusion is not None:
             result["fusion"] = from_union([from_none, lambda x: to_class(FusionAttribution, x)], self.fusion)
         if self.interaction_id is not None:
@@ -12438,29 +12645,6 @@ class ToolExecutionCompleteUIResourceMetaUIPermissionsMicrophone:
 
 
 @dataclass
-class ToolExecutionPartialResultData:
-    "Streaming tool execution output for incremental result display"
-    partial_output: str
-    tool_call_id: str
-
-    @staticmethod
-    def from_dict(obj: Any) -> "ToolExecutionPartialResultData":
-        assert isinstance(obj, dict)
-        partial_output = from_str(obj.get("partialOutput"))
-        tool_call_id = from_str(obj.get("toolCallId"))
-        return ToolExecutionPartialResultData(
-            partial_output=partial_output,
-            tool_call_id=tool_call_id,
-        )
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["partialOutput"] = from_str(self.partial_output)
-        result["toolCallId"] = from_str(self.tool_call_id)
-        return result
-
-
-@dataclass
 class ToolExecutionProgressData:
     "Tool execution progress notification with status message"
     progress_message: str
@@ -12712,6 +12896,38 @@ class ToolSearchActivatedData:
         result: dict = {}
         result["strategy"] = from_str(self.strategy)
         result["toolNames"] = from_list(from_str, self.tool_names)
+        return result
+
+
+@dataclass
+class ToolShellOutputData:
+    "Live, append-only shell output. Not persisted or replayed to late subscribers. Text is decoded and redacted per chunk; chunks need not contain complete lines."
+    sequence: int
+    text: str
+    tool_call_id: str
+    stream: ToolShellOutputStream | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "ToolShellOutputData":
+        assert isinstance(obj, dict)
+        sequence = from_int(obj.get("sequence"))
+        text = from_str(obj.get("text"))
+        tool_call_id = from_str(obj.get("toolCallId"))
+        stream = from_union([from_none, lambda x: parse_enum(ToolShellOutputStream, x)], obj.get("stream"))
+        return ToolShellOutputData(
+            sequence=sequence,
+            text=text,
+            tool_call_id=tool_call_id,
+            stream=stream,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["sequence"] = to_int(self.sequence)
+        result["text"] = from_str(self.text)
+        result["toolCallId"] = from_str(self.tool_call_id)
+        if self.stream is not None:
+            result["stream"] = from_union([from_none, lambda x: to_enum(ToolShellOutputStream, x)], self.stream)
         return result
 
 
@@ -13544,6 +13760,26 @@ class PermissionRecommendation(Enum):
 
 
 # Experimental: this enum is part of an experimental API and may change or be removed.
+class ToolExecutionCompleteFileEditKind(Enum):
+    "Kind of file mutation committed by a built-in editing tool."
+    # A file was created.
+    CREATE = "create"
+    # A file was written by an edit operation.
+    EDIT = "edit"
+    # A file was deleted.
+    DELETE = "delete"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "ToolExecutionCompleteFileEditKind | None":
+        if not isinstance(value, str):
+            return None
+        member = object.__new__(cls)
+        member._name_ = "UNKNOWN"
+        member._value_ = value
+        return cls._value2member_map_.setdefault(value, member)
+
+
+# Experimental: this enum is part of an experimental API and may change or be removed.
 class UIEphemeralQueryPhase(Enum):
     "Lifecycle phase for a Rust-owned ephemeral query stream."
     # The ephemeral query stream has begun.
@@ -13829,6 +14065,23 @@ class HandoffSourceType(Enum):
     REMOTE = "remote"
     # The handoff originated from a local session.
     LOCAL = "local"
+
+
+class HumanResponseActor(Enum):
+    "Controlled provenance for a typed runtime response. Only `human_response`, minted by a trusted direct-interaction ingress, is human authorization evidence."
+    # A built-in trusted client submitted the response after direct human interaction.
+    HUMAN_RESPONSE = "human_response"
+    # A host or SDK automation submitted the response without direct human interaction.
+    HOST_AUTOMATION = "host_automation"
+    # The response came through a legacy or otherwise unattributed ingress.
+    UNKNOWN = "unknown"
+
+
+class HumanResponseRecordedResponseResponseKind(Enum):
+    "Exact runtime-owned question or reviewed plan paired with the typed response that settled it. discriminator"
+    ASK_USER = "ask_user"
+    USER_INPUT = "user_input"
+    EXIT_PLAN_MODE = "exit_plan_mode"
 
 
 class IndexedSearchDisabledReason(Enum):
@@ -14791,6 +15044,16 @@ class ToolExecutionStartToolDescriptionMetaUIVisibility(Enum):
     APP = "app"
 
 
+class ToolShellOutputStream(Enum):
+    "Shell output source. Terminal output has no separate stdout/stderr attribution."
+    # Output from the shell command's standard output stream. This is the default when stream is omitted.
+    STDOUT = "stdout"
+    # Output from the shell command's standard error stream.
+    STDERR = "stderr"
+    # Inherently merged output that cannot be attributed separately to stdout or stderr.
+    TERMINAL = "terminal"
+
+
 class UserMessageAgentMode(Enum):
     "The agent mode that was active when this message was sent"
     # The agent is responding interactively to the user.
@@ -14861,7 +15124,7 @@ class WorkspaceFileChangedOperation(Enum):
     UPDATE = "update"
 
 
-SessionEventData = SessionStartData | SessionResumeData | SessionRemoteSteerableChangedData | SessionErrorData | SessionIdleData | SessionTitleChangedData | SessionScheduleCreatedData | SessionScheduleCancelledData | SessionScheduleRearmedData | SessionAutopilotObjectiveChangedData | SessionInfoData | SessionIndexedSearchData | SessionWarningData | SessionModelChangeData | SessionModelDeselectedData | SessionAutoTierRecommendationData | SessionAutoTierSwitchFailedData | SessionModeChangedData | SessionModeNoticeDeliveredData | SessionSessionLimitsChangedData | SessionPermissionsChangedData | SessionPlanChangedData | SessionTodosChangedData | SessionWorkspaceFileChangedData | SessionHandoffData | SessionTruncationData | SessionSnapshotRewindData | SessionShutdownData | SessionUsageCheckpointData | SessionContextChangedData | SessionUsageInfoData | SessionContextClearedData | SessionCompactionStartData | SessionCompactionCompleteData | SessionTaskCompleteData | SessionCompletionReceiptData | SessionFusionRouteStartedData | SessionFusionRouteFailedData | SessionFusionResolvedData | SessionFusionCompletedData | SessionPermissionRecoveryData | UserMessageData | PendingMessagesModifiedData | AssistantTurnStartData | AssistantTurnRetryData | AgentInterruptedData | AssistantIntentData | AssistantFusionPhaseStartedData | AssistantFusionPhaseActivityData | AssistantFusionPhaseCompletedData | AssistantFusionPhaseFailedData | AssistantServerToolProgressData | AssistantReasoningData | AssistantReasoningDeltaData | AssistantToolCallDeltaData | AssistantStreamingDeltaData | AssistantMessageData | AssistantMessageStartData | AssistantMessageDeltaData | AssistantTurnEndData | AssistantIdleData | AssistantUsageData | PromptCacheBreakData | ModelCallFailureData | ModelCallFinalResultData | ModelCallFinishedData | ModelCallStartData | AbortData | ToolUserRequestedData | ToolExecutionStartData | ToolExecutionPartialResultData | ToolExecutionProgressData | ToolExecutionCompleteData | ToolSearchActivatedData | SkillInvokedData | SkillInvokedRefData | SkillContextDeliveredData | SkillContextDeliveredRefData | SandboxDecisionData | SubagentStartedData | SubagentConfiguredData | SubagentCompletedData | SubagentFailedData | SubagentSelectedData | SubagentDeselectedData | HookStartData | HookEndData | HookProgressData | SessionBinaryAssetData | SystemMessageData | SystemNotificationData | PermissionRequestedData | PermissionCompletedData | PermissionCarriedForwardData | PermissionMessageAuthorizationData | PermissionMessageAuthorizationReadData | PermissionMessageAuthorizationDegradedData | PermissionAssentDetectedData | PermissionContextualAuthorizationData | UserInputRequestedData | UserInputCompletedData | ElicitationRequestedData | ElicitationCompletedData | SamplingRequestedData | SamplingCompletedData | McpOauthRequiredData | McpOauthCompletedData | McpHeadersRefreshRequiredData | McpHeadersRefreshCompletedData | SessionCustomNotificationData | UiEphemeralQueryData | ExternalToolRequestedData | ExternalToolCompletedData | CommandQueuedData | CommandExecuteData | CommandCompletedData | AutoModeSwitchRequestedData | AutoModeSwitchCompletedData | SessionLimitsExhaustedRequestedData | SessionLimitsExhaustedCompletedData | SessionAutoModeResolvedData | SessionManagedSettingsResolvedData | SessionManagedSettingsEnforcedData | CommandsChangedData | CapabilitiesChangedData | ExitPlanModeRequestedData | ExitPlanModeCompletedData | SessionToolsUpdatedData | SessionBackgroundTasksChangedData | WorkflowRunUpdatedData | WorkflowRunStartedData | WorkflowRunSettledData | SessionSkillsLoadedData | SessionCustomAgentsUpdatedData | SessionMcpServersLoadedData | SessionMcpServerStatusChangedData | SessionMcpServerRemovedData | SessionMcpServerNeedsReconnectData | McpToolsListChangedData | McpResourcesListChangedData | McpPromptsListChangedData | SessionExtensionsLoadedData | SessionCanvasOpenedData | SessionCanvasRegistryChangedData | SessionCanvasClosedData | SessionCanvasUnavailableData | SessionCanvasRecordedData | SessionCanvasRemovedData | SessionExtensionsAttachmentsPushedData | McpAppToolCallCompleteData | RawSessionEventData | Data
+SessionEventData = SessionStartData | SessionResumeData | SessionRemoteSteerableChangedData | SessionErrorData | SessionIdleData | SessionTitleChangedData | SessionScheduleCreatedData | SessionScheduleCancelledData | SessionScheduleRearmedData | SessionAutopilotObjectiveChangedData | SessionInfoData | SessionIndexedSearchData | SessionWarningData | SessionModelChangeData | SessionModelDeselectedData | SessionAutoTierRecommendationData | SessionAutoTierSwitchFailedData | SessionModeChangedData | SessionModeNoticeDeliveredData | SessionSessionLimitsChangedData | SessionPermissionsChangedData | SessionPlanChangedData | SessionTodosChangedData | SessionWorkspaceFileChangedData | SessionHandoffData | SessionTruncationData | SessionSnapshotRewindData | SessionShutdownData | SessionUsageCheckpointData | SessionContextChangedData | SessionUsageInfoData | SessionContextClearedData | SessionCompactionStartData | SessionCompactionCompleteData | SessionTaskCompleteData | SessionCompletionReceiptData | SessionFusionRouteStartedData | SessionFusionRouteFailedData | SessionFusionResolvedData | SessionFusionCompletedData | SessionPermissionRecoveryData | UserMessageData | PendingMessagesModifiedData | AssistantTurnStartData | AssistantTurnRetryData | AgentInterruptedData | AssistantIntentData | AssistantFusionPhaseStartedData | AssistantFusionPhaseActivityData | AssistantFusionPhaseCompletedData | AssistantFusionPhaseFailedData | AssistantServerToolProgressData | AssistantReasoningData | AssistantReasoningDeltaData | AssistantToolCallDeltaData | AssistantStreamingDeltaData | AssistantMessageData | AssistantMessageStartData | AssistantMessageDeltaData | AssistantTurnEndData | AssistantIdleData | AssistantUsageData | PromptCacheBreakData | ModelCallFailureData | ModelCallFinalResultData | ModelCallFinishedData | ModelCallStartData | AbortData | ToolUserRequestedData | ToolExecutionStartData | ToolExecutionPartialResultData | ToolShellOutputData | ToolExecutionProgressData | ToolExecutionCompleteData | ToolSearchActivatedData | SkillInvokedData | SkillInvokedRefData | SkillContextDeliveredData | SkillContextDeliveredRefData | SandboxDecisionData | SubagentStartedData | SubagentConfiguredData | SubagentCompletedData | SubagentFailedData | SubagentSelectedData | SubagentDeselectedData | HookStartData | HookEndData | HookProgressData | SessionBinaryAssetData | SystemMessageData | SystemNotificationData | PermissionRequestedData | PermissionCompletedData | PermissionCarriedForwardData | PermissionMessageAuthorizationData | PermissionMessageAuthorizationReadData | PermissionMessageAuthorizationDegradedData | PermissionAssentDetectedData | PermissionContextualAuthorizationData | UserInputRequestedData | UserInputCompletedData | ElicitationRequestedData | ElicitationCompletedData | SamplingRequestedData | SamplingCompletedData | McpOauthRequiredData | McpOauthCompletedData | McpHeadersRefreshRequiredData | McpHeadersRefreshCompletedData | SessionCustomNotificationData | UiEphemeralQueryData | ExternalToolRequestedData | ExternalToolCompletedData | CommandQueuedData | CommandExecuteData | CommandCompletedData | AutoModeSwitchRequestedData | AutoModeSwitchCompletedData | SessionLimitsExhaustedRequestedData | SessionLimitsExhaustedCompletedData | SessionAutoModeResolvedData | SessionManagedSettingsResolvedData | SessionManagedSettingsEnforcedData | CommandsChangedData | CapabilitiesChangedData | ExitPlanModeRequestedData | ExitPlanModeCompletedData | HumanResponseRecordedData | SessionToolsUpdatedData | SessionBackgroundTasksChangedData | WorkflowRunUpdatedData | WorkflowRunStartedData | WorkflowRunSettledData | SessionSkillsLoadedData | SessionCustomAgentsUpdatedData | SessionMcpServersLoadedData | SessionMcpServerStatusChangedData | SessionMcpServerRemovedData | SessionMcpServerNeedsReconnectData | McpToolsListChangedData | McpResourcesListChangedData | McpPromptsListChangedData | SessionExtensionsLoadedData | SessionCanvasOpenedData | SessionCanvasRegistryChangedData | SessionCanvasClosedData | SessionCanvasUnavailableData | SessionCanvasRecordedData | SessionCanvasRemovedData | SessionExtensionsAttachmentsPushedData | McpAppToolCallCompleteData | RawSessionEventData | Data
 
 
 @dataclass
@@ -14958,6 +15221,7 @@ class SessionEvent:
             case SessionEventType.TOOL_USER_REQUESTED: data = ToolUserRequestedData.from_dict(data_obj)
             case SessionEventType.TOOL_EXECUTION_START: data = ToolExecutionStartData.from_dict(data_obj)
             case SessionEventType.TOOL_EXECUTION_PARTIAL_RESULT: data = ToolExecutionPartialResultData.from_dict(data_obj)
+            case SessionEventType.TOOL_SHELL_OUTPUT: data = ToolShellOutputData.from_dict(data_obj)
             case SessionEventType.TOOL_EXECUTION_PROGRESS: data = ToolExecutionProgressData.from_dict(data_obj)
             case SessionEventType.TOOL_EXECUTION_COMPLETE: data = ToolExecutionCompleteData.from_dict(data_obj)
             case SessionEventType.TOOL_SEARCH_ACTIVATED: data = ToolSearchActivatedData.from_dict(data_obj)
@@ -15014,6 +15278,7 @@ class SessionEvent:
             case SessionEventType.CAPABILITIES_CHANGED: data = CapabilitiesChangedData.from_dict(data_obj)
             case SessionEventType.EXIT_PLAN_MODE_REQUESTED: data = ExitPlanModeRequestedData.from_dict(data_obj)
             case SessionEventType.EXIT_PLAN_MODE_COMPLETED: data = ExitPlanModeCompletedData.from_dict(data_obj)
+            case SessionEventType.HUMAN_RESPONSE_RECORDED: data = HumanResponseRecordedData.from_dict(data_obj)
             case SessionEventType.SESSION_TOOLS_UPDATED: data = SessionToolsUpdatedData.from_dict(data_obj)
             case SessionEventType.SESSION_BACKGROUND_TASKS_CHANGED: data = SessionBackgroundTasksChangedData.from_dict(data_obj)
             case SessionEventType.WORKFLOW_RUN_UPDATED: data = WorkflowRunUpdatedData.from_dict(data_obj)
@@ -15207,6 +15472,10 @@ __all__ = [
     "HookEndError",
     "HookProgressData",
     "HookStartData",
+    "HumanResponseActor",
+    "HumanResponseRecordedData",
+    "HumanResponseRecordedResponse",
+    "HumanResponseRecordedResponseResponseKind",
     "IndexedSearchDisabledReason",
     "IndexedSearchErrorType",
     "IndexedSearchIncrementalPhase",
@@ -15486,6 +15755,8 @@ __all__ = [
     "ToolExecutionCompleteContentText",
     "ToolExecutionCompleteData",
     "ToolExecutionCompleteError",
+    "ToolExecutionCompleteFileEdit",
+    "ToolExecutionCompleteFileEditKind",
     "ToolExecutionCompleteResult",
     "ToolExecutionCompleteShellExecution",
     "ToolExecutionCompleteToolDescription",
@@ -15510,6 +15781,8 @@ __all__ = [
     "ToolExecutionStartToolDescriptionMetaUI",
     "ToolExecutionStartToolDescriptionMetaUIVisibility",
     "ToolSearchActivatedData",
+    "ToolShellOutputData",
+    "ToolShellOutputStream",
     "ToolUserRequestedData",
     "UIEphemeralQueryPhase",
     "UiEphemeralQueryData",

@@ -2958,6 +2958,14 @@ class CopilotClient:
                             "SessionFs capabilities declare SQLite support but the provider "
                             "does not implement SessionFsSqliteProvider"
                         )
+                if caps and caps.get("binary"):
+                    from .session_fs_provider import SessionFsBinaryProvider
+
+                    if not isinstance(fs_provider, SessionFsBinaryProvider):
+                        raise ValueError(
+                            "SessionFs capabilities declare binary support but the provider "
+                            "does not implement SessionFsBinaryProvider"
+                        )
                 s._client_session_apis.session_fs = create_session_fs_adapter(fs_provider)
             s._register_tools(tools)
             s._register_commands(commands)
@@ -2996,6 +3004,20 @@ class CopilotClient:
 
         session: CopilotSession | None = None
         registered_session_id: str | None = None
+        server_assigned_session_id: str | None = None
+        inline_state_lock = threading.Lock()
+        request_failed = False
+        event_loop = asyncio.get_running_loop()
+
+        async def _delete_uninitialized_session(sid: str) -> None:
+            try:
+                await asyncio.wait_for(self.delete_session(sid), timeout=10)
+            except Exception:
+                logger.warning(
+                    "Failed to delete cloud session %s after creation failed",
+                    sid,
+                    exc_info=True,
+                )
 
         # Pre-register non-cloud sessions BEFORE issuing the RPC so any
         # session-scoped requests the CLI emits during session.create
@@ -3020,15 +3042,40 @@ class CopilotClient:
             # would silently drop because the session id isn't yet
             # registered. Non-cloud sessions are already registered above.
             def _register_inline(raw_response: Any) -> None:
-                nonlocal session, registered_session_id
+                nonlocal session, registered_session_id, server_assigned_session_id
                 if session is not None:
                     return
                 if not isinstance(raw_response, dict):
                     return
                 sid = raw_response.get("sessionId")
                 if isinstance(sid, str) and sid:
-                    session = _initialize_session(sid)
-                    registered_session_id = sid
+                    try:
+                        initialized = _initialize_session(sid)
+                    except Exception:
+                        with inline_state_lock:
+                            late_failure = request_failed
+                            if not late_failure:
+                                server_assigned_session_id = sid
+                        if late_failure:
+                            cleanup = _delete_uninitialized_session(sid)
+                            try:
+                                asyncio.run_coroutine_threadsafe(cleanup, event_loop)
+                            except RuntimeError:
+                                cleanup.close()
+                                logger.warning(
+                                    "Failed to schedule cleanup of cloud session %s",
+                                    sid,
+                                    exc_info=True,
+                                )
+                        raise
+                    with inline_state_lock:
+                        late_success = request_failed
+                        if not late_success:
+                            session = initialized
+                            registered_session_id = sid
+                    if late_success:
+                        with self._sessions_lock:
+                            self._sessions.pop(sid, None)
 
             response = await self._client.request(
                 "session.create", payload, on_response_inline=_register_inline
@@ -3059,9 +3106,15 @@ class CopilotClient:
             capabilities = response.get("capabilities")
             session._set_capabilities(capabilities)
         except BaseException as exc:
-            if registered_session_id is not None:
+            with inline_state_lock:
+                request_failed = True
+                registered_id = registered_session_id
+                orphaned_id = server_assigned_session_id
+            if registered_id is not None:
                 with self._sessions_lock:
-                    self._sessions.pop(registered_session_id, None)
+                    self._sessions.pop(registered_id, None)
+            if orphaned_id is not None:
+                await _delete_uninitialized_session(orphaned_id)
             self._unregister_github_token_provider(github_token_provider_registration_id)
             if not isinstance(exc, asyncio.CancelledError):
                 log_timing(
@@ -3675,6 +3728,14 @@ class CopilotClient:
                     raise ValueError(
                         "SessionFs capabilities declare SQLite support but the provider "
                         "does not implement SessionFsSqliteProvider"
+                    )
+            if caps and caps.get("binary"):
+                from .session_fs_provider import SessionFsBinaryProvider
+
+                if not isinstance(fs_provider, SessionFsBinaryProvider):
+                    raise ValueError(
+                        "SessionFs capabilities declare binary support but the provider "
+                        "does not implement SessionFsBinaryProvider"
                     )
             session._client_session_apis.session_fs = create_session_fs_adapter(fs_provider)
         session._register_tools(tools)

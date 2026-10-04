@@ -281,9 +281,18 @@ type CapturedRequest struct {
 
 // ParsedHttpExchange represents a captured HTTP exchange.
 type ParsedHttpExchange struct {
-	Request        ChatCompletionRequest      `json:"request"`
-	Response       *ChatCompletionResponse    `json:"response,omitempty"`
-	RequestHeaders map[string]json.RawMessage `json:"requestHeaders,omitempty"`
+	Request         ChatCompletionRequest      `json:"request"`
+	Response        *ChatCompletionResponse    `json:"response,omitempty"`
+	RequestHeaders  map[string]json.RawMessage `json:"requestHeaders,omitempty"`
+	CompactionUsage *CompactionProviderUsage   `json:"compactionUsage,omitempty"`
+}
+
+// CompactionProviderUsage folds all responses in one correlated compaction request chain.
+type CompactionProviderUsage struct {
+	InteractionID string `json:"interactionId"`
+	Summary       string `json:"summary"`
+	ResponseCount int    `json:"responseCount"`
+	InputTokens   *int64 `json:"inputTokens,omitempty"`
 }
 
 // ChatCompletionRequest represents an OpenAI chat completion request.

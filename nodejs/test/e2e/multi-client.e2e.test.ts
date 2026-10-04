@@ -4,7 +4,7 @@
 
 import { describe, expect, it, afterAll } from "vitest";
 import { z } from "zod";
-import { CopilotClient, defineTool, approveAll, RuntimeConnection } from "../../src/index.js";
+import { defineTool, approveAll, RuntimeConnection } from "../../src/index.js";
 import type { SessionEvent } from "../../src/index.js";
 import { createSdkTestContext, isInProcessTransport } from "./harness/sdkTestContext";
 
@@ -24,7 +24,7 @@ describe("Multi-client broadcast", async () => {
     await initSession.disconnect();
 
     const runtimePort = (client1 as unknown as { runtimePort: number }).runtimePort;
-    let client2 = new CopilotClient({
+    let client2 = ctx.createClient({
         connection: RuntimeConnection.forUri(`localhost:${runtimePort}`, {
             connectionToken: tcpConnectionToken,
         }),
@@ -360,7 +360,7 @@ describe("Multi-client broadcast", async () => {
             process.removeListener("unhandledRejection", suppressDisposed);
 
             // Recreate client2 for cleanup in afterAll (but don't rejoin the session)
-            client2 = new CopilotClient({
+            client2 = ctx.createClient({
                 connection: RuntimeConnection.forUri(`localhost:${runtimePort}`, {
                     connectionToken: tcpConnectionToken,
                 }),

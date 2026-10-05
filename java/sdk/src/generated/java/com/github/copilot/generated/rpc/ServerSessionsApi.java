@@ -283,6 +283,39 @@ public final class ServerSessionsApi {
     }
 
     /**
+     * Creates the workspace record for a session that has not been opened yet. A host that hands a session off to another application — writing the record and then launching that application against the session ID — needs the record on disk before any session exists to carry it, which the session-scoped workspace methods cannot do. Replaces any existing record and resets the checkpoint index. When writing to the local filesystem, a stored `fork_count` survives on disk. Returns the record it built, so a surviving stored `fork_count` can differ from the answer.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    CompletableFuture<SessionsCreateWorkspaceResult> createWorkspace(SessionsCreateWorkspaceParams params) {
+        return caller.invoke("sessions.createWorkspace", params, SessionsCreateWorkspaceResult.class);
+    }
+
+    /**
+     * Reads a session's workspace record straight from disk, without opening the session. Resuming by session ID has to know where the session lives before it can connect, so the lookup cannot come from the session-scoped workspace methods, which resolve their location from a live session's context. Returns no record when the file is absent.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    CompletableFuture<SessionsLoadWorkspaceResult> loadWorkspace(SessionsLoadWorkspaceParams params) {
+        return caller.invoke("sessions.loadWorkspace", params, SessionsLoadWorkspaceResult.class);
+    }
+
+    /**
+     * Merges fields into a session's workspace record on disk, creating the record when it is absent. The counterpart to `sessions.loadWorkspace`, for the same before-the-session-exists case. It preserves stored workspace-schema fields the request does not supply, does not preserve stored keys outside the workspace schema, and never replaces a stored `fork_count`.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    CompletableFuture<Void> updateWorkspaceFields(SessionsUpdateWorkspaceFieldsParams params) {
+        return caller.invoke("sessions.updateWorkspaceFields", params, Void.class);
+    }
+
+    /**
      * Reloads user, plugin, and (optionally) repo hooks on the active session.
      *
      * @apiNote This method is experimental and may change in a future version.

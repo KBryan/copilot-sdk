@@ -3000,7 +3000,7 @@ public sealed partial class ClientSessionLifetimeTests
         return process;
     }
 
-    private sealed class FakeCopilotServer : IAsyncDisposable
+    private sealed partial class FakeCopilotServer : IAsyncDisposable
     {
         private readonly TcpListener _listener;
         private readonly CancellationTokenSource _cts = new();
@@ -3234,8 +3234,9 @@ public sealed partial class ClientSessionLifetimeTests
                 {
                     if (root.TryGetProperty("error", out var error))
                     {
-                        completion.TrySetException(new InvalidOperationException(
-                            error.GetProperty("message").GetString()));
+                        var exception = new InvalidOperationException(error.GetProperty("message").GetString());
+                        exception.Data["error"] = error.Clone();
+                        completion.TrySetException(exception);
                     }
                     else
                     {

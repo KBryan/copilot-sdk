@@ -73,6 +73,7 @@ public sealed partial class CopilotSession : IAsyncDisposable
     private volatile Func<ElicitationContext, Task<ElicitationResult>>? _elicitationHandler;
     private volatile Func<ExitPlanModeRequest, ExitPlanModeInvocation, Task<ExitPlanModeResult>>? _exitPlanModeHandler;
     private volatile Func<AutoModeSwitchRequest, AutoModeSwitchInvocation, Task<AutoModeSwitchResponse>>? _autoModeSwitchHandler;
+    private volatile ISkillProvider? _skillProvider;
     private ImmutableArray<EventSubscription> _eventHandlers = ImmutableArray<EventSubscription>.Empty;
 
     private sealed record EventSubscription(Type EventType, Action<SessionEvent> Handler, bool RootAgentOnly);
@@ -233,6 +234,7 @@ public sealed partial class CopilotSession : IAsyncDisposable
     /// </summary>
     internal void Unregister()
     {
+        ClearSkillProvider();
         CancelPendingExternalTools();
         CloseEventChannel();
         RemoveFromClient();
@@ -1407,6 +1409,48 @@ public sealed partial class CopilotSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Registers the session-scoped skill provider callback.
+    /// </summary>
+    internal void RegisterSkillProvider(ISkillProvider? provider)
+    {
+        _skillProvider = provider;
+    }
+
+    internal void ClearSkillProvider() => _skillProvider = null;
+
+    internal async ValueTask<CopilotClient.SkillProviderListResult> HandleSkillProviderListAsync(CancellationToken cancellationToken)
+    {
+        var provider = _skillProvider ?? throw new InvalidOperationException($"No skill provider for session: {SessionId}");
+
+        try
+        {
+            var skills = await provider.ListSkillsAsync(cancellationToken).ConfigureAwait(false);
+            return new CopilotClient.SkillProviderListResult(skills?.ToList() ?? []);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogSkillProviderFailed(ex, "listSkills", SessionId);
+            throw new InvalidOperationException("Skill provider listSkills failed", ex);
+        }
+    }
+
+    internal async ValueTask<CopilotClient.SkillProviderReadResult> HandleSkillProviderReadAsync(string name, CancellationToken cancellationToken)
+    {
+        var provider = _skillProvider ?? throw new InvalidOperationException($"No skill provider for session: {SessionId}");
+
+        try
+        {
+            var markdown = await provider.ReadSkillAsync(name, cancellationToken).ConfigureAwait(false);
+            return new CopilotClient.SkillProviderReadResult(markdown);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogSkillProviderFailed(ex, "readSkill", SessionId);
+            throw new InvalidOperationException("Skill provider readSkill failed", ex);
+        }
+    }
+
+    /// <summary>
     /// Registers per-provider <c>BearerTokenProvider</c> callbacks for BYOK
     /// providers configured with managed-identity / on-demand bearer-token auth.
     /// </summary>
@@ -2396,6 +2440,7 @@ public sealed partial class CopilotSession : IAsyncDisposable
             return;
         }
 
+        ClearSkillProvider();
         CancelPendingExternalTools();
         CloseEventChannel();
 
@@ -2432,6 +2477,7 @@ public sealed partial class CopilotSession : IAsyncDisposable
         _elicitationHandler = null;
         _exitPlanModeHandler = null;
         _autoModeSwitchHandler = null;
+        _skillProvider = null;
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception in broadcast event handler")]
@@ -2448,6 +2494,9 @@ public sealed partial class CopilotSession : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Permission handler or response delivery failed. SessionId={SessionId}, RequestId={RequestId}")]
     private partial void LogPermissionHandlerOrDeliveryFailed(Exception exception, string sessionId, string requestId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Skill provider {Operation} failed. SessionId={SessionId}")]
+    private partial void LogSkillProviderFailed(Exception exception, string operation, string sessionId);
 
     internal record SendMessageRequest
     {

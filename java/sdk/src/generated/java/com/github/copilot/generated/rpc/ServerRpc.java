@@ -59,6 +59,12 @@ public final class ServerRpc {
     public final ServerCommandsApi commands;
     /** API methods for the {@code user} namespace. */
     public final ServerUserApi user;
+    /** API methods for the {@code gitHubRepository} namespace. */
+    final ServerGitHubRepositoryApi gitHubRepository;
+    /** API methods for the {@code gitHubOwners} namespace. */
+    final ServerGitHubOwnersApi gitHubOwners;
+    /** API methods for the {@code git} namespace. */
+    final ServerGitApi git;
     /** API methods for the {@code managedSettings} namespace. */
     public final ServerManagedSettingsApi managedSettings;
     /** API methods for the {@code runtime} namespace. */
@@ -71,6 +77,8 @@ public final class ServerRpc {
     public final ServerSessionsApi sessions;
     /** API methods for the {@code agentRegistry} namespace. */
     public final ServerAgentRegistryApi agentRegistry;
+    /** API methods for the {@code connectors} namespace. */
+    public final ServerConnectorsApi connectors;
 
     /**
      * Creates a new server RPC client.
@@ -96,12 +104,16 @@ public final class ServerRpc {
         this.instructions = new ServerInstructionsApi(caller);
         this.commands = new ServerCommandsApi(caller);
         this.user = new ServerUserApi(caller);
+        this.gitHubRepository = new ServerGitHubRepositoryApi(caller);
+        this.gitHubOwners = new ServerGitHubOwnersApi(caller);
+        this.git = new ServerGitApi(caller);
         this.managedSettings = new ServerManagedSettingsApi(caller);
         this.runtime = new ServerRuntimeApi(caller);
         this.sessionFs = new ServerSessionFsApi(caller);
         this.llmInference = new ServerLlmInferenceApi(caller);
         this.sessions = new ServerSessionsApi(caller);
         this.agentRegistry = new ServerAgentRegistryApi(caller);
+        this.connectors = new ServerConnectorsApi(caller);
     }
 
     /**

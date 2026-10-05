@@ -9353,6 +9353,8 @@ export interface PermissionApprovalEvaluation {
     | "action-too-long"
     /** The script path was not authorized for inspection. */
     | "path-not-authorized"
+    /** A code source was excluded from review by content exclusion policy. */
+    | "content-excluded"
     /** The script working directory was invalid. */
     | "invalid-working-directory"
     /** The script snapshot could not be read. */
@@ -9377,6 +9379,18 @@ export interface PermissionApprovalEvaluation {
     | "unreviewable-script-invocation"
     /** The script argument binding could not be reviewed. */
     | "argument-binding-unreviewable"
+    /** The shell command could not be analyzed for execution evidence. */
+    | "unsupported-command-shape"
+    /** The shell command used a code source that cannot be bound for review. */
+    | "unsupported-source"
+    /** The shell command used a code source computed at run time. */
+    | "dynamic-source"
+    /** The shell command referenced more code sources than can be reviewed. */
+    | "too-many-sources"
+    /** A code-bearing executable could not be inspected. */
+    | "executable-unavailable"
+    /** A code-bearing executable exceeded the binding size limit. */
+    | "executable-too-large"
     /** The script review metadata was malformed. */
     | "malformed-script-action-review"
     /** The script snapshot manifest was malformed. */

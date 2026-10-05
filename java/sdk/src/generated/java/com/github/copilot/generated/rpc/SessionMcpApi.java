@@ -48,6 +48,22 @@ public final class SessionMcpApi {
     }
 
     /**
+     * Records the IDE the host is connected to, so the agent's system prompt can name it and its workspace folder. Null or an omitted `ide` clears the recorded value, which is how a host reports that it is disconnected; there is no separate clear method. Both `ideName` and `workspaceFolder` are required together, because half a state cannot be attributed to a project.
+     * <p>
+     * Note: the {@code sessionId} field in the params record is overridden
+     * by the session-scoped wrapper; any value provided is ignored.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    CompletableFuture<Void> setConnectedIdeInfo(SessionMcpSetConnectedIdeInfoParams params) {
+        com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(params);
+        _p.put("sessionId", this.sessionId);
+        return caller.invoke("session.mcp.setConnectedIdeInfo", _p, Void.class);
+    }
+
+    /**
      * Lists materialized MCP servers and their connection status. Cache misses may start and wait for MCP servers.
      *
      * @apiNote This method is experimental and may change in a future version.

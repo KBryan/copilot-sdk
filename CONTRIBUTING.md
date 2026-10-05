@@ -332,8 +332,15 @@ uv run --locked --project python npm run docs:python
 ```
 
 This extracts and validates snippets for Node.js, Python, Go, .NET, or Java.
-Java's current docs validator calls `mvn` directly,
-so this task also needs Maven 3.9+ on PATH. There is no `docs:rust` facade;
+`docs:java` installs the SDK once through its Maven wrapper, with tests, replay
+harness setup, and native downloads disabled, then compiles the snippets using
+the same wrapper. CI supplies that installation in its existing post-test step;
+the validator does not reinstall it. A separate Maven installation is not required.
+Java validation also compiles the exact [README Quick Start](java/README.md#quick-start).
+The regular Maven integration suite checks a standalone consumer JAR with a manifest
+classpath and runtime dependencies, without a live model, credentials, or native runtime.
+These checks replace the former agent-driven Java smoke workflow.
+There is no `docs:rust` facade;
 follow [the Rust SDK workflow](.github/workflows/sdk-rust.yml) for rustdoc.
 
 ### Recording and replaying SDK tests
@@ -349,12 +356,12 @@ For TypeScript SDK E2Es, use the existing
 `nodejs/test/e2e/harness/sdkTestContext.ts` fixture. In the runtime repository,
 also follow the `e2e-test-author` skill's SDK section.
 
-SDK CI runs full subprocess coverage followed by a short in-process smoke
-step on the same runner wherever both modes share a platform. Smoke still
-runs if the subprocess tests fail, and either failure fails the job. Java's
-macOS, Windows, and musl smoke jobs remain separate because they have no
-matching subprocess job. Merge groups retain the reduced Linux TypeScript
-CAPI subprocess coverage.
+All six SDKs run full subprocess coverage followed by a short in-process
+smoke step on the same runner on Linux/glibc x64, macOS ARM64, Windows x64,
+and Linux/musl x64. Smoke still runs if the subprocess tests fail, and either
+failure fails the job. Java uses JDK 25 on all four platforms, plus a
+Linux/glibc JDK 17 compatibility job using precompiled classes.
+Merge groups retain the reduced Linux TypeScript CAPI subprocess coverage.
 
 The `sdk-typescript` required rollup checks only the Linux CAPI job, including
 its build, packaging, and applicable static checks. Other platforms, BYOK

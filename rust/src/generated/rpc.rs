@@ -7846,7 +7846,7 @@ impl<'a> SessionRpcMcp<'a> {
         }
     }
 
-    /// Lists MCP servers configured for the session, their connection status, and host-level state. The host-level state (disabled/filtered servers, failed/needs-auth/pending connections, mcp3p policy, full config) is empty/zero when no MCP host has been initialized for the session.
+    /// Lists materialized MCP servers and their connection status. Cache misses may start and wait for MCP servers.
     ///
     /// Wire method: `session.mcp.list`.
     ///
@@ -7867,6 +7867,31 @@ impl<'a> SessionRpcMcp<'a> {
             .session
             .client()
             .call(rpc_methods::SESSION_MCP_LIST, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Lists effective MCP configuration without starting, restarting, authenticating, or waiting for servers. An optional live observation is from an already materialized matching server; this is not a readiness guarantee.
+    ///
+    /// Wire method: `session.mcp.listConfigured`.
+    ///
+    /// # Returns
+    ///
+    /// Effective MCP configuration with optional live observations from matching already materialized servers.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn list_configured(&self) -> Result<McpConfiguredServerList, Error> {
+        let wire_params = serde_json::json!({ "sessionId": self.session.id() });
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_MCP_LISTCONFIGURED, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
     }

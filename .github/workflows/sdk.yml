@@ -317,40 +317,22 @@ jobs:
       sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
     secrets: inherit
 
-  sdk-docs:
-    name: "Documentation"
-    needs: detect-layout
-    if: github.event_name != 'merge_group'
-    uses: ./.github/workflows/sdk-platform.yml
-    with:
-      platform: docs
-      sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
-    secrets: inherit
-
+  # Only Linux CAPI gates this rollup; the full SDK aggregate still reports all coverage.
   sdk-typescript:
     name: sdk-typescript
     if: always()
-    needs: [sdk-linux-x64, sdk-linuxmusl-x64, sdk-darwin-arm64, sdk-win32-x64]
+    needs: [sdk-linux-x64]
     runs-on: ubuntu-slim
     steps:
-      - name: Check Node.js SDK results
+      - name: Check Linux CAPI Node.js SDK result
         env:
-          EVENT_NAME: ${{ github.event_name }}
           RESULTS: ${{ toJSON(needs) }}
         run: |
-          for job in sdk-linux-x64 sdk-linuxmusl-x64 sdk-darwin-arm64 sdk-win32-x64; do
-            expected=success
-            result=$(jq -r --arg job "$job" '.[$job].outputs["nodejs-result"]' <<< "$RESULTS")
-            # TEMPORARY MERGE QUEUE REDUCTION: only Linux x64 runs in merge groups.
-            if [[ "$EVENT_NAME" == "merge_group" && "$job" != "sdk-linux-x64" ]]; then
-              expected=skipped
-              result=$(jq -r --arg job "$job" '.[$job].result' <<< "$RESULTS")
-            fi
-            if [[ "$result" != "$expected" ]]; then
-              echo "::error::Node.js SDK job $job: expected $expected, got $result"
-              exit 1
-            fi
-          done
+          result=$(jq -r '.["sdk-linux-x64"].outputs["nodejs-capi-result"]' <<< "$RESULTS")
+          if [[ "$result" != "success" ]]; then
+            echo "::error::Linux CAPI Node.js SDK job: expected success, got $result"
+            exit 1
+          fi
 
   check-freshness:
     name: "Check schema and SDK freshness"
@@ -443,7 +425,6 @@ jobs:
       - sdk-linuxmusl-x64
       - sdk-darwin-arm64
       - sdk-win32-x64
-      - sdk-docs
       - check-freshness
     runs-on: ubuntu-slim
     steps:
@@ -470,7 +451,6 @@ jobs:
               sdk-linuxmusl-x64
               sdk-darwin-arm64
               sdk-win32-x64
-              sdk-docs
             )
             for job in "${required_jobs[@]}"; do
               if [[ "$(jq -r --arg job "$job" '.[$job].result' <<< "$RESULTS")" != "success" ]]; then

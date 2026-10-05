@@ -105,7 +105,7 @@ public final class ServerRpc {
     }
 
     /**
-     * Optional message to echo back to the caller.
+     * Checks server responsiveness and returns protocol information.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0
@@ -116,7 +116,7 @@ public final class ServerRpc {
     }
 
     /**
-     * Connection-level opt-ins for the `server.connect` handshake. Transport authentication is consumed by the native protocol boundary before dispatch.
+     * Performs the SDK server connection handshake and validates the optional connection token. Marked internal because this is JSON-RPC transport plumbing invoked automatically by an SDK client's own `connect()` wrapper, not a user-facing method. Stays internal as long as the SDK client owns the handshake; would only become public if the SDK ever exposed the raw schema surface to consumers without a connection wrapper.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0
@@ -127,7 +127,7 @@ public final class ServerRpc {
     }
 
     /**
-     * Invokes {@code registerExtensionLaunchProvider}.
+     * Registers the calling SDK client as the per-entrypoint extension launch provider. Call before creating any sessions. When omitted, the runtime uses its built-in extension launcher.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0

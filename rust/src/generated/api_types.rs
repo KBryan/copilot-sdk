@@ -541,6 +541,8 @@ pub mod rpc_methods {
     pub const SESSION_SKILLS_ENSURELOADED: &str = "session.skills.ensureLoaded";
     /// `session.mcp.list`
     pub const SESSION_MCP_LIST: &str = "session.mcp.list";
+    /// `session.mcp.listConfigured`
+    pub const SESSION_MCP_LISTCONFIGURED: &str = "session.mcp.listConfigured";
     /// `session.mcp.listTools`
     pub const SESSION_MCP_LISTTOOLS: &str = "session.mcp.listTools";
     /// `session.mcp.enable`
@@ -1608,6 +1610,25 @@ pub struct UserAuthInfo {
     pub login: String,
     /// OAuth user authentication. The token itself is held in the runtime's secret token store (keyed by host+login) and is NOT carried in this struct.
     pub r#type: UserAuthInfoType,
+}
+
+/// An interactive account whose model provider owns its credentials. It carries no GitHub credential.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountAuthInfo {
+    /// Host coordinate owned by the account's model provider.
+    pub host: String,
+    /// Login identifying the provider-owned account.
+    pub login: String,
+    /// Provider-owned account authentication.
+    pub r#type: AccountAuthInfoType,
 }
 
 /// Authentication-info input variant for GitHub CLI credentials, carrying host, login, and the `gh auth token` value.
@@ -3008,6 +3029,27 @@ pub struct AuthIdentityMetadata {
     pub r#type: AuthInfoType,
 }
 
+/// A credential-free account choice after sign-in.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthLoginAccount {
+    /// Host coordinate owned by the selected account's provider.
+    pub host: String,
+    /// Provider kind that owns this account choice.
+    pub kind: AccountKind,
+    /// Human-readable login for the account choice.
+    pub login: String,
+    /// Opaque identifier supplied to the next login step to select this account.
+    pub selection_id: String,
+}
+
 /// Advance an in-flight login flow, optionally fulfilling an input-required step.
 ///
 /// <div class="warning">
@@ -3101,7 +3143,7 @@ pub struct AuthLoginStepNeedsInteraction {
     pub kind: AuthLoginStepNeedsInteractionKind,
 }
 
-/// Terminal result of an interactive login flow.
+/// Result of an interactive login flow. Pending consent or account selection is not terminal.
 ///
 /// <div class="warning">
 ///
@@ -3112,13 +3154,16 @@ pub struct AuthLoginStepNeedsInteraction {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthLoginResultDto {
+    /// Available accounts when sign-in is awaiting account selection, ordered with Microsoft 365 first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accounts: Option<Vec<AuthLoginAccount>>,
     /// Host that was signed in, when completed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
     /// Login that was signed in, when completed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub login: Option<String>,
-    /// Terminal disposition of the login.
+    /// Current disposition of the login, including pending user decisions.
     pub status: AuthLoginResultStatus,
 }
 
@@ -3134,7 +3179,7 @@ pub struct AuthLoginResultDto {
 pub struct AuthLoginStepCompleted {
     /// Login flow step variant discriminator.
     pub kind: AuthLoginStepCompletedKind,
-    /// The terminal login result.
+    /// Login result. When status is needs-plaintext-consent or needs-account-selection, advance with the user's decision to continue.
     pub result: AuthLoginResultDto,
 }
 
@@ -11004,6 +11049,71 @@ pub struct McpConfigUpdateRequest {
     pub config: serde_json::Value,
     /// Name of the MCP server to update
     pub name: String,
+}
+
+/// Observational state for a matching already materialized MCP server.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpConfiguredServerState {
+    /// Observed connection error, when the materialized server failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Observed connection status. This is not a configuration or readiness guarantee.
+    pub status: McpServerStatus,
+}
+
+/// Effective MCP configuration entry. Configuration enablement is distinct from the optional live observation.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpConfiguredServer {
+    /// Human-readable display name supplied by configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Whether this configured server is enabled after session configuration and policy filtering.
+    pub enabled: bool,
+    /// Observed state from an already materialized matching server. Omitted when no live graph has this configured server; it never determines configuration enablement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live: Option<McpConfiguredServerState>,
+    /// Server name (config key)
+    pub name: String,
+    /// Configuration provenance: user, workspace, plugin, builtin, or managed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<McpServerSource>,
+    /// Plugin name that provided this server, when source is plugin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_plugin: Option<String>,
+    /// Plugin version that provided this server, when source is plugin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_plugin_version: Option<String>,
+}
+
+/// Effective MCP configuration with optional live observations from matching already materialized servers.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpConfiguredServerList {
+    /// Effective configured MCP servers.
+    pub servers: Vec<McpConfiguredServer>,
 }
 
 /// Credential-free authentication identity used to configure GitHub MCP.
@@ -32167,6 +32277,36 @@ pub struct SessionMcpListResult {
     pub servers: Vec<McpServer>,
 }
 
+/// Identifies the target session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpListConfiguredParams {
+    /// Target session identifier
+    pub session_id: SessionId,
+}
+
+/// Effective MCP configuration with optional live observations from matching already materialized servers.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpListConfiguredResult {
+    /// Effective configured MCP servers.
+    pub servers: Vec<McpConfiguredServer>,
+}
+
 /// Tools exposed by the connected MCP server. Throws when the server is not connected.
 ///
 /// <div class="warning">
@@ -36138,6 +36278,14 @@ pub enum UserAuthInfoType {
     User,
 }
 
+/// Provider-owned account authentication.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AccountAuthInfoType {
+    #[serde(rename = "account")]
+    #[default]
+    Account,
+}
+
 /// Authentication via the `gh` CLI's saved credentials.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GhCliAuthInfoType {
@@ -36171,6 +36319,7 @@ pub enum AuthInfo {
     TokenProvider(TokenProviderAuthInfo),
     CopilotApiToken(CopilotApiTokenAuthInfo),
     User(UserAuthInfo),
+    Account(AccountAuthInfo),
     GhCli(GhCliAuthInfo),
     ApiKey(ApiKeyAuthInfo),
 }
@@ -36877,6 +37026,9 @@ pub enum AuthInfoType {
     /// Authentication from an interactive user sign-in.
     #[serde(rename = "user")]
     User,
+    /// Authentication from a selected provider-owned account, without a GitHub credential.
+    #[serde(rename = "account")]
+    Account,
     /// Authentication delegated to the GitHub CLI.
     #[serde(rename = "gh-cli")]
     GhCli,
@@ -36938,7 +37090,7 @@ pub enum AuthLoginStepCompletedKind {
     Completed,
 }
 
-/// Terminal disposition of a login persistence attempt.
+/// Disposition of a login attempt, including pending user decisions.
 ///
 /// <div class="warning">
 ///
@@ -36948,12 +37100,15 @@ pub enum AuthLoginStepCompletedKind {
 /// </div>
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AuthLoginResultStatus {
-    /// The credential was persisted and the account is signed in.
+    /// The credential was persisted and the selected account is signed in.
     #[serde(rename = "completed")]
     Completed,
     /// Persistence needs explicit consent to store the token in plaintext.
     #[serde(rename = "needs-plaintext-consent")]
     NeedsPlaintextConsent,
+    /// Credentials are saved; select an account using a returned selectionId as advance input to complete sign-in.
+    #[serde(rename = "needs-account-selection")]
+    NeedsAccountSelection,
     /// The user declined plaintext persistence.
     #[serde(rename = "declined")]
     Declined,
@@ -44146,6 +44301,7 @@ pub enum SettableAuthInfo {
     Token(SettableTokenAuthInfo),
     CopilotApiToken(CopilotApiTokenAuthInfo),
     User(UserAuthInfo),
+    Account(AccountAuthInfo),
     GhCli(GhCliAuthInfo),
     ApiKey(ApiKeyAuthInfo),
 }

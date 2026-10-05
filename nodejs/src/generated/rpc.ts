@@ -31,6 +31,7 @@ export type AuthInfo =
   | TokenProviderAuthInfo
   | CopilotApiTokenAuthInfo
   | UserAuthInfo
+  | AccountAuthInfo
   | GhCliAuthInfo
   | ApiKeyAuthInfo;
 /**
@@ -416,6 +417,8 @@ export type AuthInfoType =
   | "env"
   /** Authentication from an interactive user sign-in. */
   | "user"
+  /** Authentication from a selected provider-owned account, without a GitHub credential. */
+  | "account"
   /** Authentication delegated to the GitHub CLI. */
   | "gh-cli"
   /** Authentication from an API key credential. */
@@ -484,17 +487,19 @@ export type AuthLoginStep =
       kind: "error";
     };
 /**
- * Terminal disposition of a login persistence attempt.
+ * Disposition of a login attempt, including pending user decisions.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "AuthLoginResultStatus".
  */
 /** @experimental */
 export type AuthLoginResultStatus =
-  /** The credential was persisted and the account is signed in. */
+  /** The credential was persisted and the selected account is signed in. */
   | "completed"
   /** Persistence needs explicit consent to store the token in plaintext. */
   | "needs-plaintext-consent"
+  /** Credentials are saved; select an account using a returned selectionId as advance input to complete sign-in. */
+  | "needs-account-selection"
   /** The user declined plaintext persistence. */
   | "declined";
 /**
@@ -5029,6 +5034,7 @@ export type SettableAuthInfo =
   | SettableTokenAuthInfo
   | CopilotApiTokenAuthInfo
   | UserAuthInfo
+  | AccountAuthInfo
   | GhCliAuthInfo
   | ApiKeyAuthInfo;
 /**
@@ -6774,6 +6780,27 @@ export interface UserAuthInfo {
   copilotUser?: CopilotUserResponse;
 }
 /**
+ * An interactive account whose model provider owns its credentials. It carries no GitHub credential.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AccountAuthInfo".
+ */
+/** @experimental */
+export interface AccountAuthInfo {
+  /**
+   * Provider-owned account authentication.
+   */
+  type: "account";
+  /**
+   * Host coordinate owned by the account's model provider.
+   */
+  host: string;
+  /**
+   * Login identifying the provider-owned account.
+   */
+  login: string;
+}
+/**
  * Authentication-info input variant for GitHub CLI credentials, carrying host, login, and the `gh auth token` value.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -7497,6 +7524,28 @@ export interface AuthIdentityMetadata {
   login: string;
 }
 /**
+ * A credential-free account choice after sign-in.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AuthLoginAccount".
+ */
+/** @experimental */
+export interface AuthLoginAccount {
+  /**
+   * Opaque identifier supplied to the next login step to select this account.
+   */
+  selectionId: string;
+  /**
+   * Host coordinate owned by the selected account's provider.
+   */
+  host: string;
+  /**
+   * Human-readable login for the account choice.
+   */
+  login: string;
+  kind: AccountKind;
+}
+/**
  * Advance an in-flight login flow, optionally fulfilling an input-required step.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -7538,7 +7587,7 @@ export interface AuthLoginBegun {
   step: AuthLoginStep;
 }
 /**
- * Terminal result of an interactive login flow.
+ * Result of an interactive login flow. Pending consent or account selection is not terminal.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "AuthLoginResultDto".
@@ -7554,6 +7603,10 @@ export interface AuthLoginResultDto {
    * Login that was signed in, when completed.
    */
   login?: string;
+  /**
+   * Available accounts when sign-in is awaiting account selection, ordered with Microsoft 365 first.
+   */
+  accounts?: AuthLoginAccount[];
 }
 /**
  * Cancel an in-flight login flow.
@@ -14774,6 +14827,64 @@ export interface McpConfigUpdateRequest {
    */
   name: string;
   config: McpSerializableServerConfig;
+}
+/**
+ * Effective MCP configuration entry. Configuration enablement is distinct from the optional live observation.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpConfiguredServer".
+ */
+/** @experimental */
+export interface McpConfiguredServer {
+  /**
+   * Server name (config key)
+   */
+  name: string;
+  /**
+   * Whether this configured server is enabled after session configuration and policy filtering.
+   */
+  enabled: boolean;
+  source?: McpServerSource;
+  /**
+   * Plugin name that provided this server, when source is plugin.
+   */
+  sourcePlugin?: string;
+  /**
+   * Plugin version that provided this server, when source is plugin.
+   */
+  sourcePluginVersion?: string;
+  /**
+   * Human-readable display name supplied by configuration.
+   */
+  displayName?: string;
+  live?: McpConfiguredServerState;
+}
+/**
+ * Observational state for a matching already materialized MCP server.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpConfiguredServerState".
+ */
+/** @experimental */
+export interface McpConfiguredServerState {
+  status: McpServerStatus;
+  /**
+   * Observed connection error, when the materialized server failed.
+   */
+  error?: string;
+}
+/**
+ * Effective MCP configuration with optional live observations from matching already materialized servers.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "McpConfiguredServerList".
+ */
+/** @experimental */
+export interface McpConfiguredServerList {
+  /**
+   * Effective configured MCP servers.
+   */
+  servers: McpConfiguredServer[];
 }
 /**
  * Credential-free authentication identity used to configure GitHub MCP.
@@ -32682,12 +32793,19 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
         /** @experimental */
         mcp: {
             /**
-             * Lists MCP servers configured for the session, their connection status, and host-level state. The host-level state (disabled/filtered servers, failed/needs-auth/pending connections, mcp3p policy, full config) is empty/zero when no MCP host has been initialized for the session.
+             * Lists materialized MCP servers and their connection status. Cache misses may start and wait for MCP servers.
              *
              * @returns MCP servers configured for the session, with their connection status and host-level state.
              */
             list: async (): Promise<McpServerList> =>
                 connection.sendRequest("session.mcp.list", { sessionId }),
+            /**
+             * Lists effective MCP configuration without starting, restarting, authenticating, or waiting for servers. An optional live observation is from an already materialized matching server; this is not a readiness guarantee.
+             *
+             * @returns Effective MCP configuration with optional live observations from matching already materialized servers.
+             */
+            listConfigured: async (): Promise<McpConfiguredServerList> =>
+                connection.sendRequest("session.mcp.listConfigured", { sessionId }),
             /**
              * Lists the tools exposed by a connected MCP server on this session's host. This performs a live `tools/list` request. Tool UI metadata is returned independently of whether MCP Apps rendering is enabled for the session.
              *

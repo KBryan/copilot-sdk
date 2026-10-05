@@ -2503,7 +2503,8 @@ public sealed partial class ClientSessionLifetimeTests
         using var subscription = session.On<SessionIdleEvent>(_ =>
         {
             entered.TrySetResult();
-            handlerFinished = release.Wait(TimeSpan.FromSeconds(5));
+            release.Wait();
+            handlerFinished = true;
         });
         var pending = session.SendAndWaitAsync(new MessageOptions { Prompt = "hello" });
         await WaitForRequestAsync(server, "session.send");

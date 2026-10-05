@@ -1309,6 +1309,7 @@ internal sealed class AccountGetQuotaRequest
 [JsonDerivedType(typeof(AuthInfoTokenProvider), "token-provider")]
 [JsonDerivedType(typeof(AuthInfoCopilotApiToken), "copilot-api-token")]
 [JsonDerivedType(typeof(AuthInfoUser), "user")]
+[JsonDerivedType(typeof(AuthInfoAccount), "account")]
 [JsonDerivedType(typeof(AuthInfoGhCli), "gh-cli")]
 [JsonDerivedType(typeof(AuthInfoApiKey), "api-key")]
 public partial class AuthInfo
@@ -1801,6 +1802,24 @@ public partial class AuthInfoUser : AuthInfo
     public required string Host { get; set; }
 
     /// <summary>OAuth user login.</summary>
+    [JsonPropertyName("login")]
+    public required string Login { get; set; }
+}
+
+/// <summary>An interactive account whose model provider owns its credentials. It carries no GitHub credential.</summary>
+/// <remarks>The <c>account</c> variant of <see cref="AuthInfo"/>.</remarks>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public partial class AuthInfoAccount : AuthInfo
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public override string Type => "account";
+
+    /// <summary>Host coordinate owned by the account's model provider.</summary>
+    [JsonPropertyName("host")]
+    public required string Host { get; set; }
+
+    /// <summary>Login identifying the provider-owned account.</summary>
     [JsonPropertyName("login")]
     public required string Login { get; set; }
 }
@@ -10298,6 +10317,7 @@ public sealed class SessionSetCredentialsResult
 [JsonDerivedType(typeof(SettableAuthInfoToken), "token")]
 [JsonDerivedType(typeof(SettableAuthInfoCopilotApiToken), "copilot-api-token")]
 [JsonDerivedType(typeof(SettableAuthInfoUser), "user")]
+[JsonDerivedType(typeof(SettableAuthInfoAccount), "account")]
 [JsonDerivedType(typeof(SettableAuthInfoGhCli), "gh-cli")]
 [JsonDerivedType(typeof(SettableAuthInfoApiKey), "api-key")]
 public partial class SettableAuthInfo
@@ -10424,6 +10444,24 @@ public partial class SettableAuthInfoUser : SettableAuthInfo
     public required string Host { get; set; }
 
     /// <summary>OAuth user login.</summary>
+    [JsonPropertyName("login")]
+    public required string Login { get; set; }
+}
+
+/// <summary>An interactive account whose model provider owns its credentials. It carries no GitHub credential.</summary>
+/// <remarks>The <c>account</c> variant of <see cref="SettableAuthInfo"/>.</remarks>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public partial class SettableAuthInfoAccount : SettableAuthInfo
+{
+    /// <inheritdoc />
+    [JsonIgnore]
+    public override string Type => "account";
+
+    /// <summary>Host coordinate owned by the account's model provider.</summary>
+    [JsonPropertyName("host")]
+    public required string Host { get; set; }
+
+    /// <summary>Login identifying the provider-owned account.</summary>
     [JsonPropertyName("login")]
     public required string Login { get; set; }
 }
@@ -11073,10 +11111,35 @@ public partial class AuthLoginStepNeedsInteraction : AuthLoginStep
     public override string Kind => "needs-interaction";
 }
 
-/// <summary>Terminal result of an interactive login flow.</summary>
+/// <summary>A credential-free account choice after sign-in.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class AuthLoginAccount
+{
+    /// <summary>Host coordinate owned by the selected account's provider.</summary>
+    [JsonPropertyName("host")]
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>Provider kind that owns this account choice.</summary>
+    [JsonPropertyName("kind")]
+    public AccountKind Kind { get; set; }
+
+    /// <summary>Human-readable login for the account choice.</summary>
+    [JsonPropertyName("login")]
+    public string Login { get; set; } = string.Empty;
+
+    /// <summary>Opaque identifier supplied to the next login step to select this account.</summary>
+    [JsonPropertyName("selectionId")]
+    public string SelectionId { get; set; } = string.Empty;
+}
+
+/// <summary>Result of an interactive login flow. Pending consent or account selection is not terminal.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class AuthLoginResultDto
 {
+    /// <summary>Available accounts when sign-in is awaiting account selection, ordered with Microsoft 365 first.</summary>
+    [JsonPropertyName("accounts")]
+    public IList<AuthLoginAccount>? Accounts { get; set; }
+
     /// <summary>Host that was signed in, when completed.</summary>
     [Url]
     [StringSyntax(StringSyntaxAttribute.Uri)]
@@ -11087,7 +11150,7 @@ public sealed class AuthLoginResultDto
     [JsonPropertyName("login")]
     public string? Login { get; set; }
 
-    /// <summary>Terminal disposition of the login.</summary>
+    /// <summary>Current disposition of the login, including pending user decisions.</summary>
     [JsonPropertyName("status")]
     public AuthLoginResultStatus Status { get; set; }
 }
@@ -11100,7 +11163,7 @@ public partial class AuthLoginStepCompleted : AuthLoginStep
     [JsonIgnore]
     public override string Kind => "completed";
 
-    /// <summary>The terminal login result.</summary>
+    /// <summary>Login result. When status is needs-plaintext-consent or needs-account-selection, advance with the user's decision to continue.</summary>
     [JsonPropertyName("result")]
     public required AuthLoginResultDto Result { get; set; }
 }
@@ -15609,6 +15672,73 @@ public sealed class McpServerList
 /// <summary>Identifies the target session.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class SessionMcpListRequest
+{
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>Observational state for a matching already materialized MCP server.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpConfiguredServerState
+{
+    /// <summary>Observed connection error, when the materialized server failed.</summary>
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    /// <summary>Observed connection status. This is not a configuration or readiness guarantee.</summary>
+    [JsonPropertyName("status")]
+    public McpServerStatus Status { get; set; }
+}
+
+/// <summary>Effective MCP configuration entry. Configuration enablement is distinct from the optional live observation.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpConfiguredServer
+{
+    /// <summary>Human-readable display name supplied by configuration.</summary>
+    [JsonPropertyName("displayName")]
+    public string? DisplayName { get; set; }
+
+    /// <summary>Whether this configured server is enabled after session configuration and policy filtering.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    /// <summary>Observed state from an already materialized matching server. Omitted when no live graph has this configured server; it never determines configuration enablement.</summary>
+    [JsonPropertyName("live")]
+    public McpConfiguredServerState? Live { get; set; }
+
+    /// <summary>Server name (config key).</summary>
+    [RegularExpression("^[^\\x00-\\x1f/\\x7f-\\x9f}]+(?:\\/[^\\x00-\\x1f/\\x7f-\\x9f}]+)*$")]
+    [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Safe for generated string properties: JSON Schema minLength/maxLength map to string length validation, not reflection over trimmed Count members")]
+    [MinLength(1)]
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Configuration provenance: user, workspace, plugin, builtin, or managed.</summary>
+    [JsonPropertyName("source")]
+    public McpServerSource? Source { get; set; }
+
+    /// <summary>Plugin name that provided this server, when source is plugin.</summary>
+    [JsonPropertyName("sourcePlugin")]
+    public string? SourcePlugin { get; set; }
+
+    /// <summary>Plugin version that provided this server, when source is plugin.</summary>
+    [JsonPropertyName("sourcePluginVersion")]
+    public string? SourcePluginVersion { get; set; }
+}
+
+/// <summary>Effective MCP configuration with optional live observations from matching already materialized servers.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class McpConfiguredServerList
+{
+    /// <summary>Effective configured MCP servers.</summary>
+    [JsonPropertyName("servers")]
+    public IList<McpConfiguredServer> Servers { get => field ??= []; set; }
+}
+
+/// <summary>Identifies the target session.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class SessionMcpListConfiguredRequest
 {
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -34246,6 +34376,9 @@ public readonly struct AuthInfoType : IEquatable<AuthInfoType>
     /// <summary>Authentication from an interactive user sign-in.</summary>
     public static AuthInfoType User { get; } = new("user");
 
+    /// <summary>Authentication from a selected provider-owned account, without a GitHub credential.</summary>
+    public static AuthInfoType Account { get; } = new("account");
+
     /// <summary>Authentication delegated to the GitHub CLI.</summary>
     public static AuthInfoType GhCli { get; } = new("gh-cli");
 
@@ -34436,7 +34569,7 @@ public readonly struct LoginProviderKind : IEquatable<LoginProviderKind>
 }
 
 
-/// <summary>Terminal disposition of a login persistence attempt.</summary>
+/// <summary>Disposition of a login attempt, including pending user decisions.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
@@ -34456,11 +34589,14 @@ public readonly struct AuthLoginResultStatus : IEquatable<AuthLoginResultStatus>
     /// <summary>Gets the value associated with this <see cref="AuthLoginResultStatus"/>.</summary>
     public string Value => _value ?? string.Empty;
 
-    /// <summary>The credential was persisted and the account is signed in.</summary>
+    /// <summary>The credential was persisted and the selected account is signed in.</summary>
     public static AuthLoginResultStatus Completed { get; } = new("completed");
 
     /// <summary>Persistence needs explicit consent to store the token in plaintext.</summary>
     public static AuthLoginResultStatus NeedsPlaintextConsent { get; } = new("needs-plaintext-consent");
+
+    /// <summary>Credentials are saved; select an account using a returned selectionId as advance input to complete sign-in.</summary>
+    public static AuthLoginResultStatus NeedsAccountSelection { get; } = new("needs-account-selection");
 
     /// <summary>The user declined plaintext persistence.</summary>
     public static AuthLoginResultStatus Declined { get; } = new("declined");
@@ -46402,7 +46538,7 @@ public sealed class McpApi
         _session = session;
     }
 
-    /// <summary>Lists MCP servers configured for the session, their connection status, and host-level state. The host-level state (disabled/filtered servers, failed/needs-auth/pending connections, mcp3p policy, full config) is empty/zero when no MCP host has been initialized for the session.</summary>
+    /// <summary>Lists materialized MCP servers and their connection status. Cache misses may start and wait for MCP servers.</summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>MCP servers configured for the session, with their connection status and host-level state.</returns>
     public async Task<McpServerList> ListAsync(CancellationToken cancellationToken = default)
@@ -46411,6 +46547,17 @@ public sealed class McpApi
 
         var request = new SessionMcpListRequest { SessionId = _session.SessionId };
         return await CopilotClient.InvokeRpcAsync<McpServerList>(_session.Rpc, "session.mcp.list", [request], cancellationToken);
+    }
+
+    /// <summary>Lists effective MCP configuration without starting, restarting, authenticating, or waiting for servers. An optional live observation is from an already materialized matching server; this is not a readiness guarantee.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Effective MCP configuration with optional live observations from matching already materialized servers.</returns>
+    public async Task<McpConfiguredServerList> ListConfiguredAsync(CancellationToken cancellationToken = default)
+    {
+        _session.ThrowIfDisposed();
+
+        var request = new SessionMcpListConfiguredRequest { SessionId = _session.SessionId };
+        return await CopilotClient.InvokeRpcAsync<McpConfiguredServerList>(_session.Rpc, "session.mcp.listConfigured", [request], cancellationToken);
     }
 
     /// <summary>Lists the tools exposed by a connected MCP server on this session's host. This performs a live `tools/list` request. Tool UI metadata is returned independently of whether MCP Apps rendering is enabled for the session.</summary>
@@ -50543,6 +50690,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(AuthIdentity))]
 [JsonSerializable(typeof(AuthIdentityMetadata))]
 [JsonSerializable(typeof(AuthInfo))]
+[JsonSerializable(typeof(AuthLoginAccount))]
 [JsonSerializable(typeof(AuthLoginAdvanceRequest))]
 [JsonSerializable(typeof(AuthLoginBeginRequest))]
 [JsonSerializable(typeof(AuthLoginBegun))]
@@ -50832,6 +50980,9 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(McpConfigUpdateRequest))]
 [JsonSerializable(typeof(McpConfigureGitHubRequest))]
 [JsonSerializable(typeof(McpConfigureGitHubResult))]
+[JsonSerializable(typeof(McpConfiguredServer))]
+[JsonSerializable(typeof(McpConfiguredServerList))]
+[JsonSerializable(typeof(McpConfiguredServerState))]
 [JsonSerializable(typeof(McpDiagnosticDetails))]
 [JsonSerializable(typeof(McpDiagnosticSourceConfiguration))]
 [JsonSerializable(typeof(McpDisableRequest))]
@@ -51312,6 +51463,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(SessionLoadDeferredRepoHooksResult))]
 [JsonSerializable(typeof(SessionManagedSettingsGetRequest))]
 [JsonSerializable(typeof(SessionMcpAppsGetHostContextRequest))]
+[JsonSerializable(typeof(SessionMcpListConfiguredRequest))]
 [JsonSerializable(typeof(SessionMcpListRequest))]
 [JsonSerializable(typeof(SessionMcpMoveLoadingToBackgroundRequest))]
 [JsonSerializable(typeof(SessionMcpOauthCancelLoginRequest))]

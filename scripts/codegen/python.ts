@@ -308,10 +308,27 @@ export function pythonAppendLastFieldsPresentIn(
     definitions: Record<string, JSONSchema7Definition>,
     fields: ReadonlyArray<readonly [string, string]> = PY_RPC_APPEND_LAST_FIELDS
 ): ReadonlyArray<readonly [string, string]> {
-    return fields.filter(([className, propertyName]) => {
+    const result = fields.filter(([className, propertyName]) => {
         const definition = definitions[className];
         return typeof definition === "object" && Object.hasOwn(definition.properties ?? {}, propertyName);
     });
+    const seen = new Set(result.map(([className, propertyName]) => `${className}.${propertyName}`));
+
+    for (const [className, definition] of Object.entries(definitions)) {
+        if (typeof definition !== "object") continue;
+        for (const [propertyName, property] of Object.entries(definition.properties ?? {})) {
+            if (
+                typeof property !== "object" ||
+                property["x-copilot-sdk-append-last"] !== true ||
+                seen.has(`${className}.${propertyName}`)
+            ) {
+                continue;
+            }
+            result.push([className, propertyName]);
+        }
+    }
+
+    return result;
 }
 
 function preservePythonRpcStringDateFields(definitions: Record<string, JSONSchema7>): void {

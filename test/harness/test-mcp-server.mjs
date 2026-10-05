@@ -13,6 +13,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { existsSync } from "node:fs";
+import { setTimeout } from "node:timers/promises";
 import {
     GetPromptRequestSchema,
     ListPromptsRequestSchema,
@@ -105,6 +107,13 @@ server.tool(
 const transport = new StdioServerTransport();
 if (startupMarkerPath) {
     await appendFile(startupMarkerPath, `${serverName}\n`);
+}
+const startupGate = getArgument("--startup-gate");
+while (startupGate && !existsSync(startupGate)) {
+    await setTimeout(20);
+}
+if (process.argv.includes("--fail-startup")) {
+    throw new Error("MCP startup failed as requested by the test");
 }
 if (diagnosticStderr) {
     console.error(diagnosticStderr);

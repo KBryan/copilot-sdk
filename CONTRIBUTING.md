@@ -316,7 +316,12 @@ additional feature/acquisition choices documented in [rust/AGENTS.md](rust/AGENT
 
 ### Documentation checks
 
-API snippet validation is separate from SDK tests. From the SDK root:
+[SDK CI](.github/workflows/sdk.yml) validates Node.js, Python, Go, .NET, and Java
+API snippets after successful tests in their standard Linux jobs (JDK 25 for Java).
+These checks run on pull requests, pushes to `main`, and manual workflow runs,
+but not merge groups. A documentation failure fails the corresponding language job.
+
+To validate snippets without running SDK tests, run these commands from the SDK root:
 
 ```bash
 npm --prefix scripts/docs-validation ci
@@ -350,6 +355,12 @@ runs if the subprocess tests fail, and either failure fails the job. Java's
 macOS, Windows, and musl smoke jobs remain separate because they have no
 matching subprocess job. Merge groups retain the reduced Linux TypeScript
 CAPI subprocess coverage.
+
+The `sdk-typescript` required rollup checks only the Linux CAPI job, including
+its build, packaging, and applicable static checks. Other platforms, BYOK
+backends, and languages keep their existing scheduling and failure reporting;
+they do not gate this rollup. The full `SDK` aggregate still requires all
+scheduled coverage to succeed.
 
 The three BYOK backend sweeps run in separate Linux TypeScript jobs, alongside
 the normal CAPI job; they do not repeat unit tests, packaging, or static

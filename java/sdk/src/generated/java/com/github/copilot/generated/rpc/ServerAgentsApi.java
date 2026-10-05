@@ -27,7 +27,7 @@ public final class ServerAgentsApi {
     }
 
     /**
-     * Optional project paths to include in agent discovery.
+     * Discovers custom agents across user, project, plugin, and remote sources.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0
@@ -38,7 +38,7 @@ public final class ServerAgentsApi {
     }
 
     /**
-     * Optional project paths to include when enumerating agent discovery directories.
+     * Returns the canonical directories where a client may create custom agents that the runtime will recognize, including ones that do not exist yet. Project directories become active once created.
      *
      * @apiNote This method is experimental and may change in a future version.
      * @since 1.0.0

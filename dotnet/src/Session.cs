@@ -693,9 +693,9 @@ public sealed partial class CopilotSession : IAsyncDisposable
     /// are the same as the tools supplied when creating or resuming a session.
     /// </para>
     /// <para>
-    /// Tool handlers switch after the runtime accepts the replacement. Tool calls already running finish with the handlers
-    /// that started them. If the runtime rejects the replacement, the previous handlers remain installed and the exception is
-    /// propagated. Concurrent calls are applied in order.
+    /// Tool handlers switch when the runtime's acceptance response arrives, before subsequent tool requests are dispatched.
+    /// Tool calls already running finish with the handlers that started them. If the runtime rejects the replacement, the
+    /// previous handlers remain installed and the exception is propagated. Concurrent calls are applied in order.
     /// </para>
     /// <para>
     /// The agent sees the new tools from its next model request, which can fall within a turn in progress. A model request
@@ -714,9 +714,8 @@ public sealed partial class CopilotSession : IAsyncDisposable
         var wireTools = tools.Select(ToProtocolExternalToolDefinition).ToList();
         var handlers = BuildToolHandlerMap(tools);
 
-        // Cancelling while an earlier call holds the lock sends nothing. Once this call holds it, the
-        // request runs to completion even if the caller stops waiting, so an accepted replacement still
-        // installs its handlers.
+        // Cancelling before sending the request leaves handlers unchanged. Once sent, the request runs
+        // to completion even if the caller stops waiting, so an accepted replacement still installs its handlers.
         var replacement = ReplaceToolsAsync(wireTools, handlers, cancellationToken);
         try
         {
@@ -741,8 +740,13 @@ public sealed partial class CopilotSession : IAsyncDisposable
         await _setToolsLock.WaitAsync(lockCancellationToken);
         try
         {
-            await Rpc.Tools.SetAsync(wireTools, CancellationToken.None);
-            Volatile.Write(ref _toolHandlers, handlers);
+            // SemaphoreSlim can grant a released slot while its cancellation continuation is pending.
+            lockCancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
+            var request = new ToolsSetRequest { SessionId = SessionId, Tools = wireTools };
+            await CopilotClient.InvokeRpcAsync<ToolsSetResult>(
+                JsonRpc, "session.tools.set", [request], null, CancellationToken.None,
+                onResponseInline: _ => Volatile.Write(ref _toolHandlers, handlers));
         }
         finally
         {

@@ -300,6 +300,25 @@ describe("C# session event dispatch", () => {
 });
 
 describe("C# RPC codegen", () => {
+    it("emits parameterless MCP list methods", () => {
+        const code = generateRpcCode({
+            session: {
+                mcp: {
+                    list: {
+                        rpcMethod: "session.mcp.list",
+                        params: null,
+                    },
+                },
+            },
+        });
+        expect(code).toContain(
+            "public async Task ListAsync(CancellationToken cancellationToken = default)"
+        );
+        expect(code).not.toContain("ListWithParamsAsync");
+        expect(code).not.toContain("StartServers");
+        expect(code).toContain('"session.mcp.list"');
+    });
+
     it("preserves arbitrary JSON handoff settings instead of emitting an empty DTO", () => {
         const code = generateRpcCode({
             server: {

@@ -14260,7 +14260,7 @@ class McpServerStatus(Enum):
     PENDING = "pending"
     # The server is configured but disabled.
     DISABLED = "disabled"
-    # The server was intentionally stopped and can be restarted on demand when policy permits; a server quarantined by restrictive managed policy stays stopped and cannot be restarted until the policy allows it.
+    # The server is not running: it may not have started yet, may have been explicitly stopped, or may be quarantined by restrictive managed policy. It can be restarted on demand when policy permits.
     STOPPED = "stopped"
     # The server is not configured for this session.
     NOT_CONFIGURED = "not_configured"

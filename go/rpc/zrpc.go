@@ -1034,6 +1034,21 @@ func (r RawAuthInfoData) Type() AuthInfoType {
 	return r.Discriminator
 }
 
+// An interactive account whose model provider owns its credentials. It carries no GitHub
+// credential.
+// Experimental: AccountAuthInfo is part of an experimental API and may change or be removed.
+type AccountAuthInfo struct {
+	// Host coordinate owned by the account's model provider.
+	Host string `json:"host"`
+	// Login identifying the provider-owned account.
+	Login string `json:"login"`
+}
+
+func (AccountAuthInfo) authInfo() {}
+func (AccountAuthInfo) Type() AuthInfoType {
+	return AuthInfoTypeAccount
+}
+
 // Authentication-info input variant for API-key authentication to a non-GitHub LLM
 // provider, carrying the secret `apiKey` and host.
 // Experimental: APIKeyAuthInfo is part of an experimental API and may change or be removed.
@@ -1193,6 +1208,20 @@ func (UserAuthInfo) Type() AuthInfoType {
 	return AuthInfoTypeUser
 }
 
+// A credential-free account choice after sign-in.
+// Experimental: AuthLoginAccount is part of an experimental API and may change or be
+// removed.
+type AuthLoginAccount struct {
+	// Host coordinate owned by the selected account's provider.
+	Host string `json:"host"`
+	// Provider kind that owns this account choice.
+	Kind AccountKind `json:"kind"`
+	// Human-readable login for the account choice.
+	Login string `json:"login"`
+	// Opaque identifier supplied to the next login step to select this account.
+	SelectionID string `json:"selectionId"`
+}
+
 // Advance an in-flight login flow, optionally fulfilling an input-required step.
 // Experimental: AuthLoginAdvanceRequest is part of an experimental API and may change or be
 // removed.
@@ -1229,15 +1258,18 @@ type AuthLoginCancelRequest struct {
 	FlowID string `json:"flowId"`
 }
 
-// Terminal result of an interactive login flow.
+// Result of an interactive login flow. Pending consent or account selection is not terminal.
 // Experimental: AuthLoginResultDto is part of an experimental API and may change or be
 // removed.
 type AuthLoginResultDto struct {
+	// Available accounts when sign-in is awaiting account selection, ordered with Microsoft 365
+	// first.
+	Accounts []AuthLoginAccount `json:"accounts,omitzero"`
 	// Host that was signed in, when completed.
 	Host *string `json:"host,omitempty"`
 	// Login that was signed in, when completed.
 	Login *string `json:"login,omitempty"`
-	// Terminal disposition of the login.
+	// Current disposition of the login, including pending user decisions.
 	Status AuthLoginResultStatus `json:"status"`
 }
 
@@ -1271,7 +1303,8 @@ func (AuthLoginStepAwaiting) Kind() AuthLoginStepKind {
 }
 
 type AuthLoginStepCompleted struct {
-	// The terminal login result.
+	// Login result. When status is needs-plaintext-consent or needs-account-selection, advance
+	// with the user's decision to continue.
 	Result AuthLoginResultDto `json:"result"`
 }
 
@@ -6785,6 +6818,48 @@ type MCPConfigUpdateRequest struct {
 // Experimental: MCPConfigUpdateResult is part of an experimental API and may change or be
 // removed.
 type MCPConfigUpdateResult struct {
+}
+
+// Effective MCP configuration entry. Configuration enablement is distinct from the optional
+// live observation.
+// Experimental: MCPConfiguredServer is part of an experimental API and may change or be
+// removed.
+type MCPConfiguredServer struct {
+	// Human-readable display name supplied by configuration.
+	DisplayName *string `json:"displayName,omitempty"`
+	// Whether this configured server is enabled after session configuration and policy
+	// filtering.
+	Enabled bool `json:"enabled"`
+	// Observed state from an already materialized matching server. Omitted when no live graph
+	// has this configured server; it never determines configuration enablement.
+	Live *MCPConfiguredServerState `json:"live,omitempty"`
+	// Server name (config key)
+	Name string `json:"name"`
+	// Configuration provenance: user, workspace, plugin, builtin, or managed.
+	Source *MCPServerSource `json:"source,omitempty"`
+	// Plugin name that provided this server, when source is plugin.
+	SourcePlugin *string `json:"sourcePlugin,omitempty"`
+	// Plugin version that provided this server, when source is plugin.
+	SourcePluginVersion *string `json:"sourcePluginVersion,omitempty"`
+}
+
+// Effective MCP configuration with optional live observations from matching already
+// materialized servers.
+// Experimental: MCPConfiguredServerList is part of an experimental API and may change or be
+// removed.
+type MCPConfiguredServerList struct {
+	// Effective configured MCP servers.
+	Servers []MCPConfiguredServer `json:"servers"`
+}
+
+// Observational state for a matching already materialized MCP server.
+// Experimental: MCPConfiguredServerState is part of an experimental API and may change or
+// be removed.
+type MCPConfiguredServerState struct {
+	// Observed connection error, when the materialized server failed.
+	Error *string `json:"error,omitempty"`
+	// Observed connection status. This is not a configuration or readiness guarantee.
+	Status MCPServerStatus `json:"status"`
 }
 
 // Credential-free authentication identity used to configure GitHub MCP.
@@ -17146,6 +17221,10 @@ func (RawSettableAuthInfoData) settableAuthInfo() {}
 func (r RawSettableAuthInfoData) settableAuthInfoType() SettableAuthInfoType {
 	return r.Discriminator
 }
+func (AccountAuthInfo) settableAuthInfo() {}
+func (AccountAuthInfo) settableAuthInfoType() SettableAuthInfoType {
+	return SettableAuthInfoTypeAccount
+}
 func (APIKeyAuthInfo) settableAuthInfo() {}
 func (APIKeyAuthInfo) settableAuthInfoType() SettableAuthInfoType {
 	return SettableAuthInfoTypeAPIKey
@@ -21636,6 +21715,7 @@ const (
 type AuthInfoType string
 
 const (
+	AuthInfoTypeAccount         AuthInfoType = "account"
 	AuthInfoTypeAPIKey          AuthInfoType = "api-key"
 	AuthInfoTypeCopilotAPIToken AuthInfoType = "copilot-api-token"
 	AuthInfoTypeEnv             AuthInfoType = "env"
@@ -21646,16 +21726,19 @@ const (
 	AuthInfoTypeUser            AuthInfoType = "user"
 )
 
-// Terminal disposition of a login persistence attempt.
+// Disposition of a login attempt, including pending user decisions.
 // Experimental: AuthLoginResultStatus is part of an experimental API and may change or be
 // removed.
 type AuthLoginResultStatus string
 
 const (
-	// The credential was persisted and the account is signed in.
+	// The credential was persisted and the selected account is signed in.
 	AuthLoginResultStatusCompleted AuthLoginResultStatus = "completed"
 	// The user declined plaintext persistence.
 	AuthLoginResultStatusDeclined AuthLoginResultStatus = "declined"
+	// Credentials are saved; select an account using a returned selectionId as advance input to
+	// complete sign-in.
+	AuthLoginResultStatusNeedsAccountSelection AuthLoginResultStatus = "needs-account-selection"
 	// Persistence needs explicit consent to store the token in plaintext.
 	AuthLoginResultStatusNeedsPlaintextConsent AuthLoginResultStatus = "needs-plaintext-consent"
 )
@@ -25572,6 +25655,7 @@ const (
 type SettableAuthInfoType string
 
 const (
+	SettableAuthInfoTypeAccount         SettableAuthInfoType = "account"
 	SettableAuthInfoTypeAPIKey          SettableAuthInfoType = "api-key"
 	SettableAuthInfoTypeCopilotAPIToken SettableAuthInfoType = "copilot-api-token"
 	SettableAuthInfoTypeEnv             SettableAuthInfoType = "env"
@@ -31295,10 +31379,8 @@ func (a *MCPAPI) IsServerRunning(ctx context.Context, params *MCPIsServerRunning
 	return &result, nil
 }
 
-// Lists MCP servers configured for the session, their connection status, and host-level
-// state. The host-level state (disabled/filtered servers, failed/needs-auth/pending
-// connections, mcp3p policy, full config) is empty/zero when no MCP host has been
-// initialized for the session.
+// Lists materialized MCP servers and their connection status. Cache misses may start and
+// wait for MCP servers.
 //
 // RPC method: session.mcp.list.
 //
@@ -31311,6 +31393,27 @@ func (a *MCPAPI) List(ctx context.Context) (*MCPServerList, error) {
 		return nil, err
 	}
 	var result MCPServerList
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListConfigured lists effective MCP configuration without starting, restarting,
+// authenticating, or waiting for servers. An optional live observation is from an already
+// materialized matching server; this is not a readiness guarantee.
+//
+// RPC method: session.mcp.listConfigured.
+//
+// Returns: Effective MCP configuration with optional live observations from matching
+// already materialized servers.
+func (a *MCPAPI) ListConfigured(ctx context.Context) (*MCPConfiguredServerList, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	raw, err := a.client.Request(ctx, "session.mcp.listConfigured", req)
+	if err != nil {
+		return nil, err
+	}
+	var result MCPConfiguredServerList
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, err
 	}

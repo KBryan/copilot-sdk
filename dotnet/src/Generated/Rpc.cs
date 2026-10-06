@@ -879,6 +879,10 @@ public sealed class Model
     [JsonPropertyName("supportedReasoningEfforts")]
     public IList<string>? SupportedReasoningEfforts { get; set; }
 
+    /// <summary>Model vendor as the Copilot API reports it, for example "Anthropic" or "Azure OpenAI". Open vocabulary, passed through unchanged. It can name the vendor that serves the model instead of the one that built it, or a label that is not a vendor, such as "Experimental". Absent when the Copilot API reports no vendor.</summary>
+    [JsonPropertyName("vendor")]
+    public string? Vendor { get; set; }
+
     /// <summary>Warnings the service published for this model, such as a deprecated client version. Present only when the service published at least one warning. The model remains usable; hosts should surface these as advisory rather than blocking.</summary>
     [JsonPropertyName("warningMessages")]
     public IList<ModelMessage>? WarningMessages { get; set; }
@@ -7009,6 +7013,179 @@ internal sealed class InstructionsGetDiscoveryPathsRequest
     public IList<string>? ProjectPaths { get; set; }
 }
 
+/// <summary>Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class InstalledPlugin
+{
+    /// <summary>Path where the plugin is cached locally.</summary>
+    [JsonPropertyName("cache_path")]
+    public string? CachePath { get; set; }
+
+    /// <summary>Whether the plugin is currently enabled.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    /// <summary>Installation timestamp.</summary>
+    [JsonPropertyName("installed_at")]
+    public string InstalledAt { get; set; } = string.Empty;
+
+    /// <summary>Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.</summary>
+    [JsonPropertyName("installed_from")]
+    public string? InstalledFrom { get; set; }
+
+    /// <summary>Marketplace the plugin came from (empty string for direct repo installs).</summary>
+    [JsonPropertyName("marketplace")]
+    public string Marketplace { get; set; } = string.Empty;
+
+    /// <summary>Plugin name.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Source for direct repo installs (when marketplace is empty).</summary>
+    [JsonPropertyName("source")]
+    public JsonElement? Source { get; set; }
+
+    /// <summary>Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.</summary>
+    [JsonPropertyName("source_sha")]
+    public string? SourceSha { get; set; }
+
+    /// <summary>Version installed (if available).</summary>
+    [JsonPropertyName("version")]
+    public string? Version { get; set; }
+}
+
+/// <summary>An account the host has signed in to, identified by the server it lives on and the login it uses there. The same person can appear more than once when they use both github.com and an Enterprise server.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class LoggedInUser
+{
+    /// <summary>Source account this account was derived from, when one was recorded.</summary>
+    [JsonPropertyName("derivedFrom")]
+    public string? DerivedFrom { get; set; }
+
+    /// <summary>Host the account belongs to, such as `github.com` or an Enterprise server.</summary>
+    [JsonPropertyName("host")]
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>Account kind, when the host recorded one. Consumers must tolerate new strings.</summary>
+    [JsonPropertyName("kind")]
+    public string? Kind { get; set; }
+
+    /// <summary>Account login on that host.</summary>
+    [JsonPropertyName("login")]
+    public string Login { get; set; } = string.Empty;
+}
+
+/// <summary>The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class GlobalStateLoadResult
+{
+    /// <summary>Whether the user has answered the prompt suggesting they install the desktop app.</summary>
+    [JsonPropertyName("appInstallNudgeResponded")]
+    public bool? AppInstallNudgeResponded { get; set; }
+
+    /// <summary>Whether the app tip has been shown.</summary>
+    [JsonPropertyName("appTipShown")]
+    public bool? AppTipShown { get; set; }
+
+    /// <summary>Terminals the user has already been asked to set up, so the host does not ask twice.</summary>
+    [JsonPropertyName("askedSetupTerminals")]
+    public IList<string>? AskedSetupTerminals { get; set; }
+
+    /// <summary>When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the once-per-day cap for non-staff users across restarts.</summary>
+    [JsonPropertyName("autoFeedbackLastPromptedAt")]
+    public string? AutoFeedbackLastPromptedAt { get; set; }
+
+    /// <summary>When the host first ran on this machine.</summary>
+    [JsonPropertyName("firstLaunchAt")]
+    public string? FirstLaunchAt { get; set; }
+
+    /// <summary>Plugins installed on this machine.</summary>
+    [JsonPropertyName("installedPlugins")]
+    public IList<InstalledPlugin>? InstalledPlugins { get; set; }
+
+    /// <summary>Account used for the most recent sign-in.</summary>
+    [JsonPropertyName("lastLoggedInUser")]
+    public LoggedInUser? LastLoggedInUser { get; set; }
+
+    /// <summary>Every account the host has signed in to on this machine.</summary>
+    [JsonPropertyName("loggedInUsers")]
+    public IList<LoggedInUser>? LoggedInUsers { get; set; }
+
+    /// <summary>Whether the one-off cleanup of stored reasoning summaries has run.</summary>
+    [JsonPropertyName("reasoningSummariesCleanupDone")]
+    public bool? ReasoningSummariesCleanupDone { get; set; }
+
+    /// <summary>Models the user selected recently, most recent first.</summary>
+    [JsonPropertyName("recentModelIds")]
+    public IList<string>? RecentModelIds { get; set; }
+
+    /// <summary>Whether the user declined to trust the sandbox credential proxy CA.</summary>
+    [JsonPropertyName("sandboxCredentialProxyCaDeclined")]
+    public bool? SandboxCredentialProxyCaDeclined { get; set; }
+
+    /// <summary>Whether the sandbox onboarding has been shown.</summary>
+    [JsonPropertyName("sandboxOnboardingShown")]
+    public bool? SandboxOnboardingShown { get; set; }
+
+    /// <summary>Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only behavior.</summary>
+    [JsonPropertyName("staff")]
+    public bool? Staff { get; set; }
+
+    /// <summary>Whether the user was recognized as GitHub staff.</summary>
+    [JsonPropertyName("staffGithub")]
+    public bool? StaffGitHub { get; set; }
+
+    /// <summary>When the staff-only log level migration last ran.</summary>
+    [JsonPropertyName("staffLogLevelMigrationAt")]
+    public string? StaffLogLevelMigrationAt { get; set; }
+
+    /// <summary>Whether the user was recognized as Microsoft staff.</summary>
+    [JsonPropertyName("staffMicrosoft")]
+    public bool? StaffMicrosoft { get; set; }
+
+    /// <summary>When the staff-only model reset last ran.</summary>
+    [JsonPropertyName("staffModelResetAt")]
+    public string? StaffModelResetAt { get; set; }
+
+    /// <summary>When the staff-only update channel migration last ran.</summary>
+    [JsonPropertyName("staffUpdateChannelMigrationAt")]
+    public string? StaffUpdateChannelMigrationAt { get; set; }
+
+    /// <summary>Folders where the user declined the init prompt, so it stays hidden there.</summary>
+    [JsonPropertyName("suppressInitFolders")]
+    public IList<string>? SuppressInitFolders { get; set; }
+
+    /// <summary>Folders the user has marked as trusted.</summary>
+    [JsonPropertyName("trustedFolders")]
+    public IList<string>? TrustedFolders { get; set; }
+}
+
+/// <summary>Selects the configuration directory whose machine-wide state to read.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class GlobalStateLoadForConfigDirRequest
+{
+    /// <summary>Copilot configuration directory to read the state document from, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to read the directory the server resolved for itself.</summary>
+    [JsonPropertyName("configDir")]
+    public string? ConfigDir { get; set; }
+}
+
+/// <summary>A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class GlobalStateWriteKeyRequest
+{
+    /// <summary>Copilot configuration directory to write the state document in, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to write the directory the server resolved for itself. Mirrors `globalState.loadForConfigDir`, so a caller can read and write the same directory.</summary>
+    [JsonPropertyName("configDir")]
+    public string? ConfigDir { get; set; }
+
+    /// <summary>Top-level key to write, named as it appears in the result of `globalState.load`. It must be one of the writable keys that `globalState.writeKey` lists.</summary>
+    [JsonPropertyName("key")]
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>Value to store for the key. Omit it, or pass null, to remove the key instead.</summary>
+    [JsonPropertyName("value")]
+    public JsonElement? Value { get; set; }
+}
+
 /// <summary>A literal choice the command input accepts, with a human-facing description.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SlashCommandInputChoice
@@ -7110,22 +7287,13 @@ public sealed class UserSettingMetadata
     public JsonElement Value { get; set; }
 }
 
-/// <summary>Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.</summary>
+/// <summary>Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class UserSettingsGetResult
 {
     /// <summary>Every known user setting keyed by setting name, each with its effective value, default, and whether it is at the default.</summary>
     [JsonPropertyName("settings")]
     public IDictionary<string, UserSettingMetadata> Settings { get => field ??= new Dictionary<string, UserSettingMetadata>(); set; }
-}
-
-/// <summary>Outcome of writing user settings.</summary>
-[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-public sealed class UserSettingsSetResult
-{
-    /// <summary>Top-level keys whose write landed in settings.json but is shadowed by a value still present in the legacy config.json (config.json wins on read). The write does not take effect until the legacy value is removed.</summary>
-    [JsonPropertyName("shadowedKeys")]
-    public IList<string> ShadowedKeys { get => field ??= []; set; }
 }
 
 /// <summary>Partial user settings to write to settings.json. Each top-level key is written individually, replacing the existing value; a key whose value is null is removed.</summary>
@@ -8825,47 +8993,6 @@ internal sealed class SessionsLoadDeferredRepoHooksRequest
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SessionsSetAdditionalPluginsResult
 {
-}
-
-/// <summary>Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.</summary>
-[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-public sealed class InstalledPlugin
-{
-    /// <summary>Path where the plugin is cached locally.</summary>
-    [JsonPropertyName("cache_path")]
-    public string? CachePath { get; set; }
-
-    /// <summary>Whether the plugin is currently enabled.</summary>
-    [JsonPropertyName("enabled")]
-    public bool Enabled { get; set; }
-
-    /// <summary>Installation timestamp.</summary>
-    [JsonPropertyName("installed_at")]
-    public string InstalledAt { get; set; } = string.Empty;
-
-    /// <summary>Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.</summary>
-    [JsonPropertyName("installed_from")]
-    public string? InstalledFrom { get; set; }
-
-    /// <summary>Marketplace the plugin came from (empty string for direct repo installs).</summary>
-    [JsonPropertyName("marketplace")]
-    public string Marketplace { get; set; } = string.Empty;
-
-    /// <summary>Plugin name.</summary>
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    /// <summary>Source for direct repo installs (when marketplace is empty).</summary>
-    [JsonPropertyName("source")]
-    public JsonElement? Source { get; set; }
-
-    /// <summary>Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.</summary>
-    [JsonPropertyName("source_sha")]
-    public string? SourceSha { get; set; }
-
-    /// <summary>Version installed (if available).</summary>
-    [JsonPropertyName("version")]
-    public string? Version { get; set; }
 }
 
 /// <summary>Manager-wide additional plugins to register; replaces any previously-configured set.</summary>
@@ -11426,6 +11553,11 @@ public partial class AuthReadValueActiveAccount : AuthReadValue
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("account")]
     public AccountStatus? Account { get; set; }
+
+    /// <summary>Credential-free identity metadata for the active account, including resolved Copilot user information when available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("authInfo")]
+    public AuthIdentity? AuthInfo { get; set; }
 }
 
 /// <summary>Neutral authentication status summary.</summary>
@@ -16264,6 +16396,10 @@ public sealed class McpServer
     /// <summary>Connection status: connected, failed, needs-auth, pending, disabled, stopped, or not_configured.</summary>
     [JsonPropertyName("status")]
     public McpServerStatus Status { get; set; }
+
+    /// <summary>Configured URL for an HTTP/SSE server, regardless of configuration source. Omitted for local and in-memory servers.</summary>
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
 }
 
 /// <summary>MCP servers configured for the session, with their connection status and host-level state.</summary>
@@ -23689,7 +23825,7 @@ internal sealed class SessionMetadataActivityRequest
 /// <summary>Token-usage breakdown for the session's current context window.</summary>
 public sealed class MetadataContextInfoResultContextInfo
 {
-    /// <summary>Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%).</summary>
+    /// <summary>Output reservation overlapping the displayed prompt allowance plus tokens after the effective input budget's buffer-exhaustion blocking threshold (default 95%).</summary>
     [JsonPropertyName("bufferTokens")]
     public long BufferTokens { get; set; }
 
@@ -23701,7 +23837,7 @@ public sealed class MetadataContextInfoResultContextInfo
     [JsonPropertyName("conversationTokens")]
     public long ConversationTokens { get; set; }
 
-    /// <summary>Prompt token limit plus the model's full output token limit.</summary>
+    /// <summary>Advertised prompt allowance for the selected context tier, without adding output tokens. The denominator for context-usage displays.</summary>
     [JsonPropertyName("limit")]
     public long Limit { get; set; }
 
@@ -23713,7 +23849,7 @@ public sealed class MetadataContextInfoResultContextInfo
     [JsonPropertyName("modelName")]
     public string ModelName { get; set; } = string.Empty;
 
-    /// <summary>Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified).</summary>
+    /// <summary>Effective input budget: the selected tier's prompt allowance bounded by the combined context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when limits are unspecified.</summary>
     [JsonPropertyName("promptTokenLimit")]
     public long PromptTokenLimit { get; set; }
 
@@ -23743,11 +23879,11 @@ public sealed class MetadataContextInfoResult
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class MetadataContextInfoRequest
 {
-    /// <summary>Maximum output tokens allowed by the target model. Pass 0 if unknown.</summary>
+    /// <summary>Requested output allowance to reserve against the combined context ceiling. Pass 0 to resolve the session's request cap, falling back to the model's advertised output limit.</summary>
     [JsonPropertyName("outputTokenLimit")]
     public long OutputTokenLimit { get; set; }
 
-    /// <summary>Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default.</summary>
+    /// <summary>Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from the session.</summary>
     [JsonPropertyName("promptTokenLimit")]
     public long PromptTokenLimit { get; set; }
 
@@ -23763,7 +23899,7 @@ internal sealed class MetadataContextInfoRequest
 /// <summary>The six normalized `/context` header buckets, computed from the same tokenization as `entries` so the two never disagree. Convenience rollups: `freeSpace` and `buffer` describe window capacity rather than occupied context, so the values do not sum to `totalTokens`.</summary>
 public sealed class MetadataContextAttributionResultContextAttributionCategories
 {
-    /// <summary>Output reserve plus post-blocking-threshold buffer.</summary>
+    /// <summary>Overlapping output reservation plus post-blocking-threshold buffer.</summary>
     [JsonPropertyName("buffer")]
     public long Buffer { get; set; }
 
@@ -23831,7 +23967,7 @@ public sealed class MetadataContextAttributionResultContextAttributionEntry
 /// <summary>Per-source token attribution snapshot for the current context window. The heaviest individual messages are available separately via `metadata.getContextHeaviestMessages`.</summary>
 public sealed class MetadataContextAttributionResultContextAttribution
 {
-    /// <summary>Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.</summary>
+    /// <summary>Output reservation overlapping the displayed prompt allowance plus the tokens past the effective input budget's buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.</summary>
     [JsonPropertyName("bufferTokens")]
     public long BufferTokens { get; set; }
 
@@ -23851,7 +23987,7 @@ public sealed class MetadataContextAttributionResultContextAttribution
     [JsonPropertyName("entries")]
     public IList<MetadataContextAttributionResultContextAttributionEntry> Entries { get => field ??= []; set; }
 
-    /// <summary>Prompt limit plus the model's output reserve: the full context window `categories.freeSpace` and `categories.buffer` are measured against. Mirrors `SessionContextInfo.limit`.</summary>
+    /// <summary>Advertised prompt allowance for the selected context tier: the denominator for context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`. Mirrors `SessionContextInfo.limit`.</summary>
     [JsonPropertyName("limit")]
     public long Limit { get; set; }
 
@@ -23863,7 +23999,7 @@ public sealed class MetadataContextAttributionResultContextAttribution
     [JsonPropertyName("modelSource")]
     public string ModelSource { get; set; } = string.Empty;
 
-    /// <summary>Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k` context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.</summary>
+    /// <summary>Effective input budget after reserving requested output against the combined context ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.</summary>
     [JsonPropertyName("promptTokenLimit")]
     public long PromptTokenLimit { get; set; }
 
@@ -42855,6 +42991,12 @@ public sealed class ServerRpc
         Interlocked.CompareExchange(ref field, new(_rpc), null) ??
         field;
 
+    /// <summary>GlobalState APIs.</summary>
+    public ServerGlobalStateApi GlobalState =>
+        field ??
+        Interlocked.CompareExchange(ref field, new(_rpc), null) ??
+        field;
+
     /// <summary>Commands APIs.</summary>
     public ServerCommandsApi Commands =>
         field ??
@@ -44282,6 +44424,49 @@ public sealed class ServerInstructionsApi
     }
 }
 
+/// <summary>Provides server-scoped GlobalState APIs.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class ServerGlobalStateApi
+{
+    private readonly JsonRpc _rpc;
+
+    internal ServerGlobalStateApi(JsonRpc rpc)
+    {
+        _rpc = rpc;
+    }
+
+    /// <summary>Reads the host's machine-wide state: which plugins are installed and the one-off flags and timestamps that record what the user has already been shown or migrated. This is the state that outlives a single session and a single workspace, so a host reads it to decide whether to run a first-launch step, offer an onboarding prompt, or skip one it has already completed. The stored credentials are deliberately not part of this result; a caller that needs an authenticated identity asks the account methods for it instead. Reading is non-destructive and every field is optional, because a fresh install has recorded nothing yet.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.</returns>
+    internal async Task<GlobalStateLoadResult> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        return await CopilotClient.InvokeRpcAsync<GlobalStateLoadResult>(_rpc, "globalState.load", [], cancellationToken);
+    }
+
+    /// <summary>Reads the host's machine-wide state exactly as `globalState.load` does, but from a caller-supplied configuration directory instead of the one the server resolved for itself. Use this when a consumer scopes a session to its own Copilot home — the SDK's per-session `configDir` override — so the state read matches the directory that session actually uses. An absent or empty `configDir` resolves the server's own home, making this identical to `globalState.load`. The stored credentials are omitted here for the same reason they are omitted from `globalState.load`: a caller that needs an authenticated identity asks the account methods instead, so pointing this at another directory cannot be used to read the credentials kept in it.</summary>
+    /// <param name="configDir">Copilot configuration directory to read the state document from, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to read the directory the server resolved for itself.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.</returns>
+    internal async Task<GlobalStateLoadResult> LoadForConfigDirAsync(string? configDir = null, CancellationToken cancellationToken = default)
+    {
+        var request = new GlobalStateLoadForConfigDirRequest { ConfigDir = configDir };
+        return await CopilotClient.InvokeRpcAsync<GlobalStateLoadResult>(_rpc, "globalState.loadForConfigDir", [request], cancellationToken);
+    }
+
+    /// <summary>Records one top-level key in the host's machine-wide state, the counterpart to `globalState.load`. A host calls this to remember that it has shown an onboarding step, asked a one-off question, or completed a migration, so the next run can skip it. Only the named key is replaced and the rest of the document is preserved, which lets two writers record different flags without overwriting each other; passing no value removes the key instead. Only the keys a host records itself are writable: `appInstallNudgeResponded`, `appTipShown`, `askedSetupTerminals`, `autoFeedbackLastPromptedAt`, `firstLaunchAt`, `recentModelIds`, `sandboxCredentialProxyCaDeclined` and `sandboxOnboardingShown`. Every other key is refused, including `installedPlugins`, the stored credentials, `trustedFolders`, the staff flags and the signed-in accounts. Plugin enablement must use the plugin APIs, which apply repository and managed-policy checks.</summary>
+    /// <param name="key">Top-level key to write, named as it appears in the result of `globalState.load`. It must be one of the writable keys that `globalState.writeKey` lists.</param>
+    /// <param name="configDir">Copilot configuration directory to write the state document in, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to write the directory the server resolved for itself. Mirrors `globalState.loadForConfigDir`, so a caller can read and write the same directory.</param>
+    /// <param name="value">Value to store for the key. Omit it, or pass null, to remove the key instead.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    internal async Task WriteKeyAsync(string key, string? configDir = null, object? value = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+
+        var request = new GlobalStateWriteKeyRequest { Key = key, ConfigDir = configDir, Value = CopilotClient.ToJsonElementForWire(value) };
+        await CopilotClient.InvokeRpcAsync(_rpc, "globalState.writeKey", [request], cancellationToken);
+    }
+}
+
 /// <summary>Provides server-scoped Commands APIs.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class ServerCommandsApi
@@ -44331,31 +44516,23 @@ public sealed class ServerUserSettingsApi
         _rpc = rpc;
     }
 
-    /// <summary>Drops this runtime process's in-memory user settings cache so the next settings read observes disk.</summary>
+    /// <summary>Lists every known user setting from settings.json, each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.</summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    public async Task ReloadAsync(CancellationToken cancellationToken = default)
-    {
-        await CopilotClient.InvokeRpcAsync(_rpc, "user.settings.reload", [], cancellationToken);
-    }
-
-    /// <summary>Lists every known user setting (settings.json overlaid with the legacy config.json, config.json wins), each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.</summary>
-    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.</returns>
+    /// <returns>Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.</returns>
     public async Task<UserSettingsGetResult> GetAsync(CancellationToken cancellationToken = default)
     {
         return await CopilotClient.InvokeRpcAsync<UserSettingsGetResult>(_rpc, "user.settings.get", [], cancellationToken);
     }
 
-    /// <summary>Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed. Returns the keys whose new value is shadowed by a legacy config.json entry (config.json wins on read), which the runtime leaves in place — such writes do not take effect until the legacy value is removed.</summary>
+    /// <summary>Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed.</summary>
     /// <param name="settings">Partial user settings to write, as a free-form object keyed by setting name.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>Outcome of writing user settings.</returns>
-    public async Task<UserSettingsSetResult> SetAsync(object settings, CancellationToken cancellationToken = default)
+    public async Task SetAsync(object settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         var request = new UserSettingsSetRequest { Settings = CopilotClient.ToJsonElementForWire(settings)!.Value };
-        return await CopilotClient.InvokeRpcAsync<UserSettingsSetResult>(_rpc, "user.settings.set", [request], cancellationToken);
+        await CopilotClient.InvokeRpcAsync(_rpc, "user.settings.set", [request], cancellationToken);
     }
 }
 
@@ -49752,8 +49929,8 @@ public sealed class MetadataApi
     }
 
     /// <summary>Returns the token breakdown for the session's current context window for a given model.</summary>
-    /// <param name="promptTokenLimit">Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default.</param>
-    /// <param name="outputTokenLimit">Maximum output tokens allowed by the target model. Pass 0 if unknown.</param>
+    /// <param name="promptTokenLimit">Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from the session.</param>
+    /// <param name="outputTokenLimit">Requested output allowance to reserve against the combined context ceiling. Pass 0 to resolve the session's request cap, falling back to the model's advertised output limit.</param>
     /// <param name="selectedModel">Model identifier used for tokenization. Omit to use the session default. Used both for token counting and to compute display values.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Token breakdown for the session's current context window, or null if uninitialized.</returns>
@@ -51834,6 +52011,9 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(GitRemoteRepository))]
 [JsonSerializable(typeof(GitReposFromRemotesRequest))]
 [JsonSerializable(typeof(GitReposFromRemotesResult))]
+[JsonSerializable(typeof(GlobalStateLoadForConfigDirRequest))]
+[JsonSerializable(typeof(GlobalStateLoadResult))]
+[JsonSerializable(typeof(GlobalStateWriteKeyRequest))]
 [JsonSerializable(typeof(HandlePendingToolCallRequest))]
 [JsonSerializable(typeof(HandlePendingToolCallResult))]
 [JsonSerializable(typeof(HistoryAbortManualCompactionResult))]
@@ -51907,6 +52087,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(LocalSessionMetadataValue))]
 [JsonSerializable(typeof(LogRequest))]
 [JsonSerializable(typeof(LogResult))]
+[JsonSerializable(typeof(LoggedInUser))]
 [JsonSerializable(typeof(LspInitializeRequest))]
 [JsonSerializable(typeof(ManagedSettingMeta))]
 [JsonSerializable(typeof(ManagedSettingsComposeLayer))]
@@ -52719,7 +52900,6 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(UserSettingMetadata))]
 [JsonSerializable(typeof(UserSettingsGetResult))]
 [JsonSerializable(typeof(UserSettingsSetRequest))]
-[JsonSerializable(typeof(UserSettingsSetResult))]
 [JsonSerializable(typeof(VisibilityGetResult))]
 [JsonSerializable(typeof(VisibilitySetRequest))]
 [JsonSerializable(typeof(VisibilitySetResult))]

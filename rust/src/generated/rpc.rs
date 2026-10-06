@@ -99,6 +99,13 @@ impl<'a> ClientRpc<'a> {
         }
     }
 
+    /// `globalState.*` sub-namespace.
+    pub fn global_state(&self) -> ClientRpcGlobalState<'a> {
+        ClientRpcGlobalState {
+            client: self.client,
+        }
+    }
+
     /// `hooks.*` sub-namespace.
     pub fn hooks(&self) -> ClientRpcHooks<'a> {
         ClientRpcHooks {
@@ -1380,6 +1387,93 @@ impl<'a> ClientRpcGitHubRepository<'a> {
             .call(rpc_methods::GITHUBREPOSITORY_ATPATH, Some(wire_params))
             .await?;
         Ok(serde_json::from_value(_value)?)
+    }
+}
+
+/// `globalState.*` RPCs.
+#[derive(Clone, Copy)]
+pub struct ClientRpcGlobalState<'a> {
+    pub(crate) client: &'a Client,
+}
+
+impl<'a> ClientRpcGlobalState<'a> {
+    /// Reads the host's machine-wide state: which plugins are installed and the one-off flags and timestamps that record what the user has already been shown or migrated. This is the state that outlives a single session and a single workspace, so a host reads it to decide whether to run a first-launch step, offer an onboarding prompt, or skip one it has already completed. The stored credentials are deliberately not part of this result; a caller that needs an authenticated identity asks the account methods for it instead. Reading is non-destructive and every field is optional, because a fresh install has recorded nothing yet.
+    ///
+    /// Wire method: `globalState.load`.
+    ///
+    /// # Returns
+    ///
+    /// The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub(crate) async fn load(&self) -> Result<GlobalStateLoadResult, Error> {
+        let wire_params = serde_json::json!({});
+        let _value = self
+            .client
+            .call(rpc_methods::GLOBALSTATE_LOAD, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Reads the host's machine-wide state exactly as `globalState.load` does, but from a caller-supplied configuration directory instead of the one the server resolved for itself. Use this when a consumer scopes a session to its own Copilot home — the SDK's per-session `configDir` override — so the state read matches the directory that session actually uses. An absent or empty `configDir` resolves the server's own home, making this identical to `globalState.load`. The stored credentials are omitted here for the same reason they are omitted from `globalState.load`: a caller that needs an authenticated identity asks the account methods instead, so pointing this at another directory cannot be used to read the credentials kept in it.
+    ///
+    /// Wire method: `globalState.loadForConfigDir`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - Selects the configuration directory whose machine-wide state to read.
+    ///
+    /// # Returns
+    ///
+    /// The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub(crate) async fn load_for_config_dir(
+        &self,
+        params: GlobalStateLoadForConfigDirRequest,
+    ) -> Result<GlobalStateLoadResult, Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::GLOBALSTATE_LOADFORCONFIGDIR, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
+    }
+
+    /// Records one top-level key in the host's machine-wide state, the counterpart to `globalState.load`. A host calls this to remember that it has shown an onboarding step, asked a one-off question, or completed a migration, so the next run can skip it. Only the named key is replaced and the rest of the document is preserved, which lets two writers record different flags without overwriting each other; passing no value removes the key instead. Only the keys a host records itself are writable: `appInstallNudgeResponded`, `appTipShown`, `askedSetupTerminals`, `autoFeedbackLastPromptedAt`, `firstLaunchAt`, `recentModelIds`, `sandboxCredentialProxyCaDeclined` and `sandboxOnboardingShown`. Every other key is refused, including `installedPlugins`, the stored credentials, `trustedFolders`, the staff flags and the signed-in accounts. Plugin enablement must use the plugin APIs, which apply repository and managed-policy checks.
+    ///
+    /// Wire method: `globalState.writeKey`.
+    ///
+    /// # Parameters
+    ///
+    /// * `params` - A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub(crate) async fn write_key(&self, params: GlobalStateWriteKeyRequest) -> Result<(), Error> {
+        let wire_params = serde_json::to_value(params)?;
+        let _value = self
+            .client
+            .call(rpc_methods::GLOBALSTATE_WRITEKEY, Some(wire_params))
+            .await?;
+        Ok(())
     }
 }
 
@@ -4990,33 +5084,13 @@ pub struct ClientRpcUserSettings<'a> {
 }
 
 impl<'a> ClientRpcUserSettings<'a> {
-    /// Drops this runtime process's in-memory user settings cache so the next settings read observes disk.
-    ///
-    /// Wire method: `user.settings.reload`.
-    ///
-    /// <div class="warning">
-    ///
-    /// **Experimental.** This API is part of an experimental wire-protocol surface
-    /// and may change or be removed in future SDK or CLI releases. Pin both the
-    /// SDK and CLI versions if your code depends on it.
-    ///
-    /// </div>
-    pub async fn reload(&self) -> Result<(), Error> {
-        let wire_params = serde_json::json!({});
-        let _value = self
-            .client
-            .call(rpc_methods::USER_SETTINGS_RELOAD, Some(wire_params))
-            .await?;
-        Ok(())
-    }
-
-    /// Lists every known user setting (settings.json overlaid with the legacy config.json, config.json wins), each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.
+    /// Lists every known user setting from settings.json, each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.
     ///
     /// Wire method: `user.settings.get`.
     ///
     /// # Returns
     ///
-    /// Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.
+    /// Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.
     ///
     /// <div class="warning">
     ///
@@ -5034,17 +5108,13 @@ impl<'a> ClientRpcUserSettings<'a> {
         Ok(serde_json::from_value(_value)?)
     }
 
-    /// Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed. Returns the keys whose new value is shadowed by a legacy config.json entry (config.json wins on read), which the runtime leaves in place — such writes do not take effect until the legacy value is removed.
+    /// Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed.
     ///
     /// Wire method: `user.settings.set`.
     ///
     /// # Parameters
     ///
     /// * `params` - Partial user settings to write to settings.json. Each top-level key is written individually, replacing the existing value; a key whose value is null is removed.
-    ///
-    /// # Returns
-    ///
-    /// Outcome of writing user settings.
     ///
     /// <div class="warning">
     ///
@@ -5053,16 +5123,13 @@ impl<'a> ClientRpcUserSettings<'a> {
     /// SDK and CLI versions if your code depends on it.
     ///
     /// </div>
-    pub async fn set(
-        &self,
-        params: UserSettingsSetRequest,
-    ) -> Result<UserSettingsSetResult, Error> {
+    pub async fn set(&self, params: UserSettingsSetRequest) -> Result<(), Error> {
         let wire_params = serde_json::to_value(params)?;
         let _value = self
             .client
             .call(rpc_methods::USER_SETTINGS_SET, Some(wire_params))
             .await?;
-        Ok(serde_json::from_value(_value)?)
+        Ok(())
     }
 }
 

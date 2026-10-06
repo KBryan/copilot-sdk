@@ -99,9 +99,9 @@ jobs:
           retention-days: 7
 
   dotnet-darwin-arm64:
-    name: ".NET (macos-latest, default, CAPI)"
+    name: ".NET (macos-26-xlarge, default, CAPI)"
     if: inputs.platform == 'all' || inputs.platform == 'darwin-arm64'
-    runs-on: macos-latest
+    runs-on: macos-26-xlarge
     timeout-minutes: 30
     defaults:
       run:
@@ -147,7 +147,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: dotnet-test-diagnostics-macos-latest-default-capi-${{ github.run_attempt }}
+          name: dotnet-test-diagnostics-macos-26-xlarge-default-capi-${{ github.run_attempt }}
           path: ${{ inputs.sdk-home }}/dotnet/TestResults/
           if-no-files-found: warn
           retention-days: 7

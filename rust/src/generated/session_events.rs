@@ -9537,7 +9537,7 @@ pub enum AbortReason {
     Unknown,
 }
 
-/// Configuration source: user, workspace, plugin, builtin, or managed
+/// Configuration source: user, workspace, plugin, builtin, managed, or account
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum McpServerSource {
     /// Server configured in the user's global MCP configuration.
@@ -9555,6 +9555,9 @@ pub enum McpServerSource {
     /// Server supplied by a trusted host-managed catalog.
     #[serde(rename = "managed")]
     Managed,
+    /// Server contributed by a signed-in account; enablement and organization policy still apply.
+    #[serde(rename = "account")]
+    Account,
     /// Unknown variant for forward compatibility.
     #[default]
     #[serde(other)]

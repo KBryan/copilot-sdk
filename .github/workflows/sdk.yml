@@ -375,6 +375,26 @@ jobs:
       timeout-minutes: 60
     secrets: inherit
 
+  build-runtime-linuxmusl-arm64:
+    name: "Build runtime (linuxmusl-arm64)"
+    needs: detect-layout
+    if: github.event_name != 'merge_group'
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+    uses: ./.github/workflows/sdk-runtime-artifact.yml
+    with:
+      runtime-source: ${{ needs.detect-layout.outputs.runtime-source }}
+      sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
+      os: ubuntu-latest-xl
+      target: linuxmusl-arm64
+      artifact: Linux-ARM64-musl
+      bazel-config: e2e-no-lto
+      timeout-minutes: 60
+    secrets: inherit
+
   build-runtime-darwin-arm64:
     name: "Build runtime (darwin-arm64)"
     needs: detect-layout
@@ -388,7 +408,7 @@ jobs:
     with:
       runtime-source: ${{ needs.detect-layout.outputs.runtime-source }}
       sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
-      os: macos-latest-xlarge
+      os: macos-26-xlarge
       target: darwin-arm64
       artifact: macOS-ARM64
       bazel-config: e2e-no-lto
@@ -438,6 +458,16 @@ jobs:
       sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
     secrets: inherit
 
+  sdk-linuxmusl-arm64:
+    name: "Linux musl ARM64 (Java)"
+    needs: [detect-layout, build-runtime-linuxmusl-arm64]
+    if: github.event_name != 'merge_group'
+    uses: ./.github/workflows/sdk-java.yml
+    with:
+      platform: linuxmusl-arm64
+      sdk-home: ${{ needs.detect-layout.outputs.sdk-home }}
+    secrets: inherit
+
   sdk-darwin-arm64:
     name: "macOS ARM64"
     needs: [detect-layout, build-runtime-darwin-arm64]
@@ -463,13 +493,26 @@ jobs:
   sdk-typescript:
     name: sdk-typescript
     if: always()
-    needs: [sdk-linux-x64]
+    needs: [detect-sdk-changes, sdk-linux-x64]
     runs-on: ubuntu-slim
     steps:
       - name: Check Linux CAPI Node.js SDK result
         env:
+          DETECT_RESULT: ${{ needs.detect-sdk-changes.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_SDK_CHANGES: ${{ needs.detect-sdk-changes.outputs.has_sdk_changes }}
           RESULTS: ${{ toJSON(needs) }}
         run: |
+          linux_result=$(jq -r '.["sdk-linux-x64"].result' <<< "$RESULTS")
+          if [[ "$EVENT_NAME" == "pull_request" && "$DETECT_RESULT" == "success" && "$HAS_SDK_CHANGES" == "false" ]]; then
+            if [[ "$linux_result" != "skipped" ]]; then
+              echo "::error::Non-SDK pull request did not skip sdk-linux-x64: $linux_result"
+              exit 1
+            fi
+            echo "No SDK-impacting changes; Linux CAPI Node.js SDK job skipped"
+            exit 0
+          fi
+
           result=$(jq -r '.["sdk-linux-x64"].outputs["nodejs-capi-result"]' <<< "$RESULTS")
           if [[ "$result" != "success" ]]; then
             echo "::error::Linux CAPI Node.js SDK job: expected success, got $result"
@@ -561,11 +604,13 @@ jobs:
       - build-runtime-windows-x64-addons
       - build-runtime-linux-x64
       - build-runtime-linuxmusl-x64
+      - build-runtime-linuxmusl-arm64
       - build-runtime-darwin-arm64
       - build-runtime-win32-x64
       - detect-layout
       - sdk-linux-x64
       - sdk-linuxmusl-x64
+      - sdk-linuxmusl-arm64
       - sdk-darwin-arm64
       - sdk-win32-x64
       - check-freshness
@@ -606,9 +651,11 @@ jobs:
             skipped_jobs=(
               build-runtime-windows-x64-addons
               build-runtime-linuxmusl-x64
+              build-runtime-linuxmusl-arm64
               build-runtime-darwin-arm64
               build-runtime-win32-x64
               sdk-linuxmusl-x64
+              sdk-linuxmusl-arm64
               sdk-darwin-arm64
               sdk-win32-x64
             )

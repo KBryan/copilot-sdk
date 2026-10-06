@@ -4557,6 +4557,74 @@ class _GitReposFromRemotesRequest:
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
+# Internal: this type is an internal SDK API and is not part of the public surface.
+@dataclass
+class _GlobalStateLoadForConfigDirRequest:
+    """Selects the configuration directory whose machine-wide state to read."""
+
+    config_dir: str | None = None
+    """Copilot configuration directory to read the state document from, taking precedence over
+    the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to
+    read the directory the server resolved for itself.
+    """
+
+    @staticmethod
+    def from_dict(obj: Any) -> '_GlobalStateLoadForConfigDirRequest':
+        assert isinstance(obj, dict)
+        config_dir = from_union([from_str, from_none], obj.get("configDir"))
+        return _GlobalStateLoadForConfigDirRequest(config_dir)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        if self.config_dir is not None:
+            result["configDir"] = from_union([from_str, from_none], self.config_dir)
+        return result
+
+class InstalledPluginSourceURLSource(Enum):
+    GITHUB = "github"
+    LOCAL = "local"
+    URL = "url"
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+# Internal: this type is an internal SDK API and is not part of the public surface.
+@dataclass
+class _GlobalStateWriteKeyRequest:
+    """A single top-level key to record in the host's machine-wide state. The write replaces
+    only that key and leaves the rest of the document untouched, so two writers recording
+    different one-off flags do not overwrite each other. The stored credential keys cannot be
+    written through this method.
+    """
+    key: str
+    """Top-level key to write, named as it appears in the result of `globalState.load`. It must
+    be one of the writable keys that `globalState.writeKey` lists.
+    """
+    config_dir: str | None = None
+    """Copilot configuration directory to write the state document in, taking precedence over
+    the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to
+    write the directory the server resolved for itself. Mirrors
+    `globalState.loadForConfigDir`, so a caller can read and write the same directory.
+    """
+    value: Any = None
+    """Value to store for the key. Omit it, or pass null, to remove the key instead."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> '_GlobalStateWriteKeyRequest':
+        assert isinstance(obj, dict)
+        key = from_str(obj.get("key"))
+        config_dir = from_union([from_str, from_none], obj.get("configDir"))
+        value = obj.get("value")
+        return _GlobalStateWriteKeyRequest(key, config_dir, value)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["key"] = from_str(self.key)
+        if self.config_dir is not None:
+            result["configDir"] = from_union([from_str, from_none], self.config_dir)
+        if self.value is not None:
+            result["value"] = self.value
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class HandlePendingToolCallResult:
     """Indicates whether the external tool call result was handled successfully."""
@@ -5770,11 +5838,6 @@ class InstallationDecision(Enum):
     CANCEL = "cancel"
     CONFIRM = "confirm"
     DECLINE = "decline"
-
-class InstalledPluginSourceURLSource(Enum):
-    GITHUB = "github"
-    LOCAL = "local"
-    URL = "url"
 
 class PurpleSource(Enum):
     GITHUB = "github"
@@ -8338,7 +8401,7 @@ class Categories:
     `totalTokens`.
     """
     buffer: int
-    """Output reserve plus post-blocking-threshold buffer."""
+    """Overlapping output reservation plus post-blocking-threshold buffer."""
 
     custom_instructions: int
     """Custom-instructions tokens (0 when none are configured)."""
@@ -8478,8 +8541,9 @@ class SessionContextInfo:
     """Token-usage breakdown for the session's current context window"""
 
     buffer_tokens: int
-    """Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)"""
-
+    """Output reservation overlapping the displayed prompt allowance plus tokens after the
+    effective input budget's buffer-exhaustion blocking threshold (default 95%).
+    """
     compaction_threshold: int
     """Token count at which background compaction starts (configurable percentage of
     promptTokenLimit)
@@ -8488,8 +8552,9 @@ class SessionContextInfo:
     """Tokens consumed by user/assistant/tool messages"""
 
     limit: int
-    """Prompt token limit plus the model's full output token limit."""
-
+    """Advertised prompt allowance for the selected context tier, without adding output tokens.
+    The denominator for context-usage displays.
+    """
     mcp_tools_tokens: int
     """Tokens consumed by MCP tool definitions (subset of toolDefinitionsTokens, excludes
     deferred tools)
@@ -8498,8 +8563,10 @@ class SessionContextInfo:
     """The model used for token counting"""
 
     prompt_token_limit: int
-    """Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)"""
-
+    """Effective input budget: the selected tier's prompt allowance bounded by the combined
+    context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when
+    limits are unspecified.
+    """
     system_tokens: int
     """Tokens consumed by the system prompt"""
 
@@ -13950,6 +14017,12 @@ class SessionManagedPermissions:
     restrict something, so a mode this runtime cannot interpret fails closed to the most
     restrictive one it knows. Omit the key entirely to impose no restriction.
     """
+    limit_to: list[str] | None = None
+    """Closed-world host boundary expressed as `Domain(hostname)`, `Domain(IP)`, or
+    `Domain(*.example.com)` rules. Schemes, ports, paths, queries, and fragments are rejected
+    because every network request must be enforceable at host-level egress. Multiple managed
+    sources intersect their lists; an empty list denies all hosts.
+    """
 
     @staticmethod
     def from_dict(obj: Any) -> 'SessionManagedPermissions':
@@ -13958,7 +14031,8 @@ class SessionManagedPermissions:
         ask = from_union([lambda x: from_list(from_str, x), from_none], obj.get("ask"))
         deny = from_union([lambda x: from_list(from_str, x), from_none], obj.get("deny"))
         disable_bypass_permissions_mode = from_union([from_str, from_none], obj.get("disableBypassPermissionsMode"))
-        return SessionManagedPermissions(allow, ask, deny, disable_bypass_permissions_mode)
+        limit_to = from_union([lambda x: from_list(from_str, x), from_none], obj.get("limitTo"))
+        return SessionManagedPermissions(allow, ask, deny, disable_bypass_permissions_mode, limit_to)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -13970,6 +14044,8 @@ class SessionManagedPermissions:
             result["deny"] = from_union([lambda x: from_list(from_str, x), from_none], self.deny)
         if self.disable_bypass_permissions_mode is not None:
             result["disableBypassPermissionsMode"] = from_union([from_str, from_none], self.disable_bypass_permissions_mode)
+        if self.limit_to is not None:
+            result["limitTo"] = from_union([lambda x: from_list(from_str, x), from_none], self.limit_to)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -17518,28 +17594,6 @@ class UserSettingsSetRequest:
     def to_dict(self) -> dict:
         result: dict = {}
         result["settings"] = self.settings
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class UserSettingsSetResult:
-    """Outcome of writing user settings."""
-
-    shadowed_keys: list[str]
-    """Top-level keys whose write landed in settings.json but is shadowed by a value still
-    present in the legacy config.json (config.json wins on read). The write does not take
-    effect until the legacy value is removed.
-    """
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'UserSettingsSetResult':
-        assert isinstance(obj, dict)
-        shadowed_keys = from_list(from_str, obj.get("shadowedKeys"))
-        return UserSettingsSetResult(shadowed_keys)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["shadowedKeys"] = from_list(from_str, self.shadowed_keys)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -21396,6 +21450,47 @@ class GitHubRepositoryIdentity:
         result["owner"] = from_str(self.owner)
         return result
 
+# Experimental: this type is part of an experimental API and may change or be removed.
+# Internal: this type is an internal SDK API and is not part of the public surface.
+@dataclass
+class _LoggedInUser:
+    """Account used for the most recent sign-in.
+
+    An account the host has signed in to, identified by the server it lives on and the login
+    it uses there. The same person can appear more than once when they use both github.com
+    and an Enterprise server.
+    """
+    host: str
+    """Host the account belongs to, such as `github.com` or an Enterprise server."""
+
+    login: str
+    """Account login on that host."""
+
+    derived_from: str | None = None
+    """Source account this account was derived from, when one was recorded."""
+
+    kind: str | None = None
+    """Account kind, when the host recorded one. Consumers must tolerate new strings."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> '_LoggedInUser':
+        assert isinstance(obj, dict)
+        host = from_str(obj.get("host"))
+        login = from_str(obj.get("login"))
+        derived_from = from_union([from_str, from_none], obj.get("derivedFrom"))
+        kind = from_union([from_str, from_none], obj.get("kind"))
+        return _LoggedInUser(host, login, derived_from, kind)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["host"] = from_str(self.host)
+        result["login"] = from_str(self.login)
+        if self.derived_from is not None:
+            result["derivedFrom"] = from_union([from_str, from_none], self.derived_from)
+        if self.kind is not None:
+            result["kind"] = from_union([from_str, from_none], self.kind)
+        return result
+
 @dataclass
 class HostSessionCreateCallback:
     """Application callback routed over its existing SDK connection."""
@@ -22935,6 +23030,132 @@ class _GitReposFromRemotesResult:
 
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
+class InstalledPluginSource:
+    """Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or
+    full commit SHA, and optional subpath.
+
+    Source descriptor for a direct URL plugin install, with URL, optional ref or full commit
+    SHA, and optional subpath.
+
+    Source descriptor for a direct local plugin install, with a local filesystem path.
+    """
+    source: InstalledPluginSourceURLSource
+    """Constant value. Always "github".
+
+    Constant value. Always "url".
+
+    Constant value. Always "local".
+    """
+    path: str | None = None
+    """Optional repository-relative path to the plugin.
+
+    Optional source-relative path to the plugin.
+
+    Local filesystem path to the plugin.
+    """
+    ref: str | None = None
+    """Optional Git ref to resolve."""
+
+    repo: str | None = None
+    """GitHub repository in `owner/repo` form."""
+
+    sha: str | None = None
+    """Optional full 40-character hexadecimal commit SHA."""
+
+    url: str | None = None
+    """URL of the plugin source."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'InstalledPluginSource':
+        assert isinstance(obj, dict)
+        source = InstalledPluginSourceURLSource(obj.get("source"))
+        path = from_union([from_str, from_none], obj.get("path"))
+        ref = from_union([from_str, from_none], obj.get("ref"))
+        repo = from_union([from_str, from_none], obj.get("repo"))
+        sha = from_union([from_str, from_none], obj.get("sha"))
+        url = from_union([from_str, from_none], obj.get("url"))
+        return InstalledPluginSource(source, path, ref, repo, sha, url)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["source"] = to_enum(InstalledPluginSourceURLSource, self.source)
+        if self.path is not None:
+            result["path"] = from_union([from_str, from_none], self.path)
+        if self.ref is not None:
+            result["ref"] = from_union([from_str, from_none], self.ref)
+        if self.repo is not None:
+            result["repo"] = from_union([from_str, from_none], self.repo)
+        if self.sha is not None:
+            result["sha"] = from_union([from_str, from_none], self.sha)
+        if self.url is not None:
+            result["url"] = from_union([from_str, from_none], self.url)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class SessionInstalledPluginSource:
+    """Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or
+    full commit SHA, and optional subpath.
+
+    Source descriptor for a direct URL plugin install, with URL, optional ref or full commit
+    SHA, and optional subpath.
+
+    Source descriptor for a direct local plugin install, with a local filesystem path.
+    """
+    source: InstalledPluginSourceURLSource
+    """Constant value. Always "github".
+
+    Constant value. Always "url".
+
+    Constant value. Always "local".
+    """
+    path: str | None = None
+    """Optional repository-relative path to the plugin.
+
+    Optional source-relative path to the plugin.
+
+    Local filesystem path to the plugin.
+    """
+    ref: str | None = None
+    """Optional Git ref to resolve."""
+
+    repo: str | None = None
+    """GitHub repository in `owner/repo` form."""
+
+    sha: str | None = None
+    """Optional full 40-character hexadecimal commit SHA."""
+
+    url: str | None = None
+    """URL of the plugin source."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'SessionInstalledPluginSource':
+        assert isinstance(obj, dict)
+        source = InstalledPluginSourceURLSource(obj.get("source"))
+        path = from_union([from_str, from_none], obj.get("path"))
+        ref = from_union([from_str, from_none], obj.get("ref"))
+        repo = from_union([from_str, from_none], obj.get("repo"))
+        sha = from_union([from_str, from_none], obj.get("sha"))
+        url = from_union([from_str, from_none], obj.get("url"))
+        return SessionInstalledPluginSource(source, path, ref, repo, sha, url)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["source"] = to_enum(InstalledPluginSourceURLSource, self.source)
+        if self.path is not None:
+            result["path"] = from_union([from_str, from_none], self.path)
+        if self.ref is not None:
+            result["ref"] = from_union([from_str, from_none], self.ref)
+        if self.repo is not None:
+            result["repo"] = from_union([from_str, from_none], self.repo)
+        if self.sha is not None:
+            result["sha"] = from_union([from_str, from_none], self.sha)
+        if self.url is not None:
+            result["url"] = from_union([from_str, from_none], self.url)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
 class HistoryCompactResult:
     """Compaction outcome with the number of tokens and messages removed, summary text, and the
     resulting context window breakdown.
@@ -23607,132 +23828,6 @@ class InstallationConfirmationResponse:
         result["confirmationId"] = from_str(self.confirmation_id)
         result["decision"] = to_enum(InstallationDecision, self.decision)
         result["reviewFingerprint"] = from_str(self.review_fingerprint)
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class InstalledPluginSource:
-    """Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or
-    full commit SHA, and optional subpath.
-
-    Source descriptor for a direct URL plugin install, with URL, optional ref or full commit
-    SHA, and optional subpath.
-
-    Source descriptor for a direct local plugin install, with a local filesystem path.
-    """
-    source: InstalledPluginSourceURLSource
-    """Constant value. Always "github".
-
-    Constant value. Always "url".
-
-    Constant value. Always "local".
-    """
-    path: str | None = None
-    """Optional repository-relative path to the plugin.
-
-    Optional source-relative path to the plugin.
-
-    Local filesystem path to the plugin.
-    """
-    ref: str | None = None
-    """Optional Git ref to resolve."""
-
-    repo: str | None = None
-    """GitHub repository in `owner/repo` form."""
-
-    sha: str | None = None
-    """Optional full 40-character hexadecimal commit SHA."""
-
-    url: str | None = None
-    """URL of the plugin source."""
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'InstalledPluginSource':
-        assert isinstance(obj, dict)
-        source = InstalledPluginSourceURLSource(obj.get("source"))
-        path = from_union([from_str, from_none], obj.get("path"))
-        ref = from_union([from_str, from_none], obj.get("ref"))
-        repo = from_union([from_str, from_none], obj.get("repo"))
-        sha = from_union([from_str, from_none], obj.get("sha"))
-        url = from_union([from_str, from_none], obj.get("url"))
-        return InstalledPluginSource(source, path, ref, repo, sha, url)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["source"] = to_enum(InstalledPluginSourceURLSource, self.source)
-        if self.path is not None:
-            result["path"] = from_union([from_str, from_none], self.path)
-        if self.ref is not None:
-            result["ref"] = from_union([from_str, from_none], self.ref)
-        if self.repo is not None:
-            result["repo"] = from_union([from_str, from_none], self.repo)
-        if self.sha is not None:
-            result["sha"] = from_union([from_str, from_none], self.sha)
-        if self.url is not None:
-            result["url"] = from_union([from_str, from_none], self.url)
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class SessionInstalledPluginSource:
-    """Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or
-    full commit SHA, and optional subpath.
-
-    Source descriptor for a direct URL plugin install, with URL, optional ref or full commit
-    SHA, and optional subpath.
-
-    Source descriptor for a direct local plugin install, with a local filesystem path.
-    """
-    source: InstalledPluginSourceURLSource
-    """Constant value. Always "github".
-
-    Constant value. Always "url".
-
-    Constant value. Always "local".
-    """
-    path: str | None = None
-    """Optional repository-relative path to the plugin.
-
-    Optional source-relative path to the plugin.
-
-    Local filesystem path to the plugin.
-    """
-    ref: str | None = None
-    """Optional Git ref to resolve."""
-
-    repo: str | None = None
-    """GitHub repository in `owner/repo` form."""
-
-    sha: str | None = None
-    """Optional full 40-character hexadecimal commit SHA."""
-
-    url: str | None = None
-    """URL of the plugin source."""
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'SessionInstalledPluginSource':
-        assert isinstance(obj, dict)
-        source = InstalledPluginSourceURLSource(obj.get("source"))
-        path = from_union([from_str, from_none], obj.get("path"))
-        ref = from_union([from_str, from_none], obj.get("ref"))
-        repo = from_union([from_str, from_none], obj.get("repo"))
-        sha = from_union([from_str, from_none], obj.get("sha"))
-        url = from_union([from_str, from_none], obj.get("url"))
-        return SessionInstalledPluginSource(source, path, ref, repo, sha, url)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["source"] = to_enum(InstalledPluginSourceURLSource, self.source)
-        if self.path is not None:
-            result["path"] = from_union([from_str, from_none], self.path)
-        if self.ref is not None:
-            result["ref"] = from_union([from_str, from_none], self.ref)
-        if self.repo is not None:
-            result["repo"] = from_union([from_str, from_none], self.repo)
-        if self.sha is not None:
-            result["sha"] = from_union([from_str, from_none], self.sha)
-        if self.url is not None:
-            result["url"] = from_union([from_str, from_none], self.url)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -25472,7 +25567,8 @@ class SessionContextAttribution:
     individual messages are available separately via `metadata.getContextHeaviestMessages`.
     """
     buffer_tokens: int
-    """Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors
+    """Output reservation overlapping the displayed prompt allowance plus the tokens past the
+    effective input budget's buffer-exhaustion blocking threshold. Mirrors
     `SessionContextInfo.bufferTokens`.
     """
     categories: Categories
@@ -25493,9 +25589,9 @@ class SessionContextAttribution:
     kinds generically. Nesting and rollups are expressed via `parentId`.
     """
     limit: int
-    """Prompt limit plus the model's output reserve: the full context window
-    `categories.freeSpace` and `categories.buffer` are measured against. Mirrors
-    `SessionContextInfo.limit`.
+    """Advertised prompt allowance for the selected context tier: the denominator for
+    context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`.
+    Mirrors `SessionContextInfo.limit`.
     """
     model_id: str
     """The concrete model id the entire breakdown was tokenized against (feeds the per-model
@@ -25509,8 +25605,8 @@ class SessionContextAttribution:
     model), `default` (a fallback before any model is known).
     """
     prompt_token_limit: int
-    """Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k`
-    context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+    """Effective input budget after reserving requested output against the combined context
+    ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
     """
     total_tokens: int
     """Total token count of the current context window the entries are measured against (system
@@ -27665,6 +27761,11 @@ class MCPServer:
     source_plugin_version: str | None = None
     """Plugin version that provided this server, when source is plugin."""
 
+    url: str | None = field(default=None, kw_only=True)
+    """Configured URL for an HTTP/SSE server, regardless of configuration source. Omitted for
+    local and in-memory servers.
+    """
+
     @staticmethod
     def from_dict(obj: Any) -> 'MCPServer':
         assert isinstance(obj, dict)
@@ -27677,7 +27778,8 @@ class MCPServer:
         source = from_union([McpServerSource, from_none], obj.get("source"))
         source_plugin = from_union([from_str, from_none], obj.get("sourcePlugin"))
         source_plugin_version = from_union([from_str, from_none], obj.get("sourcePluginVersion"))
-        return MCPServer(name, status, display_name, error, server_metadata, source, source_plugin, source_plugin_version, owned=owned)
+        url = from_union([from_str, from_none], obj.get("url"))
+        return MCPServer(name, status, display_name, error, server_metadata, source, source_plugin, source_plugin_version, url=url, owned=owned)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -27697,6 +27799,8 @@ class MCPServer:
             result["sourcePlugin"] = from_union([from_str, from_none], self.source_plugin)
         if self.source_plugin_version is not None:
             result["sourcePluginVersion"] = from_union([from_str, from_none], self.source_plugin_version)
+        if self.url is not None:
+            result["url"] = from_union([from_str, from_none], self.url)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -31919,9 +32023,8 @@ class UsageMetricsModelMetric:
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class UserSettingsGetResult:
-    """Per-key metadata for every known user setting (settings.json overlaid with the legacy
-    config.json, config.json wins), including settings left at their default. Excludes
-    repository- and enterprise-managed overrides.
+    """Per-key metadata for every known user setting in settings.json, including settings left
+    at their default. Excludes repository- and enterprise-managed overrides.
     """
     settings: dict[str, UserSettingMetadata]
     """Every known user setting keyed by setting name, each with its effective value, default,
@@ -32401,43 +32504,6 @@ class ConnectorSessionAccount:
         result: dict = {}
         result["accountId"] = from_str(self.account_id)
         result["authInfo"] = to_class(AuthIdentityMetadata, self.auth_info)
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class AuthReadValue:
-    """The read result, keyed by the same selector as the query."""
-
-    kind: AuthReadQueryKind
-    """Account read-datum variant discriminator."""
-
-    account: AccountStatus | None = None
-    """The active account, or absent when not logged in."""
-
-    status: AuthStatusDto | None = None
-    """The neutral authentication status summary."""
-
-    errors: list[AuthValidationError] | None = None
-    """Validation errors from the most recent authentication attempt."""
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'AuthReadValue':
-        assert isinstance(obj, dict)
-        kind = AuthReadQueryKind(obj.get("kind"))
-        account = from_union([AccountStatus.from_dict, from_none], obj.get("account"))
-        status = from_union([AuthStatusDto.from_dict, from_none], obj.get("status"))
-        errors = from_union([lambda x: from_list(AuthValidationError.from_dict, x), from_none], obj.get("errors"))
-        return AuthReadValue(kind, account, status, errors)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["kind"] = to_enum(AuthReadQueryKind, self.kind)
-        if self.account is not None:
-            result["account"] = from_union([lambda x: to_class(AccountStatus, x), from_none], self.account)
-        if self.status is not None:
-            result["status"] = from_union([lambda x: to_class(AuthStatusDto, x), from_none], self.status)
-        if self.errors is not None:
-            result["errors"] = from_union([lambda x: from_list(lambda x: to_class(AuthValidationError, x), x), from_none], self.errors)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -34574,6 +34640,152 @@ class MCPOauthHandlePendingRequest:
 
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
+class InstalledPlugin:
+    """Installed plugin record from global state, with marketplace, version, install time,
+    enabled state, cache path, and source.
+    """
+    enabled: bool
+    """Whether the plugin is currently enabled"""
+
+    installed_at: str
+    """Installation timestamp"""
+
+    marketplace: str
+    """Marketplace the plugin came from (empty string for direct repo installs)"""
+
+    name: str
+    """Plugin name"""
+
+    cache_path: str | None = None
+    """Path where the plugin is cached locally"""
+
+    installed_from: str | None = None
+    """Absolute path of the marketplace directory a live plugin was resolved from. Present only
+    on live, never-persisted records — those synthesized at session start for a
+    directory/local marketplace, whose cache_path points at the real plugin directory on disk
+    rather than a copy under the installed-plugins cache. Its presence is what marks a record
+    as live, and no record carrying it is ever written to the persisted installedPlugins key.
+    """
+    source: InstalledPluginSource | str | None = None
+    """Source for direct repo installs (when marketplace is empty)"""
+
+    source_sha: str | None = None
+    """Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus
+    its resolved source subtree — NOT a Git commit SHA) captured at marketplace
+    install/update time. Auto-update compares it against the freshly recomputed fingerprint
+    to detect a content change that does not bump the version. Absent for pre-existing
+    installs and for direct (non-marketplace) installs.
+    """
+    version: str | None = None
+    """Version installed (if available)"""
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'InstalledPlugin':
+        assert isinstance(obj, dict)
+        enabled = from_bool(obj.get("enabled"))
+        installed_at = from_str(obj.get("installed_at"))
+        marketplace = from_str(obj.get("marketplace"))
+        name = from_str(obj.get("name"))
+        cache_path = from_union([from_str, from_none], obj.get("cache_path"))
+        installed_from = from_union([from_str, from_none], obj.get("installed_from"))
+        source = from_union([InstalledPluginSource.from_dict, from_str, from_none], obj.get("source"))
+        source_sha = from_union([from_str, from_none], obj.get("source_sha"))
+        version = from_union([from_str, from_none], obj.get("version"))
+        return InstalledPlugin(enabled, installed_at, marketplace, name, cache_path, installed_from, source, source_sha, version)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["enabled"] = from_bool(self.enabled)
+        result["installed_at"] = from_str(self.installed_at)
+        result["marketplace"] = from_str(self.marketplace)
+        result["name"] = from_str(self.name)
+        if self.cache_path is not None:
+            result["cache_path"] = from_union([from_str, from_none], self.cache_path)
+        if self.installed_from is not None:
+            result["installed_from"] = from_union([from_str, from_none], self.installed_from)
+        if self.source is not None:
+            result["source"] = from_union([lambda x: to_class(InstalledPluginSource, x), from_str, from_none], self.source)
+        if self.source_sha is not None:
+            result["source_sha"] = from_union([from_str, from_none], self.source_sha)
+        if self.version is not None:
+            result["version"] = from_union([from_str, from_none], self.version)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class SessionInstalledPlugin:
+    """Installed plugin record for a session, with marketplace, version, install time, enabled
+    state, cache path, and source.
+    """
+    enabled: bool
+    """Whether the plugin is currently enabled"""
+
+    installed_at: str
+    """Installation timestamp (ISO-8601)"""
+
+    marketplace: str
+    """Marketplace the plugin came from (empty string for direct repo installs)"""
+
+    name: str
+    """Plugin name"""
+
+    cache_path: str | None = None
+    """Path where the plugin is cached locally"""
+
+    installed_from: str | None = None
+    """Absolute path of the marketplace directory a live plugin was resolved from. Present only
+    on live, never-persisted records — those synthesized at session start for a
+    directory/local marketplace, whose cache_path points at the real plugin directory on disk
+    rather than a copy under the installed-plugins cache. Its presence is what marks a record
+    as live, and no record carrying it is ever written to the persisted installedPlugins key.
+    """
+    source: SessionInstalledPluginSource | str | None = None
+    """Source descriptor for direct repo installs (when marketplace is empty)"""
+
+    source_sha: str | None = None
+    """Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus
+    its resolved source subtree — NOT a Git commit SHA) captured at marketplace
+    install/update time. Auto-update compares it against the freshly recomputed fingerprint
+    to detect a content change that does not bump the version. Absent for pre-existing
+    installs and for direct (non-marketplace) installs.
+    """
+    version: str | None = None
+    """Installed version, if known"""
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'SessionInstalledPlugin':
+        assert isinstance(obj, dict)
+        enabled = from_bool(obj.get("enabled"))
+        installed_at = from_str(obj.get("installed_at"))
+        marketplace = from_str(obj.get("marketplace"))
+        name = from_str(obj.get("name"))
+        cache_path = from_union([from_str, from_none], obj.get("cache_path"))
+        installed_from = from_union([from_str, from_none], obj.get("installed_from"))
+        source = from_union([SessionInstalledPluginSource.from_dict, from_str, from_none], obj.get("source"))
+        source_sha = from_union([from_str, from_none], obj.get("source_sha"))
+        version = from_union([from_str, from_none], obj.get("version"))
+        return SessionInstalledPlugin(enabled, installed_at, marketplace, name, cache_path, installed_from, source, source_sha, version)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["enabled"] = from_bool(self.enabled)
+        result["installed_at"] = from_str(self.installed_at)
+        result["marketplace"] = from_str(self.marketplace)
+        result["name"] = from_str(self.name)
+        if self.cache_path is not None:
+            result["cache_path"] = from_union([from_str, from_none], self.cache_path)
+        if self.installed_from is not None:
+            result["installed_from"] = from_union([from_str, from_none], self.installed_from)
+        if self.source is not None:
+            result["source"] = from_union([lambda x: to_class(SessionInstalledPluginSource, x), from_str, from_none], self.source)
+        if self.source_sha is not None:
+            result["source_sha"] = from_union([from_str, from_none], self.source_sha)
+        if self.version is not None:
+            result["version"] = from_union([from_str, from_none], self.version)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
 class HistoryRewindResult:
     """Structured outcome of a rewind request."""
 
@@ -34783,152 +34995,6 @@ class WorkflowRunFailure:
             result["operation"] = from_union([lambda x: to_enum(WorkflowDurableOperation, x), from_none], self.operation)
         if self.drained_nano_aiu is not None:
             result["drainedNanoAiu"] = from_union([from_int, from_none], self.drained_nano_aiu)
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class InstalledPlugin:
-    """Installed plugin record from global state, with marketplace, version, install time,
-    enabled state, cache path, and source.
-    """
-    enabled: bool
-    """Whether the plugin is currently enabled"""
-
-    installed_at: str
-    """Installation timestamp"""
-
-    marketplace: str
-    """Marketplace the plugin came from (empty string for direct repo installs)"""
-
-    name: str
-    """Plugin name"""
-
-    cache_path: str | None = None
-    """Path where the plugin is cached locally"""
-
-    installed_from: str | None = None
-    """Absolute path of the marketplace directory a live plugin was resolved from. Present only
-    on live, never-persisted records — those synthesized at session start for a
-    directory/local marketplace, whose cache_path points at the real plugin directory on disk
-    rather than a copy under the installed-plugins cache. Its presence is what marks a record
-    as live, and no record carrying it is ever written to the persisted installedPlugins key.
-    """
-    source: InstalledPluginSource | str | None = None
-    """Source for direct repo installs (when marketplace is empty)"""
-
-    source_sha: str | None = None
-    """Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus
-    its resolved source subtree — NOT a Git commit SHA) captured at marketplace
-    install/update time. Auto-update compares it against the freshly recomputed fingerprint
-    to detect a content change that does not bump the version. Absent for pre-existing
-    installs and for direct (non-marketplace) installs.
-    """
-    version: str | None = None
-    """Version installed (if available)"""
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'InstalledPlugin':
-        assert isinstance(obj, dict)
-        enabled = from_bool(obj.get("enabled"))
-        installed_at = from_str(obj.get("installed_at"))
-        marketplace = from_str(obj.get("marketplace"))
-        name = from_str(obj.get("name"))
-        cache_path = from_union([from_str, from_none], obj.get("cache_path"))
-        installed_from = from_union([from_str, from_none], obj.get("installed_from"))
-        source = from_union([InstalledPluginSource.from_dict, from_str, from_none], obj.get("source"))
-        source_sha = from_union([from_str, from_none], obj.get("source_sha"))
-        version = from_union([from_str, from_none], obj.get("version"))
-        return InstalledPlugin(enabled, installed_at, marketplace, name, cache_path, installed_from, source, source_sha, version)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["enabled"] = from_bool(self.enabled)
-        result["installed_at"] = from_str(self.installed_at)
-        result["marketplace"] = from_str(self.marketplace)
-        result["name"] = from_str(self.name)
-        if self.cache_path is not None:
-            result["cache_path"] = from_union([from_str, from_none], self.cache_path)
-        if self.installed_from is not None:
-            result["installed_from"] = from_union([from_str, from_none], self.installed_from)
-        if self.source is not None:
-            result["source"] = from_union([lambda x: to_class(InstalledPluginSource, x), from_str, from_none], self.source)
-        if self.source_sha is not None:
-            result["source_sha"] = from_union([from_str, from_none], self.source_sha)
-        if self.version is not None:
-            result["version"] = from_union([from_str, from_none], self.version)
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class SessionInstalledPlugin:
-    """Installed plugin record for a session, with marketplace, version, install time, enabled
-    state, cache path, and source.
-    """
-    enabled: bool
-    """Whether the plugin is currently enabled"""
-
-    installed_at: str
-    """Installation timestamp (ISO-8601)"""
-
-    marketplace: str
-    """Marketplace the plugin came from (empty string for direct repo installs)"""
-
-    name: str
-    """Plugin name"""
-
-    cache_path: str | None = None
-    """Path where the plugin is cached locally"""
-
-    installed_from: str | None = None
-    """Absolute path of the marketplace directory a live plugin was resolved from. Present only
-    on live, never-persisted records — those synthesized at session start for a
-    directory/local marketplace, whose cache_path points at the real plugin directory on disk
-    rather than a copy under the installed-plugins cache. Its presence is what marks a record
-    as live, and no record carrying it is ever written to the persisted installedPlugins key.
-    """
-    source: SessionInstalledPluginSource | str | None = None
-    """Source descriptor for direct repo installs (when marketplace is empty)"""
-
-    source_sha: str | None = None
-    """Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus
-    its resolved source subtree — NOT a Git commit SHA) captured at marketplace
-    install/update time. Auto-update compares it against the freshly recomputed fingerprint
-    to detect a content change that does not bump the version. Absent for pre-existing
-    installs and for direct (non-marketplace) installs.
-    """
-    version: str | None = None
-    """Installed version, if known"""
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'SessionInstalledPlugin':
-        assert isinstance(obj, dict)
-        enabled = from_bool(obj.get("enabled"))
-        installed_at = from_str(obj.get("installed_at"))
-        marketplace = from_str(obj.get("marketplace"))
-        name = from_str(obj.get("name"))
-        cache_path = from_union([from_str, from_none], obj.get("cache_path"))
-        installed_from = from_union([from_str, from_none], obj.get("installed_from"))
-        source = from_union([SessionInstalledPluginSource.from_dict, from_str, from_none], obj.get("source"))
-        source_sha = from_union([from_str, from_none], obj.get("source_sha"))
-        version = from_union([from_str, from_none], obj.get("version"))
-        return SessionInstalledPlugin(enabled, installed_at, marketplace, name, cache_path, installed_from, source, source_sha, version)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["enabled"] = from_bool(self.enabled)
-        result["installed_at"] = from_str(self.installed_at)
-        result["marketplace"] = from_str(self.marketplace)
-        result["name"] = from_str(self.name)
-        if self.cache_path is not None:
-            result["cache_path"] = from_union([from_str, from_none], self.cache_path)
-        if self.installed_from is not None:
-            result["installed_from"] = from_union([from_str, from_none], self.installed_from)
-        if self.source is not None:
-            result["source"] = from_union([lambda x: to_class(SessionInstalledPluginSource, x), from_str, from_none], self.source)
-        if self.source_sha is not None:
-            result["source_sha"] = from_union([from_str, from_none], self.source_sha)
-        if self.version is not None:
-            result["version"] = from_union([from_str, from_none], self.version)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -40530,6 +40596,166 @@ class MCPPromptsListResult:
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
+# Internal: this type is an internal SDK API and is not part of the public surface.
+@dataclass
+class _GlobalStateLoadResult:
+    """The host's machine-wide state. Every field is optional because a fresh install has
+    recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a
+    negative answer. Stored credentials are deliberately absent from this shape.
+    """
+    app_install_nudge_responded: bool | None = None
+    """Whether the user has answered the prompt suggesting they install the desktop app."""
+
+    app_tip_shown: bool | None = None
+    """Whether the app tip has been shown."""
+
+    asked_setup_terminals: list[str] | None = None
+    """Terminals the user has already been asked to set up, so the host does not ask twice."""
+
+    auto_feedback_last_prompted_at: str | None = None
+    """When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the
+    once-per-day cap for non-staff users across restarts.
+    """
+    first_launch_at: str | None = None
+    """When the host first ran on this machine."""
+
+    installed_plugins: list[InstalledPlugin] | None = None
+    """Plugins installed on this machine."""
+
+    last_logged_in_user: _LoggedInUser | None = None
+    """Account used for the most recent sign-in."""
+
+    logged_in_users: list[_LoggedInUser] | None = None
+    """Every account the host has signed in to on this machine."""
+
+    reasoning_summaries_cleanup_done: bool | None = None
+    """Whether the one-off cleanup of stored reasoning summaries has run."""
+
+    recent_model_ids: list[str] | None = None
+    """Models the user selected recently, most recent first."""
+
+    sandbox_credential_proxy_ca_declined: bool | None = None
+    """Whether the user declined to trust the sandbox credential proxy CA."""
+
+    sandbox_onboarding_shown: bool | None = None
+    """Whether the sandbox onboarding has been shown."""
+
+    staff: bool | None = None
+    """Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only
+    behavior.
+    """
+    staff_github: bool | None = None
+    """Whether the user was recognized as GitHub staff."""
+
+    staff_log_level_migration_at: str | None = None
+    """When the staff-only log level migration last ran."""
+
+    staff_microsoft: bool | None = None
+    """Whether the user was recognized as Microsoft staff."""
+
+    staff_model_reset_at: str | None = None
+    """When the staff-only model reset last ran."""
+
+    staff_update_channel_migration_at: str | None = None
+    """When the staff-only update channel migration last ran."""
+
+    suppress_init_folders: list[str] | None = None
+    """Folders where the user declined the init prompt, so it stays hidden there."""
+
+    trusted_folders: list[str] | None = None
+    """Folders the user has marked as trusted."""
+
+    @staticmethod
+    def from_dict(obj: Any) -> '_GlobalStateLoadResult':
+        assert isinstance(obj, dict)
+        app_install_nudge_responded = from_union([from_bool, from_none], obj.get("appInstallNudgeResponded"))
+        app_tip_shown = from_union([from_bool, from_none], obj.get("appTipShown"))
+        asked_setup_terminals = from_union([lambda x: from_list(from_str, x), from_none], obj.get("askedSetupTerminals"))
+        auto_feedback_last_prompted_at = from_union([from_str, from_none], obj.get("autoFeedbackLastPromptedAt"))
+        first_launch_at = from_union([from_str, from_none], obj.get("firstLaunchAt"))
+        installed_plugins = from_union([lambda x: from_list(InstalledPlugin.from_dict, x), from_none], obj.get("installedPlugins"))
+        last_logged_in_user = from_union([_LoggedInUser.from_dict, from_none], obj.get("lastLoggedInUser"))
+        logged_in_users = from_union([lambda x: from_list(_LoggedInUser.from_dict, x), from_none], obj.get("loggedInUsers"))
+        reasoning_summaries_cleanup_done = from_union([from_bool, from_none], obj.get("reasoningSummariesCleanupDone"))
+        recent_model_ids = from_union([lambda x: from_list(from_str, x), from_none], obj.get("recentModelIds"))
+        sandbox_credential_proxy_ca_declined = from_union([from_bool, from_none], obj.get("sandboxCredentialProxyCaDeclined"))
+        sandbox_onboarding_shown = from_union([from_bool, from_none], obj.get("sandboxOnboardingShown"))
+        staff = from_union([from_bool, from_none], obj.get("staff"))
+        staff_github = from_union([from_bool, from_none], obj.get("staffGithub"))
+        staff_log_level_migration_at = from_union([from_str, from_none], obj.get("staffLogLevelMigrationAt"))
+        staff_microsoft = from_union([from_bool, from_none], obj.get("staffMicrosoft"))
+        staff_model_reset_at = from_union([from_str, from_none], obj.get("staffModelResetAt"))
+        staff_update_channel_migration_at = from_union([from_str, from_none], obj.get("staffUpdateChannelMigrationAt"))
+        suppress_init_folders = from_union([lambda x: from_list(from_str, x), from_none], obj.get("suppressInitFolders"))
+        trusted_folders = from_union([lambda x: from_list(from_str, x), from_none], obj.get("trustedFolders"))
+        return _GlobalStateLoadResult(app_install_nudge_responded, app_tip_shown, asked_setup_terminals, auto_feedback_last_prompted_at, first_launch_at, installed_plugins, last_logged_in_user, logged_in_users, reasoning_summaries_cleanup_done, recent_model_ids, sandbox_credential_proxy_ca_declined, sandbox_onboarding_shown, staff, staff_github, staff_log_level_migration_at, staff_microsoft, staff_model_reset_at, staff_update_channel_migration_at, suppress_init_folders, trusted_folders)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        if self.app_install_nudge_responded is not None:
+            result["appInstallNudgeResponded"] = from_union([from_bool, from_none], self.app_install_nudge_responded)
+        if self.app_tip_shown is not None:
+            result["appTipShown"] = from_union([from_bool, from_none], self.app_tip_shown)
+        if self.asked_setup_terminals is not None:
+            result["askedSetupTerminals"] = from_union([lambda x: from_list(from_str, x), from_none], self.asked_setup_terminals)
+        if self.auto_feedback_last_prompted_at is not None:
+            result["autoFeedbackLastPromptedAt"] = from_union([from_str, from_none], self.auto_feedback_last_prompted_at)
+        if self.first_launch_at is not None:
+            result["firstLaunchAt"] = from_union([from_str, from_none], self.first_launch_at)
+        if self.installed_plugins is not None:
+            result["installedPlugins"] = from_union([lambda x: from_list(lambda x: to_class(InstalledPlugin, x), x), from_none], self.installed_plugins)
+        if self.last_logged_in_user is not None:
+            result["lastLoggedInUser"] = from_union([lambda x: to_class(_LoggedInUser, x), from_none], self.last_logged_in_user)
+        if self.logged_in_users is not None:
+            result["loggedInUsers"] = from_union([lambda x: from_list(lambda x: to_class(_LoggedInUser, x), x), from_none], self.logged_in_users)
+        if self.reasoning_summaries_cleanup_done is not None:
+            result["reasoningSummariesCleanupDone"] = from_union([from_bool, from_none], self.reasoning_summaries_cleanup_done)
+        if self.recent_model_ids is not None:
+            result["recentModelIds"] = from_union([lambda x: from_list(from_str, x), from_none], self.recent_model_ids)
+        if self.sandbox_credential_proxy_ca_declined is not None:
+            result["sandboxCredentialProxyCaDeclined"] = from_union([from_bool, from_none], self.sandbox_credential_proxy_ca_declined)
+        if self.sandbox_onboarding_shown is not None:
+            result["sandboxOnboardingShown"] = from_union([from_bool, from_none], self.sandbox_onboarding_shown)
+        if self.staff is not None:
+            result["staff"] = from_union([from_bool, from_none], self.staff)
+        if self.staff_github is not None:
+            result["staffGithub"] = from_union([from_bool, from_none], self.staff_github)
+        if self.staff_log_level_migration_at is not None:
+            result["staffLogLevelMigrationAt"] = from_union([from_str, from_none], self.staff_log_level_migration_at)
+        if self.staff_microsoft is not None:
+            result["staffMicrosoft"] = from_union([from_bool, from_none], self.staff_microsoft)
+        if self.staff_model_reset_at is not None:
+            result["staffModelResetAt"] = from_union([from_str, from_none], self.staff_model_reset_at)
+        if self.staff_update_channel_migration_at is not None:
+            result["staffUpdateChannelMigrationAt"] = from_union([from_str, from_none], self.staff_update_channel_migration_at)
+        if self.suppress_init_folders is not None:
+            result["suppressInitFolders"] = from_union([lambda x: from_list(from_str, x), from_none], self.suppress_init_folders)
+        if self.trusted_folders is not None:
+            result["trustedFolders"] = from_union([lambda x: from_list(from_str, x), from_none], self.trusted_folders)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class SessionsSetAdditionalPluginsRequest:
+    """Manager-wide additional plugins to register; replaces any previously-configured set."""
+
+    plugins: list[InstalledPlugin]
+    """Manager-wide additional plugins to register. Replaces any previously-configured set. Pass
+    an empty array to clear.
+    """
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'SessionsSetAdditionalPluginsRequest':
+        assert isinstance(obj, dict)
+        plugins = from_list(InstalledPlugin.from_dict, obj.get("plugins"))
+        return SessionsSetAdditionalPluginsRequest(plugins)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["plugins"] = from_list(lambda x: to_class(InstalledPlugin, x), self.plugins)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class WorkflowRunTerminal:
     """Prompt-safe terminal workflow outcome."""
@@ -40639,27 +40865,6 @@ class WorkflowRunResult:
             result["result"] = self.result
         if self.snapshot is not None:
             result["snapshot"] = self.snapshot
-        return result
-
-# Experimental: this type is part of an experimental API and may change or be removed.
-@dataclass
-class SessionsSetAdditionalPluginsRequest:
-    """Manager-wide additional plugins to register; replaces any previously-configured set."""
-
-    plugins: list[InstalledPlugin]
-    """Manager-wide additional plugins to register. Replaces any previously-configured set. Pass
-    an empty array to clear.
-    """
-
-    @staticmethod
-    def from_dict(obj: Any) -> 'SessionsSetAdditionalPluginsRequest':
-        assert isinstance(obj, dict)
-        plugins = from_list(InstalledPlugin.from_dict, obj.get("plugins"))
-        return SessionsSetAdditionalPluginsRequest(plugins)
-
-    def to_dict(self) -> dict:
-        result: dict = {}
-        result["plugins"] = from_list(lambda x: to_class(InstalledPlugin, x), self.plugins)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -44543,8 +44748,11 @@ class APIKeyAuthInfo:
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class AuthIdentity:
-    """Credential-free authentication identity safe to expose to hosts and user interfaces."""
+    """Credential-free authentication identity safe to expose to hosts and user interfaces.
 
+    Credential-free identity metadata for the active account, including resolved Copilot user
+    information when available.
+    """
     host: str
     """Authentication host"""
 
@@ -44588,6 +44796,47 @@ class AuthIdentity:
             result["login"] = from_union([from_str, from_none], self.login)
         if self.registration_id is not None:
             result["registrationId"] = from_union([from_str, from_none], self.registration_id)
+        return result
+
+# Experimental: this type is part of an experimental API and may change or be removed.
+@dataclass
+class AuthReadValue:
+    """The read result, keyed by the same selector as the query."""
+
+    kind: AuthReadQueryKind
+    """Account read-datum variant discriminator."""
+    account: AccountStatus | None = None
+    """The active account, or absent when not logged in."""
+    status: AuthStatusDto | None = None
+    """The neutral authentication status summary."""
+    errors: list[AuthValidationError] | None = None
+    """Validation errors from the most recent authentication attempt."""
+    auth_info: AuthIdentity | None = None
+    """Credential-free identity metadata for the active account, including resolved Copilot user
+    information when available.
+    """
+
+    @staticmethod
+    def from_dict(obj: Any) -> 'AuthReadValue':
+        assert isinstance(obj, dict)
+        kind = AuthReadQueryKind(obj.get("kind"))
+        account = from_union([AccountStatus.from_dict, from_none], obj.get("account"))
+        auth_info = from_union([AuthIdentity.from_dict, from_none], obj.get("authInfo"))
+        status = from_union([AuthStatusDto.from_dict, from_none], obj.get("status"))
+        errors = from_union([lambda x: from_list(AuthValidationError.from_dict, x), from_none], obj.get("errors"))
+        return AuthReadValue(kind, account, status, errors, auth_info)
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["kind"] = to_enum(AuthReadQueryKind, self.kind)
+        if self.account is not None:
+            result["account"] = from_union([lambda x: to_class(AccountStatus, x), from_none], self.account)
+        if self.auth_info is not None:
+            result["authInfo"] = from_union([lambda x: to_class(AuthIdentity, x), from_none], self.auth_info)
+        if self.status is not None:
+            result["status"] = from_union([lambda x: to_class(AuthStatusDto, x), from_none], self.status)
+        if self.errors is not None:
+            result["errors"] = from_union([lambda x: from_list(lambda x: to_class(AuthValidationError, x), x), from_none], self.errors)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -46168,11 +46417,13 @@ class MetadataContextInfoRequest:
     """Model identifier and token limits used to compute the context-info breakdown."""
 
     output_token_limit: int
-    """Maximum output tokens allowed by the target model. Pass 0 if unknown."""
-
+    """Requested output allowance to reserve against the combined context ceiling. Pass 0 to
+    resolve the session's request cap, falling back to the model's advertised output limit.
+    """
     prompt_token_limit: int
-    """Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default."""
-
+    """Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from
+    the session.
+    """
     selected_model: str | None = None
     """Model identifier used for tokenization. Omit to use the session default. Used both for
     token counting and to compute display values.
@@ -46319,6 +46570,12 @@ class Model:
     supported_reasoning_efforts: list[str] | None = None
     """Supported reasoning effort levels (only present if model supports reasoning effort)"""
 
+    vendor: str | None = None
+    """Model vendor as the Copilot API reports it, for example "Anthropic" or "Azure OpenAI".
+    Open vocabulary, passed through unchanged. It can name the vendor that serves the model
+    instead of the one that built it, or a label that is not a vendor, such as
+    "Experimental". Absent when the Copilot API reports no vendor.
+    """
     warning_messages: list[ModelMessage] | None = None
     """Warnings the service published for this model, such as a deprecated client version.
     Present only when the service published at least one warning. The model remains usable;
@@ -46345,9 +46602,10 @@ class Model:
         provider = from_union([ModelProviderRef.from_dict, from_none], obj.get("provider"))
         supported_context_tiers = from_union([lambda x: from_list(from_str, x), from_none], obj.get("supportedContextTiers"))
         supported_reasoning_efforts = from_union([lambda x: from_list(from_str, x), from_none], obj.get("supportedReasoningEfforts"))
+        vendor = from_union([from_str, from_none], obj.get("vendor"))
         warning_messages = from_union([lambda x: from_list(ModelMessage.from_dict, x), from_none], obj.get("warningMessages"))
         warning_text = from_union([ModelWarningText.from_dict, from_none], obj.get("warningText"))
-        return Model(capabilities, id, name, billing, default_reasoning_effort, info_messages, metadata, model_picker_category, model_picker_price_category, policy, provider, supported_context_tiers, supported_reasoning_efforts, warning_messages, warning_text)
+        return Model(capabilities, id, name, billing, default_reasoning_effort, info_messages, metadata, model_picker_category, model_picker_price_category, policy, provider, supported_context_tiers, supported_reasoning_efforts, vendor, warning_messages, warning_text)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -46374,6 +46632,8 @@ class Model:
             result["supportedContextTiers"] = from_union([lambda x: from_list(from_str, x), from_none], self.supported_context_tiers)
         if self.supported_reasoning_efforts is not None:
             result["supportedReasoningEfforts"] = from_union([lambda x: from_list(from_str, x), from_none], self.supported_reasoning_efforts)
+        if self.vendor is not None:
+            result["vendor"] = from_union([from_str, from_none], self.vendor)
         if self.warning_messages is not None:
             result["warningMessages"] = from_union([lambda x: from_list(lambda x: to_class(ModelMessage, x), x), from_none], self.warning_messages)
         if self.warning_text is not None:
@@ -49126,6 +49386,9 @@ class RPC:
     git_remote_repository: _GitRemoteRepository
     git_repos_from_remotes_request: _GitReposFromRemotesRequest
     git_repos_from_remotes_result: _GitReposFromRemotesResult
+    global_state_load_for_config_dir_request: _GlobalStateLoadForConfigDirRequest
+    global_state_load_result: _GlobalStateLoadResult
+    global_state_write_key_request: _GlobalStateWriteKeyRequest
     handle_pending_tool_call_request: HandlePendingToolCallRequest
     handle_pending_tool_call_result: HandlePendingToolCallResult
     history_abort_manual_compaction_result: HistoryAbortManualCompactionResult
@@ -49215,6 +49478,7 @@ class RPC:
     llm_inference_http_response_start_result: LlmInferenceHTTPResponseStartResult
     llm_inference_set_provider_result: LlmInferenceSetProviderResult
     local_session_metadata_value: LocalSessionMetadataValue
+    logged_in_user: _LoggedInUser
     login_provider_kind: LoginProviderKind
     log_request: LogRequest
     log_result: LogResult
@@ -50224,7 +50488,6 @@ class RPC:
     user_setting_metadata: UserSettingMetadata
     user_settings_get_result: UserSettingsGetResult
     user_settings_set_request: UserSettingsSetRequest
-    user_settings_set_result: UserSettingsSetResult
     visibility_get_result: VisibilityGetResult
     visibility_set_request: VisibilitySetRequest
     visibility_set_result: VisibilitySetResult
@@ -50703,6 +50966,9 @@ class RPC:
         git_remote_repository = _GitRemoteRepository.from_dict(obj.get("GitRemoteRepository"))
         git_repos_from_remotes_request = _GitReposFromRemotesRequest.from_dict(obj.get("GitReposFromRemotesRequest"))
         git_repos_from_remotes_result = _GitReposFromRemotesResult.from_dict(obj.get("GitReposFromRemotesResult"))
+        global_state_load_for_config_dir_request = _GlobalStateLoadForConfigDirRequest.from_dict(obj.get("GlobalStateLoadForConfigDirRequest"))
+        global_state_load_result = _GlobalStateLoadResult.from_dict(obj.get("GlobalStateLoadResult"))
+        global_state_write_key_request = _GlobalStateWriteKeyRequest.from_dict(obj.get("GlobalStateWriteKeyRequest"))
         handle_pending_tool_call_request = HandlePendingToolCallRequest.from_dict(obj.get("HandlePendingToolCallRequest"))
         handle_pending_tool_call_result = HandlePendingToolCallResult.from_dict(obj.get("HandlePendingToolCallResult"))
         history_abort_manual_compaction_result = HistoryAbortManualCompactionResult.from_dict(obj.get("HistoryAbortManualCompactionResult"))
@@ -50792,6 +51058,7 @@ class RPC:
         llm_inference_http_response_start_result = LlmInferenceHTTPResponseStartResult.from_dict(obj.get("LlmInferenceHttpResponseStartResult"))
         llm_inference_set_provider_result = LlmInferenceSetProviderResult.from_dict(obj.get("LlmInferenceSetProviderResult"))
         local_session_metadata_value = LocalSessionMetadataValue.from_dict(obj.get("LocalSessionMetadataValue"))
+        logged_in_user = _LoggedInUser.from_dict(obj.get("LoggedInUser"))
         login_provider_kind = LoginProviderKind(obj.get("LoginProviderKind"))
         log_request = LogRequest.from_dict(obj.get("LogRequest"))
         log_result = LogResult.from_dict(obj.get("LogResult"))
@@ -51801,7 +52068,6 @@ class RPC:
         user_setting_metadata = UserSettingMetadata.from_dict(obj.get("UserSettingMetadata"))
         user_settings_get_result = UserSettingsGetResult.from_dict(obj.get("UserSettingsGetResult"))
         user_settings_set_request = UserSettingsSetRequest.from_dict(obj.get("UserSettingsSetRequest"))
-        user_settings_set_result = UserSettingsSetResult.from_dict(obj.get("UserSettingsSetResult"))
         visibility_get_result = VisibilityGetResult.from_dict(obj.get("VisibilityGetResult"))
         visibility_set_request = VisibilitySetRequest.from_dict(obj.get("VisibilitySetRequest"))
         visibility_set_result = VisibilitySetResult.from_dict(obj.get("VisibilitySetResult"))
@@ -51892,7 +52158,7 @@ class RPC:
         subagent_settings = from_union([SubagentSettings.from_dict, from_none], obj.get("SubagentSettings"))
         task_progress = from_union([TaskProgress.from_dict, from_none], obj.get("TaskProgress"))
         workspace_summary = from_union([WorkspaceSummary.from_dict, from_none], obj.get("WorkspaceSummary"))
-        return RPC(abort_request, abort_result, accepted_enqueue_command_result, account_all_users, account_auth_info, account_get_all_users_result, account_get_current_auth_result, account_get_quota_request, account_get_quota_result, account_kind, account_login_request, account_login_result, account_logout_request, account_logout_result, account_quota_snapshot, accounts_enumerate_request, accounts_get_request, accounts_set_request, account_status, adaptive_thinking_support, agent_discovery_path, agent_discovery_path_list, agent_discovery_path_scope, agent_get_current_result, agent_info, agent_info_source, agent_list, agent_list_request, agent_registry_live_target_entry, agent_registry_live_target_entry_attention_kind, agent_registry_live_target_entry_kind, agent_registry_live_target_entry_last_terminal_event, agent_registry_live_target_entry_status, agent_registry_log_capture, agent_registry_log_capture_open_error_reason, agent_registry_spawn_error, agent_registry_spawn_permission_mode, agent_registry_spawn_registry_timeout, agent_registry_spawn_request, agent_registry_spawn_result, agent_registry_spawn_spawned, agent_registry_spawn_validation_error, agent_registry_spawn_validation_error_field, agent_registry_spawn_validation_error_reason, agent_reload_result, agents_custom_agent_initial_model_decision_params, agents_custom_agent_initial_model_decision_result, agents_discover_request, agent_select_request, agent_select_result, agent_set_prompt_request, agents_get_available_builtins_request, agents_get_available_builtins_result, agents_get_builtin_definition_request, agents_get_builtin_definition_result, agents_get_builtin_listing_definition_request, agents_get_builtin_listing_definition_result, agents_get_builtins_result, agents_get_discovery_paths_request, api_key_auth_info, auth_enumerate_query, auth_enumerate_value, auth_identity, auth_identity_metadata, auth_info, auth_info_type, auth_login_account, auth_login_advance_request, auth_login_begin_request, auth_login_begun, auth_login_cancel_request, auth_login_result_dto, auth_login_result_status, auth_login_step, auth_read_query, auth_read_value, auth_status_dto, auth_validation_error, auth_validation_errors, auth_write, auth_write_result, autopilot_objective_credit_limit, autopilot_objective_get_state_result, autopilot_objective_state, autopilot_objective_status, builtin_agent_summary, built_in_model_catalog, built_in_model_catalog_entry, builtin_tool_descriptor, builtin_tool_format, builtin_tool_format_type, builtin_tool_input_schema, builtin_tool_input_schema_type, builtin_tool_safe_for_telemetry, builtin_tool_safe_telemetry_fields, cancel_user_requested_shell_command_result, canvas_action, canvas_action_invoke_request, canvas_action_invoke_result, canvas_close_request, canvas_host_context, canvas_host_context_capabilities, canvas_json_schema, canvas_list, canvas_list_open_result, canvas_open_request, canvas_provider_close_request, canvas_provider_invoke_action_request, canvas_provider_open_request, canvas_provider_open_result, canvas_provider_register_request, canvas_provider_unregister_request, canvas_session_context, capi_session_options, card_digest, card_digest_algorithm, card_digest_value, catalog_agent_plugin_candidate, catalog_agent_plugin_candidate_kind, catalog_agent_plugin_candidate_provenance, catalog_agent_plugin_compatibility_tag, catalog_agent_plugin_media_type, catalog_ai_skill_candidate, catalog_ai_skill_candidate_kind, catalog_ai_skill_candidate_provenance, catalog_ai_skill_installability, catalog_ai_skill_media_type, catalog_authentication_required_error, catalog_authentication_required_reason, catalog_candidate, catalog_candidate_kind, catalog_candidate_source, catalog_candidate_source_embedded, catalog_candidate_source_url, catalog_capability, catalog_capability_id, catalog_client_contract, catalog_contract_violation_error, catalog_contract_violation_reason, catalog_handle_rejected_error, catalog_handle_rejection_reason, catalog_handle_type, catalog_invalid_request_error, catalog_invalid_request_field, catalog_malformed_card_error, catalog_malformed_card_reason, catalog_mcp_server_candidate, catalog_mcp_server_candidate_kind, catalog_mcp_server_candidate_provenance, catalog_mcp_server_installability, catalog_media_type, catalog_negotiated_contract, catalog_negotiation_refused_error, catalog_negotiation_refused_reason, catalog_network_failure_error, catalog_network_failure_reason, catalog_not_installable_error, catalog_not_installable_reason, catalog_plugin_repository_source, catalog_policy_rejected_error, catalog_resource_identity, catalog_resource_version, catalog_search_page, catalog_search_pagination, catalog_search_request, catalog_search_result, catalog_search_succeeded, catalog_search_total_count_relation, catalog_selection_cancelled, catalog_selection_decision, catalog_selection_declined, catalog_selection_foreign, catalog_selection_invalid, catalog_selection_replayed, catalog_selection_request, catalog_selection_result, catalog_selection_selected, catalog_selection_stale, catalog_selection_timed_out, catalog_selection_wrong_kind, catalog_trust_eligibility, catalog_trust_provenance, catalog_trust_snapshot, catalog_trust_snapshot_absent, catalog_trust_snapshot_absent_status, catalog_trust_snapshot_current, catalog_trust_snapshot_current_status, catalog_trust_snapshot_downgraded, catalog_trust_snapshot_downgraded_status, catalog_trust_snapshot_malformed, catalog_trust_snapshot_malformed_status, catalog_trust_snapshot_revoked, catalog_trust_snapshot_revoked_status, catalog_trust_snapshot_schema_version, catalog_trust_snapshot_stale, catalog_trust_snapshot_stale_status, catalog_trust_snapshot_unsupported, catalog_trust_snapshot_unsupported_status, catalog_trust_source, catalog_trust_tier, catalog_unavailable_error, catalog_unavailable_reason, catalog_unavailable_transport_error, catalog_unavailable_transport_reason, catalog_unsafe_retrieval_error, catalog_unsafe_retrieval_reason, catalog_unsupported_kind_error, client_metadata, client_task_cancel_reason, client_task_cancel_request, client_task_cancel_result, command_list, commands_finalize_invocation_effect_request, commands_finalize_invocation_effect_result, commands_handle_pending_command_request, commands_handle_pending_command_result, commands_invocation_effect_outcome, commands_invocation_origin, commands_invoke_request, commands_list_request, commands_respond_to_queued_command_request, commands_respond_to_queued_command_result, completions_get_trigger_characters_result, completions_request_request, completions_request_result, configure_session_extensions_params, connect_client_info, connected_remote_session_metadata, connected_remote_session_metadata_kind, connected_remote_session_metadata_repository, connector_account_request, connector_authorization_requirement, connector_authorization_scope, connector_availability, connector_capabilities, connector_catalog_entry, connector_catalog_result, connector_catalog_status, connector_connect_request, connector_connect_result, connector_continue_request, connector_disconnect_result, connector_discovery_account, connector_discovery_account_list, connector_discovery_account_request, connector_discovery_auth_info, connector_discovery_availability, connector_discovery_capabilities, connector_discovery_catalog_entry, connector_discovery_catalog_result, connector_mcp_status, connector_reconcile_request, connector_runtime_status, connector_session_account, connector_status, connect_remote_session_params, connect_request, connect_result, content_exclusion_check_paths_request, content_exclusion_check_paths_result, content_exclusion_path_check, content_filter_mode, context_heaviest_message, copilot_api_token_auth_info, copilot_user_response, copilot_user_response_endpoints, copilot_user_response_quota_snapshots, copilot_user_response_quota_snapshots_chat, copilot_user_response_quota_snapshots_completions, copilot_user_response_quota_snapshots_premium_interactions, current_model, current_tool_metadata, customization_reload_outcome, customization_reload_status, customization_reload_subsystem, customizations_reload_result, debug_collect_logs_collected_entry, debug_collect_logs_destination, debug_collect_logs_entry, debug_collect_logs_entry_kind, debug_collect_logs_include, debug_collect_logs_redaction, debug_collect_logs_request, debug_collect_logs_result, debug_collect_logs_result_kind, debug_collect_logs_skipped_entry, debug_collect_logs_source, diagnostic_cursor_status, diagnostic_entry, diagnostic_log_level, diagnostics_configuration, diagnostics_configure_request, diagnostic_severity, diagnostic_source, diagnostic_sources_configuration, diagnostics_read_request, diagnostics_read_result, discovered_canvas, discovered_extension, discovered_extension_mode, discovered_extension_plugin, discovered_extensions, discovered_extensions_disable_request, discovered_extensions_enable_request, discovered_extension_source, discovered_hook, discovered_mcp_server, discovered_mcp_server_type, discovered_model, discovered_model_list, enqueue_command_params, enqueue_command_result, env_auth_info, environment_capabilities, environment_kind, environments_delete_request, environments_delete_result, environments_get_request, environments_get_result, environments_list_request, environments_list_result, event_log_read_request, event_log_release_interest_result, event_log_tail_result, event_log_types, events_agent_scope, events_cursor_status, events_read_direction, events_read_result, execute_command_params, execute_command_result, extension, extension_context_push_input, extension_launch_profile, extension_launch_provider_resolve_request, extension_launch_provider_resolve_result, extension_list, extensions_disable_request, extensions_enable_request, extension_source, extension_status, external_tool_result, external_tool_text_result_for_llm, external_tool_text_result_for_llm_binary_results_for_llm, external_tool_text_result_for_llm_binary_results_for_llm_type, external_tool_text_result_for_llm_content, external_tool_text_result_for_llm_content_audio, external_tool_text_result_for_llm_content_image, external_tool_text_result_for_llm_content_resource, external_tool_text_result_for_llm_content_resource_details, external_tool_text_result_for_llm_content_resource_link, external_tool_text_result_for_llm_content_resource_link_icon, external_tool_text_result_for_llm_content_resource_link_icon_theme, external_tool_text_result_for_llm_content_shell_exit, external_tool_text_result_for_llm_content_terminal, external_tool_text_result_for_llm_content_text, filter_mapping, fleet_start_request, fleet_start_result, folder_trust_add_params, folder_trust_check_params, folder_trust_check_result, gh_cli_auth_info, git_current_branch_remote_result, git_cwd_request, git_hub_environment, git_hub_owner_option, git_hub_owners_cancel_request, git_hub_owners_cancel_result, git_hub_owners_list_request, git_hub_owners_list_result, git_hub_owners_request_id_result, git_hub_repository_at_path_request, git_hub_repository_at_path_result, git_hub_repository_identity, git_hub_telemetry_client_info, git_hub_telemetry_event, git_hub_telemetry_notification, git_hub_token_acquire_reason, git_hub_token_acquire_request, git_hub_token_acquire_result, git_remote_repository, git_repos_from_remotes_request, git_repos_from_remotes_result, handle_pending_tool_call_request, handle_pending_tool_call_result, history_abort_manual_compaction_result, history_cancel_background_compaction_result, history_clear_context_request, history_clear_context_result, history_compact_context_window, history_compact_request, history_compact_result, history_file_restore_skip_reason, history_list_rewind_points_result, history_preview_rewind_request, history_preview_rewind_result, history_rewind_change_type, history_rewind_file_preview, history_rewind_mode, history_rewind_outcome, history_rewind_point, history_rewind_request, history_rewind_result, history_rewind_unavailable_reason, history_skipped_file_restore, history_summarize_for_handoff_result, history_truncate_request, history_truncate_result, hmac_auth_info, hook_invoke_request, hook_invoke_response, hook_origin, hooks_discover_request, hooks_discover_result, hook_type, host_configuration, host_dispose_request, host_empty_result, host_environment_credentials, host_exited_notification, host_exit_reason, host_git_hub_environment_options, host_local_server_configuration, host_local_server_options, host_publish_session_request, host_publish_session_result, host_ready_request, host_register_session_request, host_session_create_callback, host_session_create_request, host_session_create_result, host_session_released_notification, host_session_release_request, host_start_request, host_start_result, installation_catalogue_identity, installation_confirmation_request, installation_confirmation_response, installation_decision, installation_review, installed_plugin, installed_plugin_info, installed_plugin_source, installed_plugin_source_git_hub, installed_plugin_source_local, installed_plugin_source_url, instruction_discovery_path, instruction_discovery_path_kind, instruction_discovery_path_list, instruction_discovery_path_location, instructions_discover_request, instructions_get_discovery_paths_request, instructions_get_sources_result, instruction_source, instruction_source_location, instruction_source_type, interrupt_main_turn_request, interrupt_main_turn_result, json_schema_response_format, llm_inference_headers, llm_inference_http_request_chunk_request, llm_inference_http_request_chunk_result, llm_inference_http_request_start_request, llm_inference_http_request_start_result, llm_inference_http_request_start_transport, llm_inference_http_response_chunk_error, llm_inference_http_response_chunk_request, llm_inference_http_response_chunk_result, llm_inference_http_response_start_request, llm_inference_http_response_start_result, llm_inference_set_provider_result, local_session_metadata_value, login_provider_kind, log_request, log_result, lsp_initialize_request, managed_mcp_server_config, managed_setting_meta, managed_settings_channel, managed_settings_compose_layer, managed_settings_compose_request, managed_settings_compose_result, managed_settings_diagnostic, managed_settings_diagnostic_severity, managed_settings_layer, managed_settings_meta, managed_settings_read_result, managed_settings_resolved_data, managed_settings_resolve_request, managed_settings_resolve_result, managed_settings_schema_result, managed_settings_validate_request, managed_settings_validate_result, managed_settings_values, marketplace_add_result, marketplace_browse_result, marketplace_info, marketplace_list_result, marketplace_plugin_info, marketplace_refresh_entry, marketplace_refresh_result, marketplace_remove_result, mcp_allowed_server, mcp_apply_install_request, mcp_apply_uninstall_request, mcp_apps_call_tool_request, mcp_apps_diagnose_capability, mcp_apps_diagnose_request, mcp_apps_diagnose_result, mcp_apps_diagnose_server, mcp_apps_host_context, mcp_apps_host_context_details, mcp_apps_host_context_details_available_display_mode, mcp_apps_host_context_details_display_mode, mcp_apps_host_context_details_platform, mcp_apps_host_context_details_theme, mcp_apps_list_tools_request, mcp_apps_list_tools_result, mcp_apps_read_resource_request, mcp_apps_read_resource_result, mcp_apps_resource_content, mcp_apps_set_host_context_details, mcp_apps_set_host_context_details_available_display_mode, mcp_apps_set_host_context_details_display_mode, mcp_apps_set_host_context_details_platform, mcp_apps_set_host_context_details_theme, mcp_apps_set_host_context_request, mcp_cancel_sampling_execution_params, mcp_cancel_sampling_execution_result, mcp_config_add_request, mcp_config_disable_request, mcp_config_enable_request, mcp_config_list, mcp_config_remove_request, mcp_config_update_request, mcp_configured_server, mcp_configured_server_list, mcp_configured_server_state, mcp_configure_git_hub_request, mcp_configure_git_hub_result, mcp_diagnostic_details, mcp_diagnostic_direction, mcp_diagnostic_kind, mcp_diagnostic_source_configuration, mcp_disable_request, mcp_discover_request, mcp_discover_result, mcp_elicitation_form_mode, mcp_enable_request, mcp_execute_sampling_params, mcp_execute_sampling_request, mcp_execute_sampling_result, mcp_failed_server, mcp_filtered_server, mcp_headers_handle_pending_headers_refresh_request, mcp_headers_handle_pending_headers_refresh_request_request, mcp_headers_handle_pending_headers_refresh_request_result, mcp_host_state, mcp_installation_failure_reason, mcp_installation_input, mcp_installation_management_outcome, mcp_installation_management_result, mcp_installation_operation_request, mcp_installation_operation_status, mcp_installation_outcome, mcp_installation_remote_configuration, mcp_installation_result, mcp_installation_review, mcp_installation_secret, mcp_installation_secret_storage, mcp_installations_request, mcp_installation_state, mcp_installation_summary, mcp_install_plan, mcp_is_server_running_request, mcp_is_server_running_result, mcp_list_tools_request, mcp_list_tools_result, mcp_oauth_authentication_state_changed_request, mcp_oauth_cancel_login_request, mcp_oauth_cancel_login_result, mcp_oauth_complete_request, mcp_oauth_handle_pending_request, mcp_oauth_handle_pending_result, mcp_oauth_login_grant_type, mcp_oauth_login_request, mcp_oauth_login_result, mcp_oauth_pending_request_response, mcp_oauth_prepare_login_request, mcp_oauth_prepare_login_result, mcp_oauth_probe_needs_auth_reason, mcp_oauth_probe_request, mcp_oauth_probe_result, mcp_oauth_respond_request, mcp_oauth_respond_result, mcp_owned_oauth_login_status, mcp_plan_configuration_change, mcp_plan_configuration_operation, mcp_plan_enum_value_type, mcp_plan_install_planned, mcp_plan_install_request, mcp_plan_install_result, mcp_plan_install_source, mcp_plan_install_source_candidate, mcp_plan_install_source_candidate_kind, mcp_plan_install_source_card, mcp_plan_install_source_card_kind, mcp_plan_package_install_method, mcp_plan_package_transport, mcp_plan_policy_decision, mcp_plan_policy_result, mcp_plan_policy_source, mcp_plan_provenance, mcp_plan_remote_install_method, mcp_plan_remote_transport, mcp_plan_required_value, mcp_plan_required_value_enum, mcp_plan_required_value_enum_kind, mcp_plan_required_value_scalar, mcp_plan_required_value_scalar_kind, mcp_plan_resource_identity, mcp_plan_scalar_value_type, mcp_plan_scope, mcp_plan_secret_placeholder, mcp_plan_secret_reference, mcp_plan_target, mcp_plan_transport_choice, mcp_plan_transport_choice_package, mcp_plan_transport_choice_remote, mcp_plan_uninstall_request, mcp_plan_value_category, mcp_prepared_install, mcp_prepare_install_request, mcp_prompt, mcp_prompt_argument, mcp_prompt_icon, mcp_prompt_message, mcp_prompt_role, mcp_prompts_get_request, mcp_prompts_get_result, mcp_prompts_list_request, mcp_prompts_list_result, mcp_register_external_client_request, mcp_reload_config, mcp_reload_with_config_request, mcp_remove_git_hub_result, mcp_resource, mcp_resource_annotations, mcp_resource_content, mcp_resource_icon, mcp_resources_list_request, mcp_resources_list_result, mcp_resources_list_templates_request, mcp_resources_list_templates_result, mcp_resources_read_request, mcp_resources_read_result, mcp_resource_template, mcp_restart_server_request, mcp_safe_for_telemetry, mcp_safe_for_telemetry_fields, mcp_sampling_execution_action, mcp_sampling_execution_result, mcp_serializable_server_config, mcp_server, mcp_server_auth_config, mcp_server_auth_config_redirect_port, mcp_server_card_embedded, mcp_server_card_embedded_kind, mcp_server_card_media_type, mcp_server_card_reference, mcp_server_card_url, mcp_server_card_url_kind, mcp_server_config, mcp_server_config_defer_tools, mcp_server_config_http, mcp_server_config_http_oauth_grant_type, mcp_server_config_http_type, mcp_server_config_memory, mcp_server_config_memory_type, mcp_server_config_stdio, mcp_server_config_stdio_type, mcp_server_failure_info, mcp_server_list, mcp_server_needs_auth_info, mcp_server_ownership, mcp_set_env_value_mode_details, mcp_set_env_value_mode_params, mcp_set_env_value_mode_result, mcp_source_file, mcp_source_plugin, mcp_source_ref, mcp_start_server_request, mcp_start_servers_result, mcp_stop_server_request, mcp_task_metadata, mcp_tools, mcp_tool_ui, mcp_tool_ui_visibility, mcp_uninstall_plan, mcp_unregister_external_client_request, memory_configuration, metadata_context_attribution_result, metadata_context_heaviest_messages_request, metadata_context_heaviest_messages_result, metadata_context_info_request, metadata_context_info_result, metadata_is_processing_result, metadata_recompute_context_tokens_request, metadata_recompute_context_tokens_result, metadata_record_context_change_request, metadata_record_context_change_result, metadata_set_working_directory_request, metadata_set_working_directory_result, metadata_snapshot_current_mode, metadata_snapshot_remote_metadata, metadata_snapshot_remote_metadata_repository, metadata_snapshot_remote_metadata_task_type, metadata_update_client_metadata_request, model, model_apply_startup_overlay_request, model_artifact_details, model_billing, model_billing_promo, model_billing_token_prices, model_billing_token_prices_long_context, model_capabilities, model_capabilities_limits, model_capabilities_limits_vision, model_capabilities_override, model_capabilities_override_limits, model_capabilities_override_limits_vision, model_capabilities_override_supports, model_capabilities_supports, model_list, model_list_request, model_message, model_picker_category, model_picker_persistence_request, model_picker_price_category, model_picker_settings_context, model_policy, model_policy_state, model_provider_adapter_catalog, model_provider_adapter_descriptor, model_provider_adapter_operation_descriptor, model_provider_attribution, model_provider_automatic_discovery_mode, model_provider_automatic_discovery_policy, model_provider_configuration_disposition, model_provider_configuration_plan, model_provider_descriptor, model_provider_discover_request, model_provider_discover_result, model_provider_discovery_network_scope, model_provider_get_status_request, model_provider_instance, model_provider_instance_reference, model_provider_kind, model_provider_models_list_request, model_provider_operation_outcome, model_provider_operation_outcome_code, model_provider_prepare_configuration_request, model_provider_provenance, model_provider_provenance_source, model_provider_ref, model_provider_status, model_provider_warning, model_set_allowed_models_request, model_set_allowed_models_result, model_set_reasoning_effort_request, model_set_reasoning_effort_result, models_list_request, model_switch_auto_tier_request, model_switch_auto_tier_result, model_switch_auto_tier_status, model_switch_confirmation, model_switch_to_request, model_switch_to_result, model_warning_text, mode_set_request, mode_set_result, move_mcp_loading_to_background_result, named_provider_config, name_get_result, name_set_auto_request, name_set_auto_result, name_set_request, open_canvas_instance, options_update_additional_content_exclusion_policy, options_update_additional_content_exclusion_policy_rule, options_update_additional_content_exclusion_policy_rule_source, options_update_additional_content_exclusion_policy_scope, options_update_context_tier, options_update_env_value_mode, options_update_reasoning_summary, options_update_tool_filter_precedence, pending_permission_request, pending_permission_request_list, permission_decision, permission_decision_approved, permission_decision_approved_for_location, permission_decision_approved_for_session, permission_decision_approve_for_location, permission_decision_approve_for_location_approval, permission_decision_approve_for_location_approval_commands, permission_decision_approve_for_location_approval_custom_tool, permission_decision_approve_for_location_approval_extension_env_access, permission_decision_approve_for_location_approval_extension_management, permission_decision_approve_for_location_approval_extension_permission_access, permission_decision_approve_for_location_approval_mcp, permission_decision_approve_for_location_approval_mcp_sampling, permission_decision_approve_for_location_approval_memory, permission_decision_approve_for_location_approval_read, permission_decision_approve_for_location_approval_workflow, permission_decision_approve_for_location_approval_write, permission_decision_approve_for_session, permission_decision_approve_for_session_approval, permission_decision_approve_for_session_approval_commands, permission_decision_approve_for_session_approval_custom_tool, permission_decision_approve_for_session_approval_extension_env_access, permission_decision_approve_for_session_approval_extension_management, permission_decision_approve_for_session_approval_extension_permission_access, permission_decision_approve_for_session_approval_mcp, permission_decision_approve_for_session_approval_mcp_sampling, permission_decision_approve_for_session_approval_memory, permission_decision_approve_for_session_approval_read, permission_decision_approve_for_session_approval_workflow, permission_decision_approve_for_session_approval_write, permission_decision_approve_once, permission_decision_approve_permanently, permission_decision_approve_read_only_for_session, permission_decision_cancelled, permission_decision_context, permission_decision_denied_by_content_exclusion_policy, permission_decision_denied_by_permission_request_hook, permission_decision_denied_by_rules, permission_decision_denied_interactively_by_user, permission_decision_denied_no_approval_rule_and_could_not_request_from_user, permission_decision_outcome, permission_decision_reject, permission_decision_request, permission_decision_surface, permission_decision_user_not_available, permission_location_add_tool_approval_params, permission_location_apply_params, permission_location_apply_result, permission_location_resolve_params, permission_location_resolve_result, permission_location_type, permission_mode_source, permission_paths_add_params, permission_paths_allowed_check_params, permission_paths_allowed_check_result, permission_paths_config, permission_paths_list, permission_paths_update_primary_params, permission_paths_workspace_check_params, permission_paths_workspace_check_result, permission_prompt_shown_notification, permission_request_result, permission_response_capability, permission_rules_set, permissions_configure_additional_content_exclusion_policy, permissions_configure_additional_content_exclusion_policy_rule, permissions_configure_additional_content_exclusion_policy_rule_source, permissions_configure_additional_content_exclusion_policy_scope, permissions_configure_params, permissions_configure_result, permissions_folder_trust_add_trusted_result, permissions_get_mode_request, permissions_get_mode_result, permissions_locations_add_tool_approval_details, permissions_locations_add_tool_approval_details_commands, permissions_locations_add_tool_approval_details_custom_tool, permissions_locations_add_tool_approval_details_extension_env_access, permissions_locations_add_tool_approval_details_extension_management, permissions_locations_add_tool_approval_details_extension_permission_access, permissions_locations_add_tool_approval_details_mcp, permissions_locations_add_tool_approval_details_mcp_sampling, permissions_locations_add_tool_approval_details_memory, permissions_locations_add_tool_approval_details_read, permissions_locations_add_tool_approval_details_workflow, permissions_locations_add_tool_approval_details_write, permissions_locations_add_tool_approval_result, permissions_modify_rules_params, permissions_modify_rules_result, permissions_modify_rules_scope, permissions_notify_prompt_shown_result, permissions_paths_add_result, permissions_paths_list_request, permissions_paths_update_primary_result, permissions_pending_requests_request, permissions_reset_session_approvals_request, permissions_reset_session_approvals_result, permissions_set_approve_all_request, permissions_set_approve_all_result, permissions_set_approve_all_source, permissions_set_mode_request, permissions_set_mode_result, permissions_set_required_request, permissions_set_required_result, permissions_urls_set_unrestricted_mode_result, permission_urls_config, permission_urls_set_unrestricted_mode_params, ping_request, ping_result, plan_read_result, plan_read_sql_todos_result, plan_read_sql_todos_with_dependencies_result, plan_sql_todo_dependency, plan_sql_todos_row, plan_update_request, plugin, plugin_install_result, plugin_install_staging_mode, plugin_list, plugin_list_result, plugins_builtin_set_request, plugins_disable_request, plugins_enable_request, plugins_install_request, plugins_marketplaces_add_request, plugins_marketplaces_browse_request, plugins_marketplaces_refresh_request, plugins_marketplaces_remove_request, plugins_reload_request, plugins_uninstall_request, plugins_update_request, plugin_update_all_entry, plugin_update_all_result, plugin_update_result, protocol_append_mode, protocol_customize_mode, protocol_external_tool_defer, protocol_external_tool_definition, protocol_marker_section_override, protocol_replace_mode, protocol_section_override, protocol_static_section_action, protocol_static_section_override, protocol_system_message_append_config, protocol_system_message_config, protocol_system_message_customize_config, protocol_system_message_replace_config, provider_add_request, provider_add_result, provider_config, provider_config_azure, provider_config_model_provider, provider_config_transport, provider_config_type, provider_config_wire_api, provider_descriptor, provider_endpoint, provider_endpoint_transport, provider_endpoint_type, provider_endpoint_wire_api, provider_get_endpoint_request, provider_model_config, provider_session_token, provider_sync_request, provider_sync_result, provider_token_acquire_request, provider_token_acquire_result, provider_withdraw_request, provider_withdraw_result, push_attachment, push_attachment_blob, push_attachment_directory, push_attachment_file, push_attachment_file_line_range, push_attachment_git_hub_actions_job, push_attachment_git_hub_commit, push_attachment_git_hub_file, push_attachment_git_hub_file_diff, push_attachment_git_hub_file_diff_side, push_attachment_git_hub_reference, push_attachment_git_hub_reference_type, push_attachment_git_hub_release, push_attachment_git_hub_repository, push_attachment_git_hub_snippet, push_attachment_git_hub_tree_comparison, push_attachment_git_hub_tree_comparison_side, push_attachment_git_hub_url, push_attachment_selection, push_attachment_selection_details, push_attachment_selection_details_end, push_attachment_selection_details_start, push_git_hub_repo_ref, queue_append_steering_request, queue_begin_deferred_idle_drain_request, queue_begin_deferred_idle_drain_result, queue_consume_system_notifications_request, queued_command_handled, queued_command_not_handled, queued_command_result, queue_defer_session_idle_request, queue_duplicate_at_request, queue_duplicate_at_result, queue_enqueue_resume_pending_result, queue_finish_deferred_idle_drain_request, queue_finish_deferred_idle_drain_result, queue_has_pending_result, queue_insert_at_request, queue_insert_at_result, queue_insert_message, queue_move_item_request, queue_move_item_result, queue_pending_items, queue_pending_items_kind, queue_pending_items_result, queue_remove_at_request, queue_remove_at_result, queue_remove_most_recent_result, queue_send_now_request, queue_send_now_result, queue_set_drain_paused_request, queue_snapshot_result, queue_update_text_request, queue_update_text_result, queue_withdraw_message_request, queue_withdraw_message_result, register_event_interest_params, register_event_interest_result, release_event_interest_params, remote_control_config, remote_control_config_existing_mc_session, remote_control_status, remote_control_status_active, remote_control_status_connecting, remote_control_status_error, remote_control_status_off, remote_control_status_result, remote_control_stop_result, remote_control_transfer_result, remote_enable_request, remote_enable_result, remote_notify_steerable_changed_request, remote_notify_steerable_changed_result, remote_session_connection_result, remote_session_host_status, remote_session_metadata_repository, remote_session_metadata_task_type, remote_session_metadata_value, remote_session_mode, remote_session_repository, response_format, sandbox_config, sandbox_config_auth, sandbox_config_source, sandbox_config_user_policy, sandbox_config_user_policy_experimental, sandbox_config_user_policy_experimental_seatbelt, sandbox_config_user_policy_filesystem, sandbox_config_user_policy_network, sandbox_config_user_policy_network_proxy, sandbox_config_user_policy_seatbelt, sandbox_credentials_config, sandbox_disable_for_session_request, sandbox_disable_for_session_result, sandbox_enforcement_status, sandbox_grant_path_for_request_request, sandbox_grant_path_for_request_result, sandbox_host_capability, sandbox_host_capability_name, sandbox_host_support, sandbox_masked_env_var, sandbox_proxy_ca_create_result, sandbox_proxy_ca_request, sandbox_proxy_ca_state, sandbox_proxy_ca_status, sandbox_session_change, schedule_add_at_request, schedule_add_cron_request, schedule_add_request, schedule_add_result, schedule_add_self_paced_request, schedule_entry, schedule_has_self_paced_result, schedule_list, schedule_rearm_self_paced_request, schedule_stop_request, schedule_stop_result, secrets_add_filter_values_request, secrets_add_filter_values_result, send_agent_mode, send_attachments_to_message_params, send_message_item, send_messages_request, send_messages_result, send_mode, send_request, send_result, send_system_notification_request, server_agent_list, server_instruction_source_list, server_skill, server_skill_list, session_activity, session_agent_list_request, session_auth_login_request, session_auth_logout_user_request, session_auth_status, session_auth_switch_request, session_bulk_delete_result, session_cancel_all_background_agents_result, session_capability, session_commands_list_request, session_completion_item, session_connected_ide_info, session_context, session_context_host_type, session_enrich_metadata_result, session_fs_append_file_request, session_fs_error, session_fs_error_code, session_fs_exists_request, session_fs_exists_result, session_fs_mkdir_request, session_fs_readdir_request, session_fs_readdir_result, session_fs_readdir_with_types_entry, session_fs_readdir_with_types_entry_type, session_fs_readdir_with_types_request, session_fs_readdir_with_types_result, session_fs_read_file_bytes_request, session_fs_read_file_bytes_result, session_fs_read_file_request, session_fs_read_file_result, session_fs_rename_request, session_fs_rm_request, session_fs_set_provider_capabilities, session_fs_set_provider_conventions, session_fs_set_provider_request, session_fs_set_provider_result, session_fs_sqlite_exists_request, session_fs_sqlite_exists_result, session_fs_sqlite_query_request, session_fs_sqlite_query_result, session_fs_sqlite_query_type, session_fs_sqlite_transaction_error, session_fs_sqlite_transaction_error_class, session_fs_sqlite_transaction_request, session_fs_sqlite_transaction_result, session_fs_sqlite_transaction_statement, session_fs_stat_request, session_fs_stat_result, session_fs_write_file_bytes_request, session_fs_write_file_request, session_git_hub_auth_get_all_auth_available_result, session_git_hub_auth_logout_result, session_git_hub_auth_logout_user_result, session_history_compact_request, session_installed_plugin, session_installed_plugin_source, session_installed_plugin_source_git_hub, session_installed_plugin_source_local, session_installed_plugin_source_url, session_limit_prediction_baseline_data, session_limit_prediction_client_type, session_limit_prediction_details, session_limit_prediction_predict_request, session_limit_prediction_request, session_limit_prediction_result, session_limit_prediction_source, session_limit_prediction_tier, session_limit_prediction_tier_option, session_limit_prediction_unavailable_reason, session_list, session_list_entry, session_list_filter, session_load_deferred_repo_hooks_result, session_log_level, session_managed_permissions, session_managed_settings, session_mcp_apps_call_tool_result, session_mcp_oauth_cancel_login_request, session_mcp_oauth_cancel_login_result, session_mcp_oauth_prepare_login_request, session_mcp_oauth_prepare_login_result, session_mcp_set_connected_ide_info_params, session_metadata_snapshot, session_mode, session_model_list, session_model_list_request, session_model_price_category, session_open_options, session_open_options_additional_content_exclusion_policy, session_open_options_additional_content_exclusion_policy_rule, session_open_options_additional_content_exclusion_policy_rule_source, session_open_options_additional_content_exclusion_policy_scope, session_open_options_env_value_mode, session_open_options_reasoning_summary, session_open_params, session_open_result, session_plugins_disable_request, session_plugins_enable_request, session_plugins_install_request, session_plugins_marketplaces_refresh_request, session_plugins_reload_request, session_provider_get_endpoint_request, session_prune_result, sessions_bulk_delete_request, sessions_check_in_use_request, sessions_check_in_use_result, sessions_client_metadata_entry, sessions_close_request, sessions_close_result, sessions_create_workspace_request, sessions_create_workspace_result, sessions_delete_request, sessions_enrich_metadata_request, session_set_credentials_params, session_set_credentials_result, session_settings_built_in_tool_availability_snapshot, session_settings_evaluate_predicate_request, session_settings_evaluate_predicate_result, session_settings_job_snapshot, session_settings_model_snapshot, session_settings_online_evaluation_snapshot, session_settings_predicate_name, session_settings_repo_snapshot, session_settings_snapshot, session_settings_validation_snapshot, sessions_find_by_prefix_request, sessions_find_by_prefix_result, sessions_find_by_task_id_request, sessions_find_by_task_id_result, sessions_fork_request, sessions_fork_result, sessions_get_board_entry_count_request, sessions_get_board_entry_count_result, sessions_get_client_metadata_request, sessions_get_client_metadata_result, sessions_get_event_file_path_request, sessions_get_event_file_path_result, sessions_get_last_for_context_request, sessions_get_last_for_context_result, sessions_get_metadata_request, sessions_get_metadata_result, sessions_get_persisted_remote_steerable_request, sessions_get_persisted_remote_steerable_result, session_sizes, sessions_list_non_empty_session_ids_request, sessions_list_non_empty_session_ids_result, sessions_list_request, sessions_load_deferred_repo_hooks_request, sessions_load_workspace_request, sessions_load_workspace_result, sessions_open_attach, sessions_open_cloud, sessions_open_create, sessions_open_handoff, sessions_open_handoff_task_type, sessions_open_progress, sessions_open_progress_status, sessions_open_progress_step, sessions_open_remote, sessions_open_resume, sessions_open_resume_last, sessions_open_status, session_source, sessions_prune_old_request, sessions_read_persisted_events_request, sessions_release_lock_request, sessions_release_lock_result, sessions_reload_plugin_hooks_request, sessions_reload_plugin_hooks_result, sessions_save_request, sessions_save_result, sessions_set_additional_plugins_request, sessions_set_additional_plugins_result, sessions_set_remote_control_steering_request, sessions_start_remote_control_request, sessions_stop_remote_control_request, sessions_transfer_remote_control_request, sessions_update_workspace_fields_request, sessions_update_workspace_fields_result, session_telemetry_engagement, session_update_options_params, session_update_options_result, session_visibility_status, session_workflow_pause_at_checkpoint_result, session_working_directory_context, session_working_directory_context_host_type, session_working_directory_context_with_client, settable_auth_info, settable_token_auth_info, shell_cancel_user_requested_request, shell_credentials, shell_exec_request, shell_exec_result, shell_execute_user_requested_request, shell_init_profile, shell_init_script, shell_init_script_shell, shell_kill_request, shell_kill_result, shell_kill_signal, shell_options, shutdown_request, skill, skill_apply_install_request, skill_apply_uninstall_request, skill_discovery_path, skill_discovery_path_list, skill_discovery_scope, skill_installation_failure_reason, skill_installation_file_review, skill_installation_location, skill_installation_management_outcome, skill_installation_management_result, skill_installation_operation_request, skill_installation_operation_status, skill_installation_outcome, skill_installation_ownership_state, skill_installation_result, skill_installation_review, skill_installation_scope, skill_installation_session_state, skill_installation_source, skill_installations_request, skill_installation_summary, skill_install_plan, skill_list, skill_plan_install_request, skill_plan_uninstall_request, skill_provider_descriptor, skill_provider_list_request, skill_provider_list_result, skill_provider_read_request, skill_provider_read_result, skills_config_set_disabled_skills_request, skills_config_set_skill_disabled_request, skills_disable_request, skills_discover_request, skills_enable_request, skill_set_enabled_request, skills_get_discovery_paths_request, skills_get_invoked_result, skills_invoked_skill, skills_load_diagnostics, skill_uninstall_plan, slash_command_add_timeline_entry_result, slash_command_agent_prompt_result, slash_command_completed_result, slash_command_info, slash_command_input, slash_command_input_choice, slash_command_input_completion, slash_command_invocation_result, slash_command_kind, slash_command_model_picker_dialog, slash_command_select_subcommand_option, slash_command_select_subcommand_result, slash_command_set_model_result, slash_command_set_plan_model_result, slash_command_show_dialog_result, slash_command_text_result, slash_command_timeline_entry, subagent_settings_entry, subagent_settings_entry_context_tier, system_message_block, task_agent_info, task_agent_progress, task_client_active_status, task_client_execution_mode, task_client_info, task_client_owner, task_client_owner_kind, task_client_owner_presence, task_client_progress, task_client_status, task_client_type, task_client_update, task_complete_data, task_completion_decision, task_execution_mode, task_info, task_kind, task_list, task_progress_line, tasks_cancel_request, tasks_cancel_result, tasks_get_current_promotable_result, tasks_get_progress_request, tasks_get_progress_result, task_shell_info, task_shell_info_attachment_mode, task_shell_progress, tasks_promote_current_to_background_result, tasks_promote_to_background_request, tasks_promote_to_background_result, tasks_refresh_result, tasks_register_request, tasks_register_result, tasks_remove_request, tasks_remove_result, tasks_send_message_request, tasks_send_message_result, tasks_start_agent_request, tasks_start_agent_result, task_status, tasks_update_request, tasks_update_result, tasks_wait_for_pending_result, telemetry_set_feature_overrides_request, token_auth_info, token_provider_auth_info, tool, tool_list, tool_result, tool_result_expanded, tool_result_new_message, tool_result_type, tools_execute_request, tools_get_builtin_descriptors_request, tools_get_builtin_descriptors_result, tools_get_current_metadata_result, tools_initialize_and_validate_result, tools_list_request, tools_set_request, tools_set_result, tools_shell_descriptor_config, tools_task_complete_event_data_request, tools_update_subagent_settings_result, ui_auto_mode_switch_response, ui_elicitation_array_any_of_field, ui_elicitation_array_any_of_field_items, ui_elicitation_array_any_of_field_items_any_of, ui_elicitation_array_enum_field, ui_elicitation_array_enum_field_items, ui_elicitation_field_value, ui_elicitation_request, ui_elicitation_response, ui_elicitation_response_action, ui_elicitation_response_content, ui_elicitation_result, ui_elicitation_schema, ui_elicitation_schema_property, ui_elicitation_schema_property_boolean, ui_elicitation_schema_property_number, ui_elicitation_schema_property_number_type, ui_elicitation_schema_property_string, ui_elicitation_schema_property_string_format, ui_elicitation_string_enum_field, ui_elicitation_string_one_of_field, ui_elicitation_string_one_of_field_one_of, ui_ephemeral_query_request, ui_ephemeral_query_result, ui_exit_plan_mode_action, ui_exit_plan_mode_response, ui_handle_pending_auto_mode_switch_request, ui_handle_pending_elicitation_request, ui_handle_pending_exit_plan_mode_request, ui_handle_pending_result, ui_handle_pending_sampling_request, ui_handle_pending_sampling_response, ui_handle_pending_session_limits_exhausted_request, ui_handle_pending_user_input_request, ui_register_direct_auto_mode_switch_handler_result, ui_session_limits_exhausted_response, ui_session_limits_exhausted_response_action, ui_unregister_direct_auto_mode_switch_handler_request, ui_unregister_direct_auto_mode_switch_handler_result, ui_user_input_response, unsupported_enqueue_command_result, update_subagent_settings_request, usage_get_metrics_result, usage_metrics_agent_metric, usage_metrics_code_changes, usage_metrics_model_metric, usage_metrics_model_metric_requests, usage_metrics_model_metric_token_detail, usage_metrics_model_metric_usage, usage_metrics_token_detail, user_auth_info, user_requested_shell_command_result, user_setting_metadata, user_settings_get_result, user_settings_set_request, user_settings_set_result, visibility_get_result, visibility_set_request, visibility_set_result, workflow_abort_request, workflow_ack_result, workflow_agent_options, workflow_agent_request, workflow_agent_result, workflow_agent_summary, workflow_cancel_request, workflow_current_phase, workflow_declared_limits, workflow_durable_operation, workflow_execute_request, workflow_execute_result, workflow_get_run_progress_request, workflow_get_run_request, workflow_journal_get_request, workflow_journal_get_result, workflow_journal_put_request, workflow_list_runs_request, workflow_list_runs_result, workflow_log_line, workflow_log_line_kind, workflow_log_request, workflow_pause_checkpoint_action, workflow_pause_checkpoint_request, workflow_pause_checkpoint_result, workflow_pause_info, workflow_pause_request, workflow_phase_observation, workflow_phase_status, workflow_progress_line, workflow_progress_page, workflow_resume_request, workflow_resume_result, workflow_run_consumed, workflow_run_detail, workflow_run_failure, workflow_run_failure_kind, workflow_run_limits, workflow_run_options, workflow_run_request, workflow_run_result, workflow_run_status, workflow_run_summary, workflow_run_terminal, workflow_tool_resume_request, workflow_tool_run_options, workflow_tool_run_request, workspace_diff_file_change, workspace_diff_file_change_type, workspace_diff_mode, workspace_diff_result, workspaces_add_summary_request, workspaces_add_summary_result, workspaces_autopilot_objective_exists_result, workspaces_checkpoints, workspaces_create_directory_request, workspaces_create_file_request, workspaces_delete_autopilot_objective_result, workspaces_diff_request, workspaces_ensure_request, workspaces_get_workspace_result, workspaces_list_checkpoints_result, workspaces_list_files_result, workspaces_read_autopilot_objective_result, workspaces_read_checkpoint_request, workspaces_read_checkpoint_result, workspaces_read_file_request, workspaces_read_file_result, workspaces_remove_path_request, workspaces_rename_path_request, workspaces_save_large_paste_request, workspaces_save_large_paste_result, workspaces_stat_file_request, workspaces_stat_file_result, workspaces_truncate_summaries_request, workspace_summary_host_type, workspaces_update_metadata_request, workspaces_workspace_details_host_type, workspaces_write_autopilot_objective_request, workspaces_write_autopilot_objective_result, connector_session_account_result, session_auth_info_result, session_context_attribution, session_context_info, subagent_settings, task_progress, workspace_summary)
+        return RPC(abort_request, abort_result, accepted_enqueue_command_result, account_all_users, account_auth_info, account_get_all_users_result, account_get_current_auth_result, account_get_quota_request, account_get_quota_result, account_kind, account_login_request, account_login_result, account_logout_request, account_logout_result, account_quota_snapshot, accounts_enumerate_request, accounts_get_request, accounts_set_request, account_status, adaptive_thinking_support, agent_discovery_path, agent_discovery_path_list, agent_discovery_path_scope, agent_get_current_result, agent_info, agent_info_source, agent_list, agent_list_request, agent_registry_live_target_entry, agent_registry_live_target_entry_attention_kind, agent_registry_live_target_entry_kind, agent_registry_live_target_entry_last_terminal_event, agent_registry_live_target_entry_status, agent_registry_log_capture, agent_registry_log_capture_open_error_reason, agent_registry_spawn_error, agent_registry_spawn_permission_mode, agent_registry_spawn_registry_timeout, agent_registry_spawn_request, agent_registry_spawn_result, agent_registry_spawn_spawned, agent_registry_spawn_validation_error, agent_registry_spawn_validation_error_field, agent_registry_spawn_validation_error_reason, agent_reload_result, agents_custom_agent_initial_model_decision_params, agents_custom_agent_initial_model_decision_result, agents_discover_request, agent_select_request, agent_select_result, agent_set_prompt_request, agents_get_available_builtins_request, agents_get_available_builtins_result, agents_get_builtin_definition_request, agents_get_builtin_definition_result, agents_get_builtin_listing_definition_request, agents_get_builtin_listing_definition_result, agents_get_builtins_result, agents_get_discovery_paths_request, api_key_auth_info, auth_enumerate_query, auth_enumerate_value, auth_identity, auth_identity_metadata, auth_info, auth_info_type, auth_login_account, auth_login_advance_request, auth_login_begin_request, auth_login_begun, auth_login_cancel_request, auth_login_result_dto, auth_login_result_status, auth_login_step, auth_read_query, auth_read_value, auth_status_dto, auth_validation_error, auth_validation_errors, auth_write, auth_write_result, autopilot_objective_credit_limit, autopilot_objective_get_state_result, autopilot_objective_state, autopilot_objective_status, builtin_agent_summary, built_in_model_catalog, built_in_model_catalog_entry, builtin_tool_descriptor, builtin_tool_format, builtin_tool_format_type, builtin_tool_input_schema, builtin_tool_input_schema_type, builtin_tool_safe_for_telemetry, builtin_tool_safe_telemetry_fields, cancel_user_requested_shell_command_result, canvas_action, canvas_action_invoke_request, canvas_action_invoke_result, canvas_close_request, canvas_host_context, canvas_host_context_capabilities, canvas_json_schema, canvas_list, canvas_list_open_result, canvas_open_request, canvas_provider_close_request, canvas_provider_invoke_action_request, canvas_provider_open_request, canvas_provider_open_result, canvas_provider_register_request, canvas_provider_unregister_request, canvas_session_context, capi_session_options, card_digest, card_digest_algorithm, card_digest_value, catalog_agent_plugin_candidate, catalog_agent_plugin_candidate_kind, catalog_agent_plugin_candidate_provenance, catalog_agent_plugin_compatibility_tag, catalog_agent_plugin_media_type, catalog_ai_skill_candidate, catalog_ai_skill_candidate_kind, catalog_ai_skill_candidate_provenance, catalog_ai_skill_installability, catalog_ai_skill_media_type, catalog_authentication_required_error, catalog_authentication_required_reason, catalog_candidate, catalog_candidate_kind, catalog_candidate_source, catalog_candidate_source_embedded, catalog_candidate_source_url, catalog_capability, catalog_capability_id, catalog_client_contract, catalog_contract_violation_error, catalog_contract_violation_reason, catalog_handle_rejected_error, catalog_handle_rejection_reason, catalog_handle_type, catalog_invalid_request_error, catalog_invalid_request_field, catalog_malformed_card_error, catalog_malformed_card_reason, catalog_mcp_server_candidate, catalog_mcp_server_candidate_kind, catalog_mcp_server_candidate_provenance, catalog_mcp_server_installability, catalog_media_type, catalog_negotiated_contract, catalog_negotiation_refused_error, catalog_negotiation_refused_reason, catalog_network_failure_error, catalog_network_failure_reason, catalog_not_installable_error, catalog_not_installable_reason, catalog_plugin_repository_source, catalog_policy_rejected_error, catalog_resource_identity, catalog_resource_version, catalog_search_page, catalog_search_pagination, catalog_search_request, catalog_search_result, catalog_search_succeeded, catalog_search_total_count_relation, catalog_selection_cancelled, catalog_selection_decision, catalog_selection_declined, catalog_selection_foreign, catalog_selection_invalid, catalog_selection_replayed, catalog_selection_request, catalog_selection_result, catalog_selection_selected, catalog_selection_stale, catalog_selection_timed_out, catalog_selection_wrong_kind, catalog_trust_eligibility, catalog_trust_provenance, catalog_trust_snapshot, catalog_trust_snapshot_absent, catalog_trust_snapshot_absent_status, catalog_trust_snapshot_current, catalog_trust_snapshot_current_status, catalog_trust_snapshot_downgraded, catalog_trust_snapshot_downgraded_status, catalog_trust_snapshot_malformed, catalog_trust_snapshot_malformed_status, catalog_trust_snapshot_revoked, catalog_trust_snapshot_revoked_status, catalog_trust_snapshot_schema_version, catalog_trust_snapshot_stale, catalog_trust_snapshot_stale_status, catalog_trust_snapshot_unsupported, catalog_trust_snapshot_unsupported_status, catalog_trust_source, catalog_trust_tier, catalog_unavailable_error, catalog_unavailable_reason, catalog_unavailable_transport_error, catalog_unavailable_transport_reason, catalog_unsafe_retrieval_error, catalog_unsafe_retrieval_reason, catalog_unsupported_kind_error, client_metadata, client_task_cancel_reason, client_task_cancel_request, client_task_cancel_result, command_list, commands_finalize_invocation_effect_request, commands_finalize_invocation_effect_result, commands_handle_pending_command_request, commands_handle_pending_command_result, commands_invocation_effect_outcome, commands_invocation_origin, commands_invoke_request, commands_list_request, commands_respond_to_queued_command_request, commands_respond_to_queued_command_result, completions_get_trigger_characters_result, completions_request_request, completions_request_result, configure_session_extensions_params, connect_client_info, connected_remote_session_metadata, connected_remote_session_metadata_kind, connected_remote_session_metadata_repository, connector_account_request, connector_authorization_requirement, connector_authorization_scope, connector_availability, connector_capabilities, connector_catalog_entry, connector_catalog_result, connector_catalog_status, connector_connect_request, connector_connect_result, connector_continue_request, connector_disconnect_result, connector_discovery_account, connector_discovery_account_list, connector_discovery_account_request, connector_discovery_auth_info, connector_discovery_availability, connector_discovery_capabilities, connector_discovery_catalog_entry, connector_discovery_catalog_result, connector_mcp_status, connector_reconcile_request, connector_runtime_status, connector_session_account, connector_status, connect_remote_session_params, connect_request, connect_result, content_exclusion_check_paths_request, content_exclusion_check_paths_result, content_exclusion_path_check, content_filter_mode, context_heaviest_message, copilot_api_token_auth_info, copilot_user_response, copilot_user_response_endpoints, copilot_user_response_quota_snapshots, copilot_user_response_quota_snapshots_chat, copilot_user_response_quota_snapshots_completions, copilot_user_response_quota_snapshots_premium_interactions, current_model, current_tool_metadata, customization_reload_outcome, customization_reload_status, customization_reload_subsystem, customizations_reload_result, debug_collect_logs_collected_entry, debug_collect_logs_destination, debug_collect_logs_entry, debug_collect_logs_entry_kind, debug_collect_logs_include, debug_collect_logs_redaction, debug_collect_logs_request, debug_collect_logs_result, debug_collect_logs_result_kind, debug_collect_logs_skipped_entry, debug_collect_logs_source, diagnostic_cursor_status, diagnostic_entry, diagnostic_log_level, diagnostics_configuration, diagnostics_configure_request, diagnostic_severity, diagnostic_source, diagnostic_sources_configuration, diagnostics_read_request, diagnostics_read_result, discovered_canvas, discovered_extension, discovered_extension_mode, discovered_extension_plugin, discovered_extensions, discovered_extensions_disable_request, discovered_extensions_enable_request, discovered_extension_source, discovered_hook, discovered_mcp_server, discovered_mcp_server_type, discovered_model, discovered_model_list, enqueue_command_params, enqueue_command_result, env_auth_info, environment_capabilities, environment_kind, environments_delete_request, environments_delete_result, environments_get_request, environments_get_result, environments_list_request, environments_list_result, event_log_read_request, event_log_release_interest_result, event_log_tail_result, event_log_types, events_agent_scope, events_cursor_status, events_read_direction, events_read_result, execute_command_params, execute_command_result, extension, extension_context_push_input, extension_launch_profile, extension_launch_provider_resolve_request, extension_launch_provider_resolve_result, extension_list, extensions_disable_request, extensions_enable_request, extension_source, extension_status, external_tool_result, external_tool_text_result_for_llm, external_tool_text_result_for_llm_binary_results_for_llm, external_tool_text_result_for_llm_binary_results_for_llm_type, external_tool_text_result_for_llm_content, external_tool_text_result_for_llm_content_audio, external_tool_text_result_for_llm_content_image, external_tool_text_result_for_llm_content_resource, external_tool_text_result_for_llm_content_resource_details, external_tool_text_result_for_llm_content_resource_link, external_tool_text_result_for_llm_content_resource_link_icon, external_tool_text_result_for_llm_content_resource_link_icon_theme, external_tool_text_result_for_llm_content_shell_exit, external_tool_text_result_for_llm_content_terminal, external_tool_text_result_for_llm_content_text, filter_mapping, fleet_start_request, fleet_start_result, folder_trust_add_params, folder_trust_check_params, folder_trust_check_result, gh_cli_auth_info, git_current_branch_remote_result, git_cwd_request, git_hub_environment, git_hub_owner_option, git_hub_owners_cancel_request, git_hub_owners_cancel_result, git_hub_owners_list_request, git_hub_owners_list_result, git_hub_owners_request_id_result, git_hub_repository_at_path_request, git_hub_repository_at_path_result, git_hub_repository_identity, git_hub_telemetry_client_info, git_hub_telemetry_event, git_hub_telemetry_notification, git_hub_token_acquire_reason, git_hub_token_acquire_request, git_hub_token_acquire_result, git_remote_repository, git_repos_from_remotes_request, git_repos_from_remotes_result, global_state_load_for_config_dir_request, global_state_load_result, global_state_write_key_request, handle_pending_tool_call_request, handle_pending_tool_call_result, history_abort_manual_compaction_result, history_cancel_background_compaction_result, history_clear_context_request, history_clear_context_result, history_compact_context_window, history_compact_request, history_compact_result, history_file_restore_skip_reason, history_list_rewind_points_result, history_preview_rewind_request, history_preview_rewind_result, history_rewind_change_type, history_rewind_file_preview, history_rewind_mode, history_rewind_outcome, history_rewind_point, history_rewind_request, history_rewind_result, history_rewind_unavailable_reason, history_skipped_file_restore, history_summarize_for_handoff_result, history_truncate_request, history_truncate_result, hmac_auth_info, hook_invoke_request, hook_invoke_response, hook_origin, hooks_discover_request, hooks_discover_result, hook_type, host_configuration, host_dispose_request, host_empty_result, host_environment_credentials, host_exited_notification, host_exit_reason, host_git_hub_environment_options, host_local_server_configuration, host_local_server_options, host_publish_session_request, host_publish_session_result, host_ready_request, host_register_session_request, host_session_create_callback, host_session_create_request, host_session_create_result, host_session_released_notification, host_session_release_request, host_start_request, host_start_result, installation_catalogue_identity, installation_confirmation_request, installation_confirmation_response, installation_decision, installation_review, installed_plugin, installed_plugin_info, installed_plugin_source, installed_plugin_source_git_hub, installed_plugin_source_local, installed_plugin_source_url, instruction_discovery_path, instruction_discovery_path_kind, instruction_discovery_path_list, instruction_discovery_path_location, instructions_discover_request, instructions_get_discovery_paths_request, instructions_get_sources_result, instruction_source, instruction_source_location, instruction_source_type, interrupt_main_turn_request, interrupt_main_turn_result, json_schema_response_format, llm_inference_headers, llm_inference_http_request_chunk_request, llm_inference_http_request_chunk_result, llm_inference_http_request_start_request, llm_inference_http_request_start_result, llm_inference_http_request_start_transport, llm_inference_http_response_chunk_error, llm_inference_http_response_chunk_request, llm_inference_http_response_chunk_result, llm_inference_http_response_start_request, llm_inference_http_response_start_result, llm_inference_set_provider_result, local_session_metadata_value, logged_in_user, login_provider_kind, log_request, log_result, lsp_initialize_request, managed_mcp_server_config, managed_setting_meta, managed_settings_channel, managed_settings_compose_layer, managed_settings_compose_request, managed_settings_compose_result, managed_settings_diagnostic, managed_settings_diagnostic_severity, managed_settings_layer, managed_settings_meta, managed_settings_read_result, managed_settings_resolved_data, managed_settings_resolve_request, managed_settings_resolve_result, managed_settings_schema_result, managed_settings_validate_request, managed_settings_validate_result, managed_settings_values, marketplace_add_result, marketplace_browse_result, marketplace_info, marketplace_list_result, marketplace_plugin_info, marketplace_refresh_entry, marketplace_refresh_result, marketplace_remove_result, mcp_allowed_server, mcp_apply_install_request, mcp_apply_uninstall_request, mcp_apps_call_tool_request, mcp_apps_diagnose_capability, mcp_apps_diagnose_request, mcp_apps_diagnose_result, mcp_apps_diagnose_server, mcp_apps_host_context, mcp_apps_host_context_details, mcp_apps_host_context_details_available_display_mode, mcp_apps_host_context_details_display_mode, mcp_apps_host_context_details_platform, mcp_apps_host_context_details_theme, mcp_apps_list_tools_request, mcp_apps_list_tools_result, mcp_apps_read_resource_request, mcp_apps_read_resource_result, mcp_apps_resource_content, mcp_apps_set_host_context_details, mcp_apps_set_host_context_details_available_display_mode, mcp_apps_set_host_context_details_display_mode, mcp_apps_set_host_context_details_platform, mcp_apps_set_host_context_details_theme, mcp_apps_set_host_context_request, mcp_cancel_sampling_execution_params, mcp_cancel_sampling_execution_result, mcp_config_add_request, mcp_config_disable_request, mcp_config_enable_request, mcp_config_list, mcp_config_remove_request, mcp_config_update_request, mcp_configured_server, mcp_configured_server_list, mcp_configured_server_state, mcp_configure_git_hub_request, mcp_configure_git_hub_result, mcp_diagnostic_details, mcp_diagnostic_direction, mcp_diagnostic_kind, mcp_diagnostic_source_configuration, mcp_disable_request, mcp_discover_request, mcp_discover_result, mcp_elicitation_form_mode, mcp_enable_request, mcp_execute_sampling_params, mcp_execute_sampling_request, mcp_execute_sampling_result, mcp_failed_server, mcp_filtered_server, mcp_headers_handle_pending_headers_refresh_request, mcp_headers_handle_pending_headers_refresh_request_request, mcp_headers_handle_pending_headers_refresh_request_result, mcp_host_state, mcp_installation_failure_reason, mcp_installation_input, mcp_installation_management_outcome, mcp_installation_management_result, mcp_installation_operation_request, mcp_installation_operation_status, mcp_installation_outcome, mcp_installation_remote_configuration, mcp_installation_result, mcp_installation_review, mcp_installation_secret, mcp_installation_secret_storage, mcp_installations_request, mcp_installation_state, mcp_installation_summary, mcp_install_plan, mcp_is_server_running_request, mcp_is_server_running_result, mcp_list_tools_request, mcp_list_tools_result, mcp_oauth_authentication_state_changed_request, mcp_oauth_cancel_login_request, mcp_oauth_cancel_login_result, mcp_oauth_complete_request, mcp_oauth_handle_pending_request, mcp_oauth_handle_pending_result, mcp_oauth_login_grant_type, mcp_oauth_login_request, mcp_oauth_login_result, mcp_oauth_pending_request_response, mcp_oauth_prepare_login_request, mcp_oauth_prepare_login_result, mcp_oauth_probe_needs_auth_reason, mcp_oauth_probe_request, mcp_oauth_probe_result, mcp_oauth_respond_request, mcp_oauth_respond_result, mcp_owned_oauth_login_status, mcp_plan_configuration_change, mcp_plan_configuration_operation, mcp_plan_enum_value_type, mcp_plan_install_planned, mcp_plan_install_request, mcp_plan_install_result, mcp_plan_install_source, mcp_plan_install_source_candidate, mcp_plan_install_source_candidate_kind, mcp_plan_install_source_card, mcp_plan_install_source_card_kind, mcp_plan_package_install_method, mcp_plan_package_transport, mcp_plan_policy_decision, mcp_plan_policy_result, mcp_plan_policy_source, mcp_plan_provenance, mcp_plan_remote_install_method, mcp_plan_remote_transport, mcp_plan_required_value, mcp_plan_required_value_enum, mcp_plan_required_value_enum_kind, mcp_plan_required_value_scalar, mcp_plan_required_value_scalar_kind, mcp_plan_resource_identity, mcp_plan_scalar_value_type, mcp_plan_scope, mcp_plan_secret_placeholder, mcp_plan_secret_reference, mcp_plan_target, mcp_plan_transport_choice, mcp_plan_transport_choice_package, mcp_plan_transport_choice_remote, mcp_plan_uninstall_request, mcp_plan_value_category, mcp_prepared_install, mcp_prepare_install_request, mcp_prompt, mcp_prompt_argument, mcp_prompt_icon, mcp_prompt_message, mcp_prompt_role, mcp_prompts_get_request, mcp_prompts_get_result, mcp_prompts_list_request, mcp_prompts_list_result, mcp_register_external_client_request, mcp_reload_config, mcp_reload_with_config_request, mcp_remove_git_hub_result, mcp_resource, mcp_resource_annotations, mcp_resource_content, mcp_resource_icon, mcp_resources_list_request, mcp_resources_list_result, mcp_resources_list_templates_request, mcp_resources_list_templates_result, mcp_resources_read_request, mcp_resources_read_result, mcp_resource_template, mcp_restart_server_request, mcp_safe_for_telemetry, mcp_safe_for_telemetry_fields, mcp_sampling_execution_action, mcp_sampling_execution_result, mcp_serializable_server_config, mcp_server, mcp_server_auth_config, mcp_server_auth_config_redirect_port, mcp_server_card_embedded, mcp_server_card_embedded_kind, mcp_server_card_media_type, mcp_server_card_reference, mcp_server_card_url, mcp_server_card_url_kind, mcp_server_config, mcp_server_config_defer_tools, mcp_server_config_http, mcp_server_config_http_oauth_grant_type, mcp_server_config_http_type, mcp_server_config_memory, mcp_server_config_memory_type, mcp_server_config_stdio, mcp_server_config_stdio_type, mcp_server_failure_info, mcp_server_list, mcp_server_needs_auth_info, mcp_server_ownership, mcp_set_env_value_mode_details, mcp_set_env_value_mode_params, mcp_set_env_value_mode_result, mcp_source_file, mcp_source_plugin, mcp_source_ref, mcp_start_server_request, mcp_start_servers_result, mcp_stop_server_request, mcp_task_metadata, mcp_tools, mcp_tool_ui, mcp_tool_ui_visibility, mcp_uninstall_plan, mcp_unregister_external_client_request, memory_configuration, metadata_context_attribution_result, metadata_context_heaviest_messages_request, metadata_context_heaviest_messages_result, metadata_context_info_request, metadata_context_info_result, metadata_is_processing_result, metadata_recompute_context_tokens_request, metadata_recompute_context_tokens_result, metadata_record_context_change_request, metadata_record_context_change_result, metadata_set_working_directory_request, metadata_set_working_directory_result, metadata_snapshot_current_mode, metadata_snapshot_remote_metadata, metadata_snapshot_remote_metadata_repository, metadata_snapshot_remote_metadata_task_type, metadata_update_client_metadata_request, model, model_apply_startup_overlay_request, model_artifact_details, model_billing, model_billing_promo, model_billing_token_prices, model_billing_token_prices_long_context, model_capabilities, model_capabilities_limits, model_capabilities_limits_vision, model_capabilities_override, model_capabilities_override_limits, model_capabilities_override_limits_vision, model_capabilities_override_supports, model_capabilities_supports, model_list, model_list_request, model_message, model_picker_category, model_picker_persistence_request, model_picker_price_category, model_picker_settings_context, model_policy, model_policy_state, model_provider_adapter_catalog, model_provider_adapter_descriptor, model_provider_adapter_operation_descriptor, model_provider_attribution, model_provider_automatic_discovery_mode, model_provider_automatic_discovery_policy, model_provider_configuration_disposition, model_provider_configuration_plan, model_provider_descriptor, model_provider_discover_request, model_provider_discover_result, model_provider_discovery_network_scope, model_provider_get_status_request, model_provider_instance, model_provider_instance_reference, model_provider_kind, model_provider_models_list_request, model_provider_operation_outcome, model_provider_operation_outcome_code, model_provider_prepare_configuration_request, model_provider_provenance, model_provider_provenance_source, model_provider_ref, model_provider_status, model_provider_warning, model_set_allowed_models_request, model_set_allowed_models_result, model_set_reasoning_effort_request, model_set_reasoning_effort_result, models_list_request, model_switch_auto_tier_request, model_switch_auto_tier_result, model_switch_auto_tier_status, model_switch_confirmation, model_switch_to_request, model_switch_to_result, model_warning_text, mode_set_request, mode_set_result, move_mcp_loading_to_background_result, named_provider_config, name_get_result, name_set_auto_request, name_set_auto_result, name_set_request, open_canvas_instance, options_update_additional_content_exclusion_policy, options_update_additional_content_exclusion_policy_rule, options_update_additional_content_exclusion_policy_rule_source, options_update_additional_content_exclusion_policy_scope, options_update_context_tier, options_update_env_value_mode, options_update_reasoning_summary, options_update_tool_filter_precedence, pending_permission_request, pending_permission_request_list, permission_decision, permission_decision_approved, permission_decision_approved_for_location, permission_decision_approved_for_session, permission_decision_approve_for_location, permission_decision_approve_for_location_approval, permission_decision_approve_for_location_approval_commands, permission_decision_approve_for_location_approval_custom_tool, permission_decision_approve_for_location_approval_extension_env_access, permission_decision_approve_for_location_approval_extension_management, permission_decision_approve_for_location_approval_extension_permission_access, permission_decision_approve_for_location_approval_mcp, permission_decision_approve_for_location_approval_mcp_sampling, permission_decision_approve_for_location_approval_memory, permission_decision_approve_for_location_approval_read, permission_decision_approve_for_location_approval_workflow, permission_decision_approve_for_location_approval_write, permission_decision_approve_for_session, permission_decision_approve_for_session_approval, permission_decision_approve_for_session_approval_commands, permission_decision_approve_for_session_approval_custom_tool, permission_decision_approve_for_session_approval_extension_env_access, permission_decision_approve_for_session_approval_extension_management, permission_decision_approve_for_session_approval_extension_permission_access, permission_decision_approve_for_session_approval_mcp, permission_decision_approve_for_session_approval_mcp_sampling, permission_decision_approve_for_session_approval_memory, permission_decision_approve_for_session_approval_read, permission_decision_approve_for_session_approval_workflow, permission_decision_approve_for_session_approval_write, permission_decision_approve_once, permission_decision_approve_permanently, permission_decision_approve_read_only_for_session, permission_decision_cancelled, permission_decision_context, permission_decision_denied_by_content_exclusion_policy, permission_decision_denied_by_permission_request_hook, permission_decision_denied_by_rules, permission_decision_denied_interactively_by_user, permission_decision_denied_no_approval_rule_and_could_not_request_from_user, permission_decision_outcome, permission_decision_reject, permission_decision_request, permission_decision_surface, permission_decision_user_not_available, permission_location_add_tool_approval_params, permission_location_apply_params, permission_location_apply_result, permission_location_resolve_params, permission_location_resolve_result, permission_location_type, permission_mode_source, permission_paths_add_params, permission_paths_allowed_check_params, permission_paths_allowed_check_result, permission_paths_config, permission_paths_list, permission_paths_update_primary_params, permission_paths_workspace_check_params, permission_paths_workspace_check_result, permission_prompt_shown_notification, permission_request_result, permission_response_capability, permission_rules_set, permissions_configure_additional_content_exclusion_policy, permissions_configure_additional_content_exclusion_policy_rule, permissions_configure_additional_content_exclusion_policy_rule_source, permissions_configure_additional_content_exclusion_policy_scope, permissions_configure_params, permissions_configure_result, permissions_folder_trust_add_trusted_result, permissions_get_mode_request, permissions_get_mode_result, permissions_locations_add_tool_approval_details, permissions_locations_add_tool_approval_details_commands, permissions_locations_add_tool_approval_details_custom_tool, permissions_locations_add_tool_approval_details_extension_env_access, permissions_locations_add_tool_approval_details_extension_management, permissions_locations_add_tool_approval_details_extension_permission_access, permissions_locations_add_tool_approval_details_mcp, permissions_locations_add_tool_approval_details_mcp_sampling, permissions_locations_add_tool_approval_details_memory, permissions_locations_add_tool_approval_details_read, permissions_locations_add_tool_approval_details_workflow, permissions_locations_add_tool_approval_details_write, permissions_locations_add_tool_approval_result, permissions_modify_rules_params, permissions_modify_rules_result, permissions_modify_rules_scope, permissions_notify_prompt_shown_result, permissions_paths_add_result, permissions_paths_list_request, permissions_paths_update_primary_result, permissions_pending_requests_request, permissions_reset_session_approvals_request, permissions_reset_session_approvals_result, permissions_set_approve_all_request, permissions_set_approve_all_result, permissions_set_approve_all_source, permissions_set_mode_request, permissions_set_mode_result, permissions_set_required_request, permissions_set_required_result, permissions_urls_set_unrestricted_mode_result, permission_urls_config, permission_urls_set_unrestricted_mode_params, ping_request, ping_result, plan_read_result, plan_read_sql_todos_result, plan_read_sql_todos_with_dependencies_result, plan_sql_todo_dependency, plan_sql_todos_row, plan_update_request, plugin, plugin_install_result, plugin_install_staging_mode, plugin_list, plugin_list_result, plugins_builtin_set_request, plugins_disable_request, plugins_enable_request, plugins_install_request, plugins_marketplaces_add_request, plugins_marketplaces_browse_request, plugins_marketplaces_refresh_request, plugins_marketplaces_remove_request, plugins_reload_request, plugins_uninstall_request, plugins_update_request, plugin_update_all_entry, plugin_update_all_result, plugin_update_result, protocol_append_mode, protocol_customize_mode, protocol_external_tool_defer, protocol_external_tool_definition, protocol_marker_section_override, protocol_replace_mode, protocol_section_override, protocol_static_section_action, protocol_static_section_override, protocol_system_message_append_config, protocol_system_message_config, protocol_system_message_customize_config, protocol_system_message_replace_config, provider_add_request, provider_add_result, provider_config, provider_config_azure, provider_config_model_provider, provider_config_transport, provider_config_type, provider_config_wire_api, provider_descriptor, provider_endpoint, provider_endpoint_transport, provider_endpoint_type, provider_endpoint_wire_api, provider_get_endpoint_request, provider_model_config, provider_session_token, provider_sync_request, provider_sync_result, provider_token_acquire_request, provider_token_acquire_result, provider_withdraw_request, provider_withdraw_result, push_attachment, push_attachment_blob, push_attachment_directory, push_attachment_file, push_attachment_file_line_range, push_attachment_git_hub_actions_job, push_attachment_git_hub_commit, push_attachment_git_hub_file, push_attachment_git_hub_file_diff, push_attachment_git_hub_file_diff_side, push_attachment_git_hub_reference, push_attachment_git_hub_reference_type, push_attachment_git_hub_release, push_attachment_git_hub_repository, push_attachment_git_hub_snippet, push_attachment_git_hub_tree_comparison, push_attachment_git_hub_tree_comparison_side, push_attachment_git_hub_url, push_attachment_selection, push_attachment_selection_details, push_attachment_selection_details_end, push_attachment_selection_details_start, push_git_hub_repo_ref, queue_append_steering_request, queue_begin_deferred_idle_drain_request, queue_begin_deferred_idle_drain_result, queue_consume_system_notifications_request, queued_command_handled, queued_command_not_handled, queued_command_result, queue_defer_session_idle_request, queue_duplicate_at_request, queue_duplicate_at_result, queue_enqueue_resume_pending_result, queue_finish_deferred_idle_drain_request, queue_finish_deferred_idle_drain_result, queue_has_pending_result, queue_insert_at_request, queue_insert_at_result, queue_insert_message, queue_move_item_request, queue_move_item_result, queue_pending_items, queue_pending_items_kind, queue_pending_items_result, queue_remove_at_request, queue_remove_at_result, queue_remove_most_recent_result, queue_send_now_request, queue_send_now_result, queue_set_drain_paused_request, queue_snapshot_result, queue_update_text_request, queue_update_text_result, queue_withdraw_message_request, queue_withdraw_message_result, register_event_interest_params, register_event_interest_result, release_event_interest_params, remote_control_config, remote_control_config_existing_mc_session, remote_control_status, remote_control_status_active, remote_control_status_connecting, remote_control_status_error, remote_control_status_off, remote_control_status_result, remote_control_stop_result, remote_control_transfer_result, remote_enable_request, remote_enable_result, remote_notify_steerable_changed_request, remote_notify_steerable_changed_result, remote_session_connection_result, remote_session_host_status, remote_session_metadata_repository, remote_session_metadata_task_type, remote_session_metadata_value, remote_session_mode, remote_session_repository, response_format, sandbox_config, sandbox_config_auth, sandbox_config_source, sandbox_config_user_policy, sandbox_config_user_policy_experimental, sandbox_config_user_policy_experimental_seatbelt, sandbox_config_user_policy_filesystem, sandbox_config_user_policy_network, sandbox_config_user_policy_network_proxy, sandbox_config_user_policy_seatbelt, sandbox_credentials_config, sandbox_disable_for_session_request, sandbox_disable_for_session_result, sandbox_enforcement_status, sandbox_grant_path_for_request_request, sandbox_grant_path_for_request_result, sandbox_host_capability, sandbox_host_capability_name, sandbox_host_support, sandbox_masked_env_var, sandbox_proxy_ca_create_result, sandbox_proxy_ca_request, sandbox_proxy_ca_state, sandbox_proxy_ca_status, sandbox_session_change, schedule_add_at_request, schedule_add_cron_request, schedule_add_request, schedule_add_result, schedule_add_self_paced_request, schedule_entry, schedule_has_self_paced_result, schedule_list, schedule_rearm_self_paced_request, schedule_stop_request, schedule_stop_result, secrets_add_filter_values_request, secrets_add_filter_values_result, send_agent_mode, send_attachments_to_message_params, send_message_item, send_messages_request, send_messages_result, send_mode, send_request, send_result, send_system_notification_request, server_agent_list, server_instruction_source_list, server_skill, server_skill_list, session_activity, session_agent_list_request, session_auth_login_request, session_auth_logout_user_request, session_auth_status, session_auth_switch_request, session_bulk_delete_result, session_cancel_all_background_agents_result, session_capability, session_commands_list_request, session_completion_item, session_connected_ide_info, session_context, session_context_host_type, session_enrich_metadata_result, session_fs_append_file_request, session_fs_error, session_fs_error_code, session_fs_exists_request, session_fs_exists_result, session_fs_mkdir_request, session_fs_readdir_request, session_fs_readdir_result, session_fs_readdir_with_types_entry, session_fs_readdir_with_types_entry_type, session_fs_readdir_with_types_request, session_fs_readdir_with_types_result, session_fs_read_file_bytes_request, session_fs_read_file_bytes_result, session_fs_read_file_request, session_fs_read_file_result, session_fs_rename_request, session_fs_rm_request, session_fs_set_provider_capabilities, session_fs_set_provider_conventions, session_fs_set_provider_request, session_fs_set_provider_result, session_fs_sqlite_exists_request, session_fs_sqlite_exists_result, session_fs_sqlite_query_request, session_fs_sqlite_query_result, session_fs_sqlite_query_type, session_fs_sqlite_transaction_error, session_fs_sqlite_transaction_error_class, session_fs_sqlite_transaction_request, session_fs_sqlite_transaction_result, session_fs_sqlite_transaction_statement, session_fs_stat_request, session_fs_stat_result, session_fs_write_file_bytes_request, session_fs_write_file_request, session_git_hub_auth_get_all_auth_available_result, session_git_hub_auth_logout_result, session_git_hub_auth_logout_user_result, session_history_compact_request, session_installed_plugin, session_installed_plugin_source, session_installed_plugin_source_git_hub, session_installed_plugin_source_local, session_installed_plugin_source_url, session_limit_prediction_baseline_data, session_limit_prediction_client_type, session_limit_prediction_details, session_limit_prediction_predict_request, session_limit_prediction_request, session_limit_prediction_result, session_limit_prediction_source, session_limit_prediction_tier, session_limit_prediction_tier_option, session_limit_prediction_unavailable_reason, session_list, session_list_entry, session_list_filter, session_load_deferred_repo_hooks_result, session_log_level, session_managed_permissions, session_managed_settings, session_mcp_apps_call_tool_result, session_mcp_oauth_cancel_login_request, session_mcp_oauth_cancel_login_result, session_mcp_oauth_prepare_login_request, session_mcp_oauth_prepare_login_result, session_mcp_set_connected_ide_info_params, session_metadata_snapshot, session_mode, session_model_list, session_model_list_request, session_model_price_category, session_open_options, session_open_options_additional_content_exclusion_policy, session_open_options_additional_content_exclusion_policy_rule, session_open_options_additional_content_exclusion_policy_rule_source, session_open_options_additional_content_exclusion_policy_scope, session_open_options_env_value_mode, session_open_options_reasoning_summary, session_open_params, session_open_result, session_plugins_disable_request, session_plugins_enable_request, session_plugins_install_request, session_plugins_marketplaces_refresh_request, session_plugins_reload_request, session_provider_get_endpoint_request, session_prune_result, sessions_bulk_delete_request, sessions_check_in_use_request, sessions_check_in_use_result, sessions_client_metadata_entry, sessions_close_request, sessions_close_result, sessions_create_workspace_request, sessions_create_workspace_result, sessions_delete_request, sessions_enrich_metadata_request, session_set_credentials_params, session_set_credentials_result, session_settings_built_in_tool_availability_snapshot, session_settings_evaluate_predicate_request, session_settings_evaluate_predicate_result, session_settings_job_snapshot, session_settings_model_snapshot, session_settings_online_evaluation_snapshot, session_settings_predicate_name, session_settings_repo_snapshot, session_settings_snapshot, session_settings_validation_snapshot, sessions_find_by_prefix_request, sessions_find_by_prefix_result, sessions_find_by_task_id_request, sessions_find_by_task_id_result, sessions_fork_request, sessions_fork_result, sessions_get_board_entry_count_request, sessions_get_board_entry_count_result, sessions_get_client_metadata_request, sessions_get_client_metadata_result, sessions_get_event_file_path_request, sessions_get_event_file_path_result, sessions_get_last_for_context_request, sessions_get_last_for_context_result, sessions_get_metadata_request, sessions_get_metadata_result, sessions_get_persisted_remote_steerable_request, sessions_get_persisted_remote_steerable_result, session_sizes, sessions_list_non_empty_session_ids_request, sessions_list_non_empty_session_ids_result, sessions_list_request, sessions_load_deferred_repo_hooks_request, sessions_load_workspace_request, sessions_load_workspace_result, sessions_open_attach, sessions_open_cloud, sessions_open_create, sessions_open_handoff, sessions_open_handoff_task_type, sessions_open_progress, sessions_open_progress_status, sessions_open_progress_step, sessions_open_remote, sessions_open_resume, sessions_open_resume_last, sessions_open_status, session_source, sessions_prune_old_request, sessions_read_persisted_events_request, sessions_release_lock_request, sessions_release_lock_result, sessions_reload_plugin_hooks_request, sessions_reload_plugin_hooks_result, sessions_save_request, sessions_save_result, sessions_set_additional_plugins_request, sessions_set_additional_plugins_result, sessions_set_remote_control_steering_request, sessions_start_remote_control_request, sessions_stop_remote_control_request, sessions_transfer_remote_control_request, sessions_update_workspace_fields_request, sessions_update_workspace_fields_result, session_telemetry_engagement, session_update_options_params, session_update_options_result, session_visibility_status, session_workflow_pause_at_checkpoint_result, session_working_directory_context, session_working_directory_context_host_type, session_working_directory_context_with_client, settable_auth_info, settable_token_auth_info, shell_cancel_user_requested_request, shell_credentials, shell_exec_request, shell_exec_result, shell_execute_user_requested_request, shell_init_profile, shell_init_script, shell_init_script_shell, shell_kill_request, shell_kill_result, shell_kill_signal, shell_options, shutdown_request, skill, skill_apply_install_request, skill_apply_uninstall_request, skill_discovery_path, skill_discovery_path_list, skill_discovery_scope, skill_installation_failure_reason, skill_installation_file_review, skill_installation_location, skill_installation_management_outcome, skill_installation_management_result, skill_installation_operation_request, skill_installation_operation_status, skill_installation_outcome, skill_installation_ownership_state, skill_installation_result, skill_installation_review, skill_installation_scope, skill_installation_session_state, skill_installation_source, skill_installations_request, skill_installation_summary, skill_install_plan, skill_list, skill_plan_install_request, skill_plan_uninstall_request, skill_provider_descriptor, skill_provider_list_request, skill_provider_list_result, skill_provider_read_request, skill_provider_read_result, skills_config_set_disabled_skills_request, skills_config_set_skill_disabled_request, skills_disable_request, skills_discover_request, skills_enable_request, skill_set_enabled_request, skills_get_discovery_paths_request, skills_get_invoked_result, skills_invoked_skill, skills_load_diagnostics, skill_uninstall_plan, slash_command_add_timeline_entry_result, slash_command_agent_prompt_result, slash_command_completed_result, slash_command_info, slash_command_input, slash_command_input_choice, slash_command_input_completion, slash_command_invocation_result, slash_command_kind, slash_command_model_picker_dialog, slash_command_select_subcommand_option, slash_command_select_subcommand_result, slash_command_set_model_result, slash_command_set_plan_model_result, slash_command_show_dialog_result, slash_command_text_result, slash_command_timeline_entry, subagent_settings_entry, subagent_settings_entry_context_tier, system_message_block, task_agent_info, task_agent_progress, task_client_active_status, task_client_execution_mode, task_client_info, task_client_owner, task_client_owner_kind, task_client_owner_presence, task_client_progress, task_client_status, task_client_type, task_client_update, task_complete_data, task_completion_decision, task_execution_mode, task_info, task_kind, task_list, task_progress_line, tasks_cancel_request, tasks_cancel_result, tasks_get_current_promotable_result, tasks_get_progress_request, tasks_get_progress_result, task_shell_info, task_shell_info_attachment_mode, task_shell_progress, tasks_promote_current_to_background_result, tasks_promote_to_background_request, tasks_promote_to_background_result, tasks_refresh_result, tasks_register_request, tasks_register_result, tasks_remove_request, tasks_remove_result, tasks_send_message_request, tasks_send_message_result, tasks_start_agent_request, tasks_start_agent_result, task_status, tasks_update_request, tasks_update_result, tasks_wait_for_pending_result, telemetry_set_feature_overrides_request, token_auth_info, token_provider_auth_info, tool, tool_list, tool_result, tool_result_expanded, tool_result_new_message, tool_result_type, tools_execute_request, tools_get_builtin_descriptors_request, tools_get_builtin_descriptors_result, tools_get_current_metadata_result, tools_initialize_and_validate_result, tools_list_request, tools_set_request, tools_set_result, tools_shell_descriptor_config, tools_task_complete_event_data_request, tools_update_subagent_settings_result, ui_auto_mode_switch_response, ui_elicitation_array_any_of_field, ui_elicitation_array_any_of_field_items, ui_elicitation_array_any_of_field_items_any_of, ui_elicitation_array_enum_field, ui_elicitation_array_enum_field_items, ui_elicitation_field_value, ui_elicitation_request, ui_elicitation_response, ui_elicitation_response_action, ui_elicitation_response_content, ui_elicitation_result, ui_elicitation_schema, ui_elicitation_schema_property, ui_elicitation_schema_property_boolean, ui_elicitation_schema_property_number, ui_elicitation_schema_property_number_type, ui_elicitation_schema_property_string, ui_elicitation_schema_property_string_format, ui_elicitation_string_enum_field, ui_elicitation_string_one_of_field, ui_elicitation_string_one_of_field_one_of, ui_ephemeral_query_request, ui_ephemeral_query_result, ui_exit_plan_mode_action, ui_exit_plan_mode_response, ui_handle_pending_auto_mode_switch_request, ui_handle_pending_elicitation_request, ui_handle_pending_exit_plan_mode_request, ui_handle_pending_result, ui_handle_pending_sampling_request, ui_handle_pending_sampling_response, ui_handle_pending_session_limits_exhausted_request, ui_handle_pending_user_input_request, ui_register_direct_auto_mode_switch_handler_result, ui_session_limits_exhausted_response, ui_session_limits_exhausted_response_action, ui_unregister_direct_auto_mode_switch_handler_request, ui_unregister_direct_auto_mode_switch_handler_result, ui_user_input_response, unsupported_enqueue_command_result, update_subagent_settings_request, usage_get_metrics_result, usage_metrics_agent_metric, usage_metrics_code_changes, usage_metrics_model_metric, usage_metrics_model_metric_requests, usage_metrics_model_metric_token_detail, usage_metrics_model_metric_usage, usage_metrics_token_detail, user_auth_info, user_requested_shell_command_result, user_setting_metadata, user_settings_get_result, user_settings_set_request, visibility_get_result, visibility_set_request, visibility_set_result, workflow_abort_request, workflow_ack_result, workflow_agent_options, workflow_agent_request, workflow_agent_result, workflow_agent_summary, workflow_cancel_request, workflow_current_phase, workflow_declared_limits, workflow_durable_operation, workflow_execute_request, workflow_execute_result, workflow_get_run_progress_request, workflow_get_run_request, workflow_journal_get_request, workflow_journal_get_result, workflow_journal_put_request, workflow_list_runs_request, workflow_list_runs_result, workflow_log_line, workflow_log_line_kind, workflow_log_request, workflow_pause_checkpoint_action, workflow_pause_checkpoint_request, workflow_pause_checkpoint_result, workflow_pause_info, workflow_pause_request, workflow_phase_observation, workflow_phase_status, workflow_progress_line, workflow_progress_page, workflow_resume_request, workflow_resume_result, workflow_run_consumed, workflow_run_detail, workflow_run_failure, workflow_run_failure_kind, workflow_run_limits, workflow_run_options, workflow_run_request, workflow_run_result, workflow_run_status, workflow_run_summary, workflow_run_terminal, workflow_tool_resume_request, workflow_tool_run_options, workflow_tool_run_request, workspace_diff_file_change, workspace_diff_file_change_type, workspace_diff_mode, workspace_diff_result, workspaces_add_summary_request, workspaces_add_summary_result, workspaces_autopilot_objective_exists_result, workspaces_checkpoints, workspaces_create_directory_request, workspaces_create_file_request, workspaces_delete_autopilot_objective_result, workspaces_diff_request, workspaces_ensure_request, workspaces_get_workspace_result, workspaces_list_checkpoints_result, workspaces_list_files_result, workspaces_read_autopilot_objective_result, workspaces_read_checkpoint_request, workspaces_read_checkpoint_result, workspaces_read_file_request, workspaces_read_file_result, workspaces_remove_path_request, workspaces_rename_path_request, workspaces_save_large_paste_request, workspaces_save_large_paste_result, workspaces_stat_file_request, workspaces_stat_file_result, workspaces_truncate_summaries_request, workspace_summary_host_type, workspaces_update_metadata_request, workspaces_workspace_details_host_type, workspaces_write_autopilot_objective_request, workspaces_write_autopilot_objective_result, connector_session_account_result, session_auth_info_result, session_context_attribution, session_context_info, subagent_settings, task_progress, workspace_summary)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -52280,6 +52546,9 @@ class RPC:
         result["GitRemoteRepository"] = to_class(_GitRemoteRepository, self.git_remote_repository)
         result["GitReposFromRemotesRequest"] = to_class(_GitReposFromRemotesRequest, self.git_repos_from_remotes_request)
         result["GitReposFromRemotesResult"] = to_class(_GitReposFromRemotesResult, self.git_repos_from_remotes_result)
+        result["GlobalStateLoadForConfigDirRequest"] = to_class(_GlobalStateLoadForConfigDirRequest, self.global_state_load_for_config_dir_request)
+        result["GlobalStateLoadResult"] = to_class(_GlobalStateLoadResult, self.global_state_load_result)
+        result["GlobalStateWriteKeyRequest"] = to_class(_GlobalStateWriteKeyRequest, self.global_state_write_key_request)
         result["HandlePendingToolCallRequest"] = to_class(HandlePendingToolCallRequest, self.handle_pending_tool_call_request)
         result["HandlePendingToolCallResult"] = to_class(HandlePendingToolCallResult, self.handle_pending_tool_call_result)
         result["HistoryAbortManualCompactionResult"] = to_class(HistoryAbortManualCompactionResult, self.history_abort_manual_compaction_result)
@@ -52369,6 +52638,7 @@ class RPC:
         result["LlmInferenceHttpResponseStartResult"] = to_class(LlmInferenceHTTPResponseStartResult, self.llm_inference_http_response_start_result)
         result["LlmInferenceSetProviderResult"] = to_class(LlmInferenceSetProviderResult, self.llm_inference_set_provider_result)
         result["LocalSessionMetadataValue"] = to_class(LocalSessionMetadataValue, self.local_session_metadata_value)
+        result["LoggedInUser"] = to_class(_LoggedInUser, self.logged_in_user)
         result["LoginProviderKind"] = to_enum(LoginProviderKind, self.login_provider_kind)
         result["LogRequest"] = to_class(LogRequest, self.log_request)
         result["LogResult"] = to_class(LogResult, self.log_result)
@@ -53378,7 +53648,6 @@ class RPC:
         result["UserSettingMetadata"] = to_class(UserSettingMetadata, self.user_setting_metadata)
         result["UserSettingsGetResult"] = to_class(UserSettingsGetResult, self.user_settings_get_result)
         result["UserSettingsSetRequest"] = to_class(UserSettingsSetRequest, self.user_settings_set_request)
-        result["UserSettingsSetResult"] = to_class(UserSettingsSetResult, self.user_settings_set_result)
         result["VisibilityGetResult"] = to_class(VisibilityGetResult, self.visibility_get_result)
         result["VisibilitySetRequest"] = to_class(VisibilitySetRequest, self.visibility_set_request)
         result["VisibilitySetResult"] = to_class(VisibilitySetResult, self.visibility_set_result)
@@ -54510,18 +54779,14 @@ class ServerUserSettingsApi:
     def __init__(self, client: "JsonRpcClient"):
         self._client = client
 
-    async def reload(self, *, timeout: float | None = None) -> None:
-        "Drops this runtime process's in-memory user settings cache so the next settings read observes disk."
-        await self._client.request("user.settings.reload", {}, **_timeout_kwargs(timeout))
-
     async def get(self, *, timeout: float | None = None) -> UserSettingsGetResult:
-        "Lists every known user setting (settings.json overlaid with the legacy config.json, config.json wins), each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.\n\nReturns:\n    Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides."
+        "Lists every known user setting from settings.json, each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.\n\nReturns:\n    Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides."
         return UserSettingsGetResult.from_dict(await self._client.request("user.settings.get", {}, **_timeout_kwargs(timeout)))
 
-    async def set(self, params: UserSettingsSetRequest, *, timeout: float | None = None) -> UserSettingsSetResult:
-        "Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed. Returns the keys whose new value is shadowed by a legacy config.json entry (config.json wins on read), which the runtime leaves in place — such writes do not take effect until the legacy value is removed.\n\nArgs:\n    params: Partial user settings to write to settings.json. Each top-level key is written individually, replacing the existing value; a key whose value is null is removed.\n\nReturns:\n    Outcome of writing user settings."
+    async def set(self, params: UserSettingsSetRequest, *, timeout: float | None = None) -> None:
+        "Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed.\n\nArgs:\n    params: Partial user settings to write to settings.json. Each top-level key is written individually, replacing the existing value; a key whose value is null is removed."
         params_dict = {k: v for k, v in params.to_dict().items() if v is not None}
-        return UserSettingsSetResult.from_dict(await self._client.request("user.settings.set", params_dict, **_timeout_kwargs(timeout)))
+        await self._client.request("user.settings.set", params_dict, **_timeout_kwargs(timeout))
 
 
 # Experimental: this API group is experimental and may change or be removed.
@@ -54868,6 +55133,26 @@ class _InternalServerAgentsApi:
 
 
 # Experimental: this API group is experimental and may change or be removed.
+class _InternalServerGlobalStateApi:
+    def __init__(self, client: "JsonRpcClient"):
+        self._client = client
+
+    async def _load(self, *, timeout: float | None = None) -> _GlobalStateLoadResult:
+        "Reads the host's machine-wide state: which plugins are installed and the one-off flags and timestamps that record what the user has already been shown or migrated. This is the state that outlives a single session and a single workspace, so a host reads it to decide whether to run a first-launch step, offer an onboarding prompt, or skip one it has already completed. The stored credentials are deliberately not part of this result; a caller that needs an authenticated identity asks the account methods for it instead. Reading is non-destructive and every field is optional, because a fresh install has recorded nothing yet.\n\nReturns:\n    The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.\n\n:meta private:\n\nInternal SDK API; not part of the public surface."
+        return _GlobalStateLoadResult.from_dict(await self._client.request("globalState.load", {}, **_timeout_kwargs(timeout)))
+
+    async def _load_for_config_dir(self, params: _GlobalStateLoadForConfigDirRequest, *, timeout: float | None = None) -> _GlobalStateLoadResult:
+        "Reads the host's machine-wide state exactly as `globalState.load` does, but from a caller-supplied configuration directory instead of the one the server resolved for itself. Use this when a consumer scopes a session to its own Copilot home — the SDK's per-session `configDir` override — so the state read matches the directory that session actually uses. An absent or empty `configDir` resolves the server's own home, making this identical to `globalState.load`. The stored credentials are omitted here for the same reason they are omitted from `globalState.load`: a caller that needs an authenticated identity asks the account methods instead, so pointing this at another directory cannot be used to read the credentials kept in it.\n\nArgs:\n    params: Selects the configuration directory whose machine-wide state to read.\n\nReturns:\n    The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.\n\n:meta private:\n\nInternal SDK API; not part of the public surface."
+        params_dict = {k: v for k, v in params.to_dict().items() if v is not None}
+        return _GlobalStateLoadResult.from_dict(await self._client.request("globalState.loadForConfigDir", params_dict, **_timeout_kwargs(timeout)))
+
+    async def _write_key(self, params: _GlobalStateWriteKeyRequest, *, timeout: float | None = None) -> None:
+        "Records one top-level key in the host's machine-wide state, the counterpart to `globalState.load`. A host calls this to remember that it has shown an onboarding step, asked a one-off question, or completed a migration, so the next run can skip it. Only the named key is replaced and the rest of the document is preserved, which lets two writers record different flags without overwriting each other; passing no value removes the key instead. Only the keys a host records itself are writable: `appInstallNudgeResponded`, `appTipShown`, `askedSetupTerminals`, `autoFeedbackLastPromptedAt`, `firstLaunchAt`, `recentModelIds`, `sandboxCredentialProxyCaDeclined` and `sandboxOnboardingShown`. Every other key is refused, including `installedPlugins`, the stored credentials, `trustedFolders`, the staff flags and the signed-in accounts. Plugin enablement must use the plugin APIs, which apply repository and managed-policy checks.\n\nArgs:\n    params: A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.\n\n:meta private:\n\nInternal SDK API; not part of the public surface."
+        params_dict = {k: v for k, v in params.to_dict().items() if v is not None}
+        await self._client.request("globalState.writeKey", params_dict, **_timeout_kwargs(timeout))
+
+
+# Experimental: this API group is experimental and may change or be removed.
 class _InternalServerGitHubRepositoryApi:
     def __init__(self, client: "JsonRpcClient"):
         self._client = client
@@ -54981,6 +55266,7 @@ class _InternalServerRpc:
         self._client = client
         self.host = _InternalServerHostApi(client)
         self.agents = _InternalServerAgentsApi(client)
+        self.global_state = _InternalServerGlobalStateApi(client)
         self.git_hub_repository = _InternalServerGitHubRepositoryApi(client)
         self.git_hub_owners = _InternalServerGitHubOwnersApi(client)
         self.git = _InternalServerGitApi(client)
@@ -59495,7 +59781,6 @@ __all__ = [
     "UserSettingMetadata",
     "UserSettingsGetResult",
     "UserSettingsSetRequest",
-    "UserSettingsSetResult",
     "VisibilityApi",
     "VisibilityGetResult",
     "VisibilitySetRequest",

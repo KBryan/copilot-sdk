@@ -1853,6 +1853,11 @@ type ManagedSettingsPermissions struct {
 	// Allow lists operations permitted without prompting. Every declared allow
 	// list across managed layers must admit an operation for it to be allowed.
 	Allow []string `json:"allow,omitzero"`
+	// LimitTo is a closed-world host boundary expressed as Domain(hostname),
+	// Domain(IP), or Domain(*.example.com) rules. Schemes, ports, paths,
+	// queries, and fragments are rejected. Multiple managed layers intersect
+	// their lists. A present empty list denies all hosts.
+	LimitTo []string `json:"limitTo,omitzero"`
 }
 
 // ToolDefer controls whether a tool may be deferred (loaded lazily via tool

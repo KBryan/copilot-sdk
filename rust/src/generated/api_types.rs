@@ -197,10 +197,14 @@ pub mod rpc_methods {
     pub const INSTRUCTIONS_DISCOVER: &str = "instructions.discover";
     /// `instructions.getDiscoveryPaths`
     pub const INSTRUCTIONS_GETDISCOVERYPATHS: &str = "instructions.getDiscoveryPaths";
+    /// `globalState.load`
+    pub const GLOBALSTATE_LOAD: &str = "globalState.load";
+    /// `globalState.loadForConfigDir`
+    pub const GLOBALSTATE_LOADFORCONFIGDIR: &str = "globalState.loadForConfigDir";
+    /// `globalState.writeKey`
+    pub const GLOBALSTATE_WRITEKEY: &str = "globalState.writeKey";
     /// `commands.list`
     pub const COMMANDS_LIST: &str = "commands.list";
-    /// `user.settings.reload`
-    pub const USER_SETTINGS_RELOAD: &str = "user.settings.reload";
     /// `user.settings.get`
     pub const USER_SETTINGS_GET: &str = "user.settings.get";
     /// `user.settings.set`
@@ -3458,6 +3462,9 @@ pub struct AuthReadValueActiveAccount {
     /// The active account, or absent when not logged in.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account: Option<AccountStatus>,
+    /// Credential-free identity metadata for the active account, including resolved Copilot user information when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_info: Option<AuthIdentity>,
     /// Account read-datum variant discriminator.
     pub kind: AuthReadValueActiveAccountKind,
 }
@@ -8588,6 +8595,178 @@ pub(crate) struct GitReposFromRemotesResult {
     pub(crate) repositories: Vec<GitRemoteRepository>,
 }
 
+/// Selects the configuration directory whose machine-wide state to read.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GlobalStateLoadForConfigDirRequest {
+    /// Copilot configuration directory to read the state document from, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to read the directory the server resolved for itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
+}
+
+/// Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledPlugin {
+    /// Path where the plugin is cached locally
+    #[serde(rename = "cache_path", skip_serializing_if = "Option::is_none")]
+    pub cache_path: Option<String>,
+    /// Whether the plugin is currently enabled
+    pub enabled: bool,
+    /// Installation timestamp
+    #[serde(rename = "installed_at")]
+    pub installed_at: String,
+    /// Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.
+    #[serde(rename = "installed_from", skip_serializing_if = "Option::is_none")]
+    pub installed_from: Option<String>,
+    /// Marketplace the plugin came from (empty string for direct repo installs)
+    pub marketplace: String,
+    /// Plugin name
+    pub name: String,
+    /// Source for direct repo installs (when marketplace is empty)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<serde_json::Value>,
+    /// Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.
+    #[serde(rename = "source_sha", skip_serializing_if = "Option::is_none")]
+    pub source_sha: Option<String>,
+    /// Version installed (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+/// An account the host has signed in to, identified by the server it lives on and the login it uses there. The same person can appear more than once when they use both github.com and an Enterprise server.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LoggedInUser {
+    /// Source account this account was derived from, when one was recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<String>,
+    /// Host the account belongs to, such as `github.com` or an Enterprise server.
+    pub host: String,
+    /// Account kind, when the host recorded one. Consumers must tolerate new strings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// Account login on that host.
+    pub login: String,
+}
+
+/// The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GlobalStateLoadResult {
+    /// Whether the user has answered the prompt suggesting they install the desktop app.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_install_nudge_responded: Option<bool>,
+    /// Whether the app tip has been shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_tip_shown: Option<bool>,
+    /// Terminals the user has already been asked to set up, so the host does not ask twice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asked_setup_terminals: Option<Vec<String>>,
+    /// When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the once-per-day cap for non-staff users across restarts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_feedback_last_prompted_at: Option<String>,
+    /// When the host first ran on this machine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_launch_at: Option<String>,
+    /// Plugins installed on this machine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_plugins: Option<Vec<InstalledPlugin>>,
+    /// Account used for the most recent sign-in.
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) last_logged_in_user: Option<LoggedInUser>,
+    /// Every account the host has signed in to on this machine.
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) logged_in_users: Option<Vec<LoggedInUser>>,
+    /// Whether the one-off cleanup of stored reasoning summaries has run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_summaries_cleanup_done: Option<bool>,
+    /// Models the user selected recently, most recent first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_model_ids: Option<Vec<String>>,
+    /// Whether the user declined to trust the sandbox credential proxy CA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_credential_proxy_ca_declined: Option<bool>,
+    /// Whether the sandbox onboarding has been shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_onboarding_shown: Option<bool>,
+    /// Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff: Option<bool>,
+    /// Whether the user was recognized as GitHub staff.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_github: Option<bool>,
+    /// When the staff-only log level migration last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_log_level_migration_at: Option<String>,
+    /// Whether the user was recognized as Microsoft staff.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_microsoft: Option<bool>,
+    /// When the staff-only model reset last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_model_reset_at: Option<String>,
+    /// When the staff-only update channel migration last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_update_channel_migration_at: Option<String>,
+    /// Folders where the user declined the init prompt, so it stays hidden there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suppress_init_folders: Option<Vec<String>>,
+    /// Folders the user has marked as trusted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_folders: Option<Vec<String>>,
+}
+
+/// A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GlobalStateWriteKeyRequest {
+    /// Copilot configuration directory to write the state document in, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to write the directory the server resolved for itself. Mirrors `globalState.loadForConfigDir`, so a caller can read and write the same directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
+    /// Top-level key to write, named as it appears in the result of `globalState.load`. It must be one of the writable keys that `globalState.writeKey` lists.
+    pub key: String,
+    /// Value to store for the key. Omit it, or pass null, to remove the key instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<serde_json::Value>,
+}
+
 /// Pending external tool call request ID, with the tool result or an error describing why it failed.
 ///
 /// <div class="warning">
@@ -10053,43 +10232,6 @@ pub struct InstallationConfirmationResponse {
     pub decision: InstallationDecision,
     /// Exact review commitment from the request.
     pub review_fingerprint: String,
-}
-
-/// Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.
-///
-/// <div class="warning">
-///
-/// **Experimental.** This type is part of an experimental wire-protocol surface
-/// and may change or be removed in future SDK or CLI releases.
-///
-/// </div>
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstalledPlugin {
-    /// Path where the plugin is cached locally
-    #[serde(rename = "cache_path", skip_serializing_if = "Option::is_none")]
-    pub cache_path: Option<String>,
-    /// Whether the plugin is currently enabled
-    pub enabled: bool,
-    /// Installation timestamp
-    #[serde(rename = "installed_at")]
-    pub installed_at: String,
-    /// Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.
-    #[serde(rename = "installed_from", skip_serializing_if = "Option::is_none")]
-    pub installed_from: Option<String>,
-    /// Marketplace the plugin came from (empty string for direct repo installs)
-    pub marketplace: String,
-    /// Plugin name
-    pub name: String,
-    /// Source for direct repo installs (when marketplace is empty)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<serde_json::Value>,
-    /// Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.
-    #[serde(rename = "source_sha", skip_serializing_if = "Option::is_none")]
-    pub source_sha: Option<String>,
-    /// Version installed (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
 }
 
 /// Information about an installed plugin tracked in global state.
@@ -14006,6 +14148,9 @@ pub struct McpServer {
     pub source_plugin_version: Option<String>,
     /// Connection status: connected, failed, needs-auth, pending, disabled, stopped, or not_configured
     pub status: McpServerStatus,
+    /// Configured URL for an HTTP/SSE server, regardless of configuration source. Omitted for local and in-memory servers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 /// Authentication settings with optional redirect port configuration.
@@ -14526,7 +14671,7 @@ pub struct MemoryConfiguration {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataContextAttributionResultContextAttributionCategories {
-    /// Output reserve plus post-blocking-threshold buffer.
+    /// Overlapping output reservation plus post-blocking-threshold buffer.
     pub buffer: i64,
     /// Custom-instructions tokens (0 when none are configured).
     pub custom_instructions: i64,
@@ -14573,7 +14718,7 @@ pub struct MetadataContextAttributionResultContextAttributionEntriesItem {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataContextAttributionResultContextAttribution {
-    /// Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
+    /// Output reservation overlapping the displayed prompt allowance plus the tokens past the effective input budget's buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
     pub buffer_tokens: i64,
     /// The six normalized `/context` header buckets, computed from the same tokenization as `entries` so the two never disagree. Convenience rollups: `freeSpace` and `buffer` describe window capacity rather than occupied context, so the values do not sum to `totalTokens`.
     pub categories: MetadataContextAttributionResultContextAttributionCategories,
@@ -14583,13 +14728,13 @@ pub struct MetadataContextAttributionResultContextAttribution {
     pub compaction_threshold: i64,
     /// Flat list of per-source attribution entries. Group by `kind` and render unrecognized kinds generically. Nesting and rollups are expressed via `parentId`.
     pub entries: Vec<MetadataContextAttributionResultContextAttributionEntriesItem>,
-    /// Prompt limit plus the model's output reserve: the full context window `categories.freeSpace` and `categories.buffer` are measured against. Mirrors `SessionContextInfo.limit`.
+    /// Advertised prompt allowance for the selected context tier: the denominator for context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`. Mirrors `SessionContextInfo.limit`.
     pub limit: i64,
     /// The concrete model id the entire breakdown was tokenized against (feeds the per-model token multiplier). Under `Auto` (Free/Student) this is the resolved model, not the literal `auto` sentinel, so totals are not undercounted. A single-model approximation of a potentially multi-model Auto session.
     pub model_id: String,
     /// How `modelId` was chosen. Not a closed set — tolerate unknown values. Known values today: `autoResolved` (the model Auto resolved to), `selected` (the user's explicitly selected model), `default` (a fallback before any model is known).
     pub model_source: String,
-    /// Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k` context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+    /// Effective input budget after reserving requested output against the combined context ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
     pub prompt_token_limit: i64,
     /// Total token count of the current context window the entries are measured against (system message + conversation messages + tool definitions — the same total reported by /context). Divide an entry's `tokens` by this to derive its share.
     pub total_tokens: i64,
@@ -14654,9 +14799,9 @@ pub struct MetadataContextHeaviestMessagesResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataContextInfoRequest {
-    /// Maximum output tokens allowed by the target model. Pass 0 if unknown.
+    /// Requested output allowance to reserve against the combined context ceiling. Pass 0 to resolve the session's request cap, falling back to the model's advertised output limit.
     pub output_token_limit: i64,
-    /// Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default.
+    /// Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from the session.
     pub prompt_token_limit: i64,
     /// Model identifier used for tokenization. Omit to use the session default. Used both for token counting and to compute display values.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -14667,19 +14812,19 @@ pub struct MetadataContextInfoRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataContextInfoResultContextInfo {
-    /// Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)
+    /// Output reservation overlapping the displayed prompt allowance plus tokens after the effective input budget's buffer-exhaustion blocking threshold (default 95%).
     pub buffer_tokens: i64,
     /// Token count at which background compaction starts (configurable percentage of promptTokenLimit)
     pub compaction_threshold: i64,
     /// Tokens consumed by user/assistant/tool messages
     pub conversation_tokens: i64,
-    /// Prompt token limit plus the model's full output token limit.
+    /// Advertised prompt allowance for the selected context tier, without adding output tokens. The denominator for context-usage displays.
     pub limit: i64,
     /// Tokens consumed by MCP tool definitions (subset of toolDefinitionsTokens, excludes deferred tools)
     pub mcp_tools_tokens: i64,
     /// The model used for token counting
     pub model_name: String,
-    /// Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)
+    /// Effective input budget: the selected tier's prompt allowance bounded by the combined context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when limits are unspecified.
     pub prompt_token_limit: i64,
     /// Tokens consumed by the system prompt
     pub system_tokens: i64,
@@ -15169,6 +15314,9 @@ pub struct Model {
     /// Supported reasoning effort levels (only present if model supports reasoning effort)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supported_reasoning_efforts: Option<Vec<String>>,
+    /// Model vendor as the Copilot API reports it, for example "Anthropic" or "Azure OpenAI". Open vocabulary, passed through unchanged. It can name the vendor that serves the model instead of the one that built it, or a label that is not a vendor, such as "Experimental". Absent when the Copilot API reports no vendor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
     /// Warnings the service published for this model, such as a deprecated client version. Present only when the service published at least one warning. The model remains usable; hosts should surface these as advisory rather than blocking.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning_messages: Option<Vec<ModelMessage>>,
@@ -21360,7 +21508,7 @@ pub struct SessionConnectedIdeInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContextAttributionCategories {
-    /// Output reserve plus post-blocking-threshold buffer.
+    /// Overlapping output reservation plus post-blocking-threshold buffer.
     pub buffer: i64,
     /// Custom-instructions tokens (0 when none are configured).
     pub custom_instructions: i64,
@@ -21414,7 +21562,7 @@ pub struct SessionContextAttributionEntriesItem {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContextAttribution {
-    /// Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
+    /// Output reservation overlapping the displayed prompt allowance plus the tokens past the effective input budget's buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
     pub buffer_tokens: i64,
     /// The six normalized `/context` header buckets, computed from the same tokenization as `entries` so the two never disagree. Convenience rollups: `freeSpace` and `buffer` describe window capacity rather than occupied context, so the values do not sum to `totalTokens`.
     pub categories: SessionContextAttributionCategories,
@@ -21424,13 +21572,13 @@ pub struct SessionContextAttribution {
     pub compaction_threshold: i64,
     /// Flat list of per-source attribution entries. Group by `kind` and render unrecognized kinds generically. Nesting and rollups are expressed via `parentId`.
     pub entries: Vec<SessionContextAttributionEntriesItem>,
-    /// Prompt limit plus the model's output reserve: the full context window `categories.freeSpace` and `categories.buffer` are measured against. Mirrors `SessionContextInfo.limit`.
+    /// Advertised prompt allowance for the selected context tier: the denominator for context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`. Mirrors `SessionContextInfo.limit`.
     pub limit: i64,
     /// The concrete model id the entire breakdown was tokenized against (feeds the per-model token multiplier). Under `Auto` (Free/Student) this is the resolved model, not the literal `auto` sentinel, so totals are not undercounted. A single-model approximation of a potentially multi-model Auto session.
     pub model_id: String,
     /// How `modelId` was chosen. Not a closed set — tolerate unknown values. Known values today: `autoResolved` (the model Auto resolved to), `selected` (the user's explicitly selected model), `default` (a fallback before any model is known).
     pub model_source: String,
-    /// Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k` context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+    /// Effective input budget after reserving requested output against the combined context ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
     pub prompt_token_limit: i64,
     /// Total token count of the current context window the entries are measured against (system message + conversation messages + tool definitions — the same total reported by /context). Divide an entry's `tokens` by this to derive its share.
     pub total_tokens: i64,
@@ -21447,19 +21595,19 @@ pub struct SessionContextAttribution {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContextInfo {
-    /// Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)
+    /// Output reservation overlapping the displayed prompt allowance plus tokens after the effective input budget's buffer-exhaustion blocking threshold (default 95%).
     pub buffer_tokens: i64,
     /// Token count at which background compaction starts (configurable percentage of promptTokenLimit)
     pub compaction_threshold: i64,
     /// Tokens consumed by user/assistant/tool messages
     pub conversation_tokens: i64,
-    /// Prompt token limit plus the model's full output token limit.
+    /// Advertised prompt allowance for the selected context tier, without adding output tokens. The denominator for context-usage displays.
     pub limit: i64,
     /// Tokens consumed by MCP tool definitions (subset of toolDefinitionsTokens, excludes deferred tools)
     pub mcp_tools_tokens: i64,
     /// The model used for token counting
     pub model_name: String,
-    /// Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)
+    /// Effective input budget: the selected tier's prompt allowance bounded by the combined context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when limits are unspecified.
     pub prompt_token_limit: i64,
     /// Tokens consumed by the system prompt
     pub system_tokens: i64,
@@ -22347,6 +22495,9 @@ pub struct SessionManagedPermissions {
     /// When set to `disable`, prevents bypass/allow-all permission modes. Advisory auto-approval remains available because normal prompt paths stay active. Any other value is accepted rather than failing the session, but is enforced as `disable`: the key is only present to restrict something, so a mode this runtime cannot interpret fails closed to the most restrictive one it knows. Omit the key entirely to impose no restriction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_bypass_permissions_mode: Option<String>,
+    /// Closed-world host boundary expressed as `Domain(hostname)`, `Domain(IP)`, or `Domain(*.example.com)` rules. Schemes, ports, paths, queries, and fragments are rejected because every network request must be enforceable at host-level egress. Multiple managed sources intersect their lists; an empty list denies all hosts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_to: Option<Vec<String>>,
 }
 
 /// Managed settings an SDK host may inject at session startup. Only permissions are accepted in this initial contract.
@@ -27889,7 +28040,7 @@ pub struct UserSettingMetadata {
     pub value: serde_json::Value,
 }
 
-/// Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.
+/// Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.
 ///
 /// <div class="warning">
 ///
@@ -27917,21 +28068,6 @@ pub struct UserSettingsGetResult {
 pub struct UserSettingsSetRequest {
     /// Partial user settings to write, as a free-form object keyed by setting name
     pub settings: serde_json::Value,
-}
-
-/// Outcome of writing user settings.
-///
-/// <div class="warning">
-///
-/// **Experimental.** This type is part of an experimental wire-protocol surface
-/// and may change or be removed in future SDK or CLI releases.
-///
-/// </div>
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserSettingsSetResult {
-    /// Top-level keys whose write landed in settings.json but is shadowed by a value still present in the legacy config.json (config.json wins on read). The write does not take effect until the legacy value is removed.
-    pub shadowed_keys: Vec<String>,
 }
 
 /// Current sharing status and shareable GitHub URL for a session.
@@ -30059,6 +30195,81 @@ pub struct InstructionsDiscoverResult {
 pub struct InstructionsGetDiscoveryPathsResult {
     /// Canonical instruction create/discovery files and directories, in priority order
     pub paths: Vec<InstructionDiscoveryPath>,
+}
+
+/// The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GlobalStateLoadForConfigDirResult {
+    /// Whether the user has answered the prompt suggesting they install the desktop app.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_install_nudge_responded: Option<bool>,
+    /// Whether the app tip has been shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_tip_shown: Option<bool>,
+    /// Terminals the user has already been asked to set up, so the host does not ask twice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asked_setup_terminals: Option<Vec<String>>,
+    /// When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the once-per-day cap for non-staff users across restarts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_feedback_last_prompted_at: Option<String>,
+    /// When the host first ran on this machine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_launch_at: Option<String>,
+    /// Plugins installed on this machine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_plugins: Option<Vec<InstalledPlugin>>,
+    /// Account used for the most recent sign-in.
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) last_logged_in_user: Option<LoggedInUser>,
+    /// Every account the host has signed in to on this machine.
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) logged_in_users: Option<Vec<LoggedInUser>>,
+    /// Whether the one-off cleanup of stored reasoning summaries has run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_summaries_cleanup_done: Option<bool>,
+    /// Models the user selected recently, most recent first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_model_ids: Option<Vec<String>>,
+    /// Whether the user declined to trust the sandbox credential proxy CA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_credential_proxy_ca_declined: Option<bool>,
+    /// Whether the sandbox onboarding has been shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_onboarding_shown: Option<bool>,
+    /// Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff: Option<bool>,
+    /// Whether the user was recognized as GitHub staff.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_github: Option<bool>,
+    /// When the staff-only log level migration last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_log_level_migration_at: Option<String>,
+    /// Whether the user was recognized as Microsoft staff.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_microsoft: Option<bool>,
+    /// When the staff-only model reset last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_model_reset_at: Option<String>,
+    /// When the staff-only update channel migration last ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staff_update_channel_migration_at: Option<String>,
+    /// Folders where the user declined the init prompt, so it stays hidden there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suppress_init_folders: Option<Vec<String>>,
+    /// Folders the user has marked as trusted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trusted_folders: Option<Vec<String>>,
 }
 
 /// Slash commands available in the session, after applying any include/exclude filters.
@@ -35423,19 +35634,19 @@ pub struct SessionMetadataActivityResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadataContextInfoResultContextInfo {
-    /// Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)
+    /// Output reservation overlapping the displayed prompt allowance plus tokens after the effective input budget's buffer-exhaustion blocking threshold (default 95%).
     pub buffer_tokens: i64,
     /// Token count at which background compaction starts (configurable percentage of promptTokenLimit)
     pub compaction_threshold: i64,
     /// Tokens consumed by user/assistant/tool messages
     pub conversation_tokens: i64,
-    /// Prompt token limit plus the model's full output token limit.
+    /// Advertised prompt allowance for the selected context tier, without adding output tokens. The denominator for context-usage displays.
     pub limit: i64,
     /// Tokens consumed by MCP tool definitions (subset of toolDefinitionsTokens, excludes deferred tools)
     pub mcp_tools_tokens: i64,
     /// The model used for token counting
     pub model_name: String,
-    /// Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)
+    /// Effective input budget: the selected tier's prompt allowance bounded by the combined context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when limits are unspecified.
     pub prompt_token_limit: i64,
     /// Tokens consumed by the system prompt
     pub system_tokens: i64,
@@ -35479,7 +35690,7 @@ pub struct SessionMetadataGetContextAttributionParams {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadataGetContextAttributionResultContextAttributionCategories {
-    /// Output reserve plus post-blocking-threshold buffer.
+    /// Overlapping output reservation plus post-blocking-threshold buffer.
     pub buffer: i64,
     /// Custom-instructions tokens (0 when none are configured).
     pub custom_instructions: i64,
@@ -35526,7 +35737,7 @@ pub struct SessionMetadataGetContextAttributionResultContextAttributionEntriesIt
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadataGetContextAttributionResultContextAttribution {
-    /// Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
+    /// Output reservation overlapping the displayed prompt allowance plus the tokens past the effective input budget's buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
     pub buffer_tokens: i64,
     /// The six normalized `/context` header buckets, computed from the same tokenization as `entries` so the two never disagree. Convenience rollups: `freeSpace` and `buffer` describe window capacity rather than occupied context, so the values do not sum to `totalTokens`.
     pub categories: SessionMetadataGetContextAttributionResultContextAttributionCategories,
@@ -35536,13 +35747,13 @@ pub struct SessionMetadataGetContextAttributionResultContextAttribution {
     pub compaction_threshold: i64,
     /// Flat list of per-source attribution entries. Group by `kind` and render unrecognized kinds generically. Nesting and rollups are expressed via `parentId`.
     pub entries: Vec<SessionMetadataGetContextAttributionResultContextAttributionEntriesItem>,
-    /// Prompt limit plus the model's output reserve: the full context window `categories.freeSpace` and `categories.buffer` are measured against. Mirrors `SessionContextInfo.limit`.
+    /// Advertised prompt allowance for the selected context tier: the denominator for context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`. Mirrors `SessionContextInfo.limit`.
     pub limit: i64,
     /// The concrete model id the entire breakdown was tokenized against (feeds the per-model token multiplier). Under `Auto` (Free/Student) this is the resolved model, not the literal `auto` sentinel, so totals are not undercounted. A single-model approximation of a potentially multi-model Auto session.
     pub model_id: String,
     /// How `modelId` was chosen. Not a closed set — tolerate unknown values. Known values today: `autoResolved` (the model Auto resolved to), `selected` (the user's explicitly selected model), `default` (a fallback before any model is known).
     pub model_source: String,
-    /// Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k` context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+    /// Effective input budget after reserving requested output against the combined context ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
     pub prompt_token_limit: i64,
     /// Total token count of the current context window the entries are measured against (system message + conversation messages + tool definitions — the same total reported by /context). Divide an entry's `tokens` by this to derive its share.
     pub total_tokens: i64,

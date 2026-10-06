@@ -1097,6 +1097,7 @@ class TestCreateSessionConfig:
                         deny=["Shell(git push)"],
                         ask=["Domain(publish.example)"],
                         allow=["Read(**)"],
+                        limit_to=["Domain(github.com)"],
                     )
                 ),
             )
@@ -1120,6 +1121,7 @@ class TestCreateSessionConfig:
                     "deny": ["Shell(git push)"],
                     "ask": ["Domain(publish.example)"],
                     "allow": ["Read(**)"],
+                    "limitTo": ["Domain(github.com)"],
                 }
             }
             assert captured["session.resume"]["managedSettings"] == {
@@ -1231,12 +1233,12 @@ class TestCreateSessionConfig:
             await client.create_session(
                 on_permission_request=PermissionHandler.approve_all,
                 managed_settings=ManagedSettings(
-                    permissions=ManagedSettingsPermissions(deny=[], ask=[], allow=[])
+                    permissions=ManagedSettingsPermissions(deny=[], ask=[], allow=[], limit_to=[])
                 ),
             )
 
             assert captured["session.create"]["managedSettings"] == {
-                "permissions": {"deny": [], "ask": [], "allow": []}
+                "permissions": {"deny": [], "ask": [], "allow": [], "limitTo": []}
             }
         finally:
             await client.force_stop()

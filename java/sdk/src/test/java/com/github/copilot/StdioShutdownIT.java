@@ -97,7 +97,9 @@ class StdioShutdownIT {
             pid = directory.resolve("pid");
             Path script = Path.of("..", "..", "test", "harness", "stdio-shutdown-runtime.cjs").toAbsolutePath();
             assertTrue(Files.isRegularFile(script), "Shared shutdown fixture must exist");
-            client = new CopilotClient(new CopilotClientOptions().setAutoStart(false).setCliPath("node")
+            String nodePath = TestUtil.findExecutableInPath("node");
+            assertNotNull(nodePath, "Node.js was not found in PATH");
+            client = new CopilotClient(new CopilotClientOptions().setAutoStart(false).setCliPath(nodePath)
                     .setCliArgs(new String[]{script.toString(), marker.toString(), mode, pid.toString()}));
         }
 

@@ -318,7 +318,11 @@ export function pythonAppendLastFieldsPresentIn(
 
     for (const [className, definition] of Object.entries(definitions)) {
         if (typeof definition !== "object") continue;
-        for (const [propertyName, property] of Object.entries(definition.properties ?? {})) {
+        // Quicktype merges inline union variants into the definition's dataclass.
+        const shapes = [definition, ...(definition.anyOf ?? definition.oneOf ?? [])];
+        for (const [propertyName, property] of shapes.flatMap((shape) =>
+            typeof shape === "object" ? Object.entries(shape.properties ?? {}) : []
+        )) {
             if (
                 typeof property !== "object" ||
                 property["x-copilot-sdk-append-last"] !== true ||
@@ -327,6 +331,7 @@ export function pythonAppendLastFieldsPresentIn(
                 continue;
             }
             result.push([className, propertyName]);
+            seen.add(`${className}.${propertyName}`);
         }
     }
 

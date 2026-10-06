@@ -24,6 +24,13 @@ type NativeCommand = (
     env?: NodeJS.ProcessEnv
 ) => string;
 
+type GithubRelease = {
+    tag_name: string;
+    draft: boolean;
+    prerelease: boolean;
+    published_at: string | null;
+};
+
 const runNativeCommand: NativeCommand = (command, args, cwd, env = process.env) =>
     execFileSync(command, args, {
         cwd,
@@ -232,12 +239,7 @@ export async function publishJava(
 }
 
 export function previousSdkReleaseTag(
-    releases: {
-        tag_name: string;
-        draft: boolean;
-        prerelease: boolean;
-        published_at: string | null;
-    }[],
+    releases: GithubRelease[],
     identity: ReleaseIdentity
 ): string | undefined {
     return releases
@@ -321,9 +323,24 @@ export async function publishSourceRelease(
         assert.equal(release.draft, false, "Existing SDK release is a draft");
         return;
     }
-    const releases = JSON.parse(
-        gh(["api", "--paginate", "--slurp", `repos/${repository}/releases?per_page=100`])
-    ).flat();
+    let releases: GithubRelease[];
+    if (identity.channel === "latest") {
+        try {
+            releases = [JSON.parse(gh(["api", `repos/${repository}/releases/latest`]))];
+        } catch (error) {
+            if (!/\(HTTP 404\)/.test(String((error as { stderr?: string }).stderr))) throw error;
+            releases = [];
+        }
+    } else {
+        const output = gh([
+            "api",
+            "--paginate",
+            "--jq",
+            ".[] | {tag_name, draft, prerelease, published_at}",
+            `repos/${repository}/releases?per_page=100`,
+        ]);
+        releases = output ? output.split("\n").map((line) => JSON.parse(line)) : [];
+    }
     const previous = previousSdkReleaseTag(releases, identity);
     gh([
         "release",

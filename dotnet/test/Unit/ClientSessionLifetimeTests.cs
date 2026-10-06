@@ -2614,7 +2614,8 @@ public sealed partial class ClientSessionLifetimeTests
                     DisableBypassPermissionsMode = DisableBypassPermissionsModes.Disable,
                     Deny = ["shell(rm*)"],
                     Ask = ["write"],
-                    Allow = []
+                    Allow = [],
+                    LimitTo = ["Domain(github.com)"]
                 }
             },
             OnPermissionRequest = (_, invocation) =>
@@ -2631,6 +2632,9 @@ public sealed partial class ClientSessionLifetimeTests
         Assert.Equal("shell(rm*)", Assert.Single(permissions.GetProperty("deny").EnumerateArray()).GetString());
         Assert.Equal("write", Assert.Single(permissions.GetProperty("ask").EnumerateArray()).GetString());
         Assert.Empty(permissions.GetProperty("allow").EnumerateArray());
+        Assert.Equal(
+            "Domain(github.com)",
+            Assert.Single(permissions.GetProperty("limitTo").EnumerateArray()).GetString());
 
         DispatchEvent(session, new PermissionRequestedEvent
         {

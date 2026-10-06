@@ -13,25 +13,21 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import javax.annotation.processing.Generated;
 
 /**
- * Credential-free authentication identity safe to expose to hosts and user interfaces.
+ * An account the host has signed in to, identified by the server it lives on and the login it uses there. The same person can appear more than once when they use both github.com and an Enterprise server.
  *
  * @since 1.0.0
  */
 @javax.annotation.processing.Generated("copilot-sdk-codegen")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AuthIdentity(
-    /** Authentication type */
-    @JsonProperty("type") AuthInfoType type,
-    /** Authentication host */
+record LoggedInUser(
+    /** Host the account belongs to, such as `github.com` or an Enterprise server. */
     @JsonProperty("host") String host,
-    /** Authenticated login, when available */
+    /** Account login on that host. */
     @JsonProperty("login") String login,
-    /** Name of the environment variable that supplied the credential, when applicable */
-    @JsonProperty("envVar") String envVar,
-    /** Opaque SDK GitHub credential registration backing this identity. Routing metadata only; never a credential. */
-    @JsonProperty("registrationId") String registrationId,
-    /** Snapshot of the authenticated user's Copilot subscription info, if known */
-    @JsonProperty("copilotUser") CopilotUserResponse copilotUser
+    /** Account kind, when the host recorded one. Consumers must tolerate new strings. */
+    @JsonProperty("kind") String kind,
+    /** Source account this account was derived from, when one was recorded. */
+    @JsonProperty("derivedFrom") String derivedFrom
 ) {
 }

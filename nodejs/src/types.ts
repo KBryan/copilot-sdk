@@ -2360,6 +2360,13 @@ export interface ManagedSettingsPermissions {
      * (across managed layers) must admit an operation for it to be allowed.
      */
     allow?: string[];
+    /**
+     * Closed-world host boundary expressed as `Domain(hostname)`, `Domain(IP)`,
+     * or `Domain(*.example.com)` rules. Schemes, ports, paths, queries, and
+     * fragments are rejected. Multiple managed layers intersect their lists;
+     * an empty list denies all hosts.
+     */
+    limitTo?: string[];
 }
 
 /**

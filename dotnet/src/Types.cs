@@ -3502,6 +3502,15 @@ public sealed class ManagedSettingsPermissions
     /// <summary>Tool-permission patterns that are allowed without prompting.</summary>
     [JsonPropertyName("allow")]
     public IList<string>? Allow { get; set; }
+
+    /// <summary>
+    /// Closed-world host boundary expressed as <c>Domain(hostname)</c>,
+    /// <c>Domain(IP)</c>, or <c>Domain(*.example.com)</c> rules. Schemes, ports,
+    /// paths, queries, and fragments are rejected. Multiple managed layers
+    /// intersect their lists. A present empty list denies all hosts.
+    /// </summary>
+    [JsonPropertyName("limitTo")]
+    public IList<string>? LimitTo { get; set; }
 }
 
 /// <summary>

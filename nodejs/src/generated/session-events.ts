@@ -914,7 +914,7 @@ export type AbortReason =
   /** Autopilot stopped the run because the active objective reached its user-set --max-ai-credits limit. */
   | "autopilot_credit_limit";
 /**
- * Configuration source: user, workspace, plugin, builtin, or managed
+ * Configuration source: user, workspace, plugin, builtin, managed, or account
  */
 export type McpServerSource =
   /** Server configured in the user's global MCP configuration. */
@@ -926,7 +926,9 @@ export type McpServerSource =
   /** Server bundled with the runtime. */
   | "builtin"
   /** Server supplied by a trusted host-managed catalog. */
-  | "managed";
+  | "managed"
+  /** Server contributed by a signed-in account; enablement and organization policy still apply. */
+  | "account";
 /**
  * Transport mechanism: stdio, http, sse (deprecated), or memory (in-process MCP server)
  */

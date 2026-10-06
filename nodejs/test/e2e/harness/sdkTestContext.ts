@@ -63,12 +63,14 @@ export async function createSdkTestContext({
     logLevel,
     useStdio,
     copilotClientOptions,
+    replayOnly = process.env.COPILOT_SDK_E2E_REPLAY_ONLY === "true",
     modelNames,
 }: {
     logLevel?: "error" | "none" | "warning" | "info" | "debug" | "all";
     cliPath?: string;
     useStdio?: boolean;
     copilotClientOptions?: CopilotClientOptions;
+    replayOnly?: boolean;
     modelNames?: Record<string, string>;
 } = {}) {
     const homeDir = realpathSync(fs.mkdtempSync(join(os.tmpdir(), "copilot-test-config-")));
@@ -317,6 +319,7 @@ export async function createSdkTestContext({
         }
 
         await openAiEndpoint.updateConfig({
+            replayOnly,
             filePath: getTrafficCapturePath(testContext),
             workDir,
             modelNames,

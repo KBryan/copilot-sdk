@@ -327,7 +327,10 @@ describe("Generated RPC surface coverage", () => {
             ...collectRuntimeFunctions(session.rpc, "session"),
         ]);
 
-        expect(inventory).toHaveLength(399);
+        expect(inventory).toHaveLength(398);
+        expect(inventory.some((method) => method.wireMethod === "user.settings.reload")).toBe(
+            false
+        );
         const sessionProviderMethods = [
             "providers.getCatalog",
             "providers.discover",

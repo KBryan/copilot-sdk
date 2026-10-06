@@ -667,6 +667,7 @@ const (
 	MCPOauthRequestReasonRefresh                                         = rpc.MCPOauthRequestReasonRefresh
 	MCPOauthRequestReasonUpscope                                         = rpc.MCPOauthRequestReasonUpscope
 	MCPOauthRequiredStaticClientConfigGrantTypeClientCredentials         = rpc.MCPOauthRequiredStaticClientConfigGrantTypeClientCredentials
+	MCPServerSourceAccount                                               = rpc.MCPServerSourceAccount
 	MCPServerSourceBuiltin                                               = rpc.MCPServerSourceBuiltin
 	MCPServerSourceManaged                                               = rpc.MCPServerSourceManaged
 	MCPServerSourcePlugin                                                = rpc.MCPServerSourcePlugin

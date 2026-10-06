@@ -183,3 +183,71 @@ jobs:
             ${{ inputs.sdk-home }}/java/sdk/target/failsafe-reports/
             ${{ inputs.sdk-home }}/java/sdk/target/subprocess-reports/
           retention-days: 7
+  java-musl-arm64:
+    name: "Java (JDK 25, linuxmusl-arm64)"
+    if: inputs.platform == 'all' || inputs.platform == 'linuxmusl-arm64'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        timeout-minutes: 4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-sdk-runtime
+        with:
+          artifact-name: executable-sdk-Linux-ARM64-musl
+          path: ${{ github.workspace }}
+      - run: node "$SDK_HOME/scripts/ci/runtime-artifact.mjs" restore
+        working-directory: .
+      - name: Run Java SDK tests (linuxmusl-arm64)
+        env:
+          COPILOT_HMAC_KEY: ${{ secrets.COPILOT_DEVELOPER_CLI_INTEGRATION_HMAC_KEY }}
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir "/workspace/$SDK_HOME/java" \
+            --env CI=true \
+            --env COPILOT_HMAC_KEY \
+            --env GITHUB_ACTIONS=true \
+            --env GITHUB_WORKSPACE=/workspace \
+            --env COPILOT_SDK_ROOT="/workspace/$SDK_HOME" \
+            eclipse-temurin:25-jdk-alpine \
+            sh -c 'set -eux
+              apk add --no-cache git java-cacerts maven nodejs npm
+              git config --global --add safe.directory /workspace
+              export JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts
+              export GITHUB_ENV=/tmp/copilot-sdk-runtime.env
+              export COPILOT_RUNTIME_TARGET=linuxmusl-arm64
+              export COPILOT_RUNTIME_OUTPUT_DIRECTORY=/workspace/.sdk-runtime/linuxmusl-arm64
+              node "$COPILOT_SDK_ROOT/scripts/ci/runtime-artifact.mjs" prepare
+              set -a
+              . "$GITHUB_ENV"
+              set +a
+              node copilot-native/scripts/validate-native-host.mjs linuxmusl-arm64
+              ./mvnw test-compile jar:jar -Dcopilot.native.libc=musl
+              status=0
+              ./mvnw -pl sdk verify -Dskip.test.harness=true -Dcopilot.cli.path="$COPILOT_CLI_PATH" || status=$?
+              mkdir -p sdk/target/subprocess-reports
+              for reports in surefire-reports surefire-reports-isolated failsafe-reports; do
+                if [ -d "sdk/target/$reports" ]; then
+                  mv "sdk/target/$reports" sdk/target/subprocess-reports/
+                fi
+              done
+              ./mvnw verify -Pinprocess \
+                -Dskip.test.harness=true \
+                -Dtest=NoTestsForInProcessSmoke \
+                -Dsurefire.failIfNoSpecifiedTests=false \
+                -Dit.test=InProcessTransportIT,AuthHostE2ETest \
+                -Dcopilot.native.libc=musl \
+                -Dcopilot.inprocess.cli.path="$COPILOT_CLI_PATH" || status=$?
+              exit "$status"'
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: java-test-results-linuxmusl-arm64
+          path: |
+            ${{ inputs.sdk-home }}/java/sdk/target/surefire-reports/
+            ${{ inputs.sdk-home }}/java/sdk/target/surefire-reports-isolated/
+            ${{ inputs.sdk-home }}/java/sdk/target/failsafe-reports/
+            ${{ inputs.sdk-home }}/java/sdk/target/subprocess-reports/
+          retention-days: 7

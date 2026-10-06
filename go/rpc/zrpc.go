@@ -1539,6 +1539,9 @@ func (r RawAuthReadValueData) Kind() AuthReadValueKind {
 type AuthReadValueActiveAccount struct {
 	// The active account, or absent when not logged in.
 	Account *AccountStatus `json:"account,omitempty"`
+	// Credential-free identity metadata for the active account, including resolved Copilot user
+	// information when available.
+	AuthInfo *AuthIdentity `json:"authInfo,omitempty"`
 }
 
 func (AuthReadValueActiveAccount) authReadValue() {}
@@ -5322,6 +5325,100 @@ type GitReposFromRemotesResult struct {
 	Repositories []GitRemoteRepository `json:"repositories"`
 }
 
+// Selects the configuration directory whose machine-wide state to read.
+// Experimental: GlobalStateLoadForConfigDirRequest is part of an experimental API and may
+// change or be removed.
+// Internal: GlobalStateLoadForConfigDirRequest is an internal SDK API and is not part of
+// the public surface.
+type GlobalStateLoadForConfigDirRequest struct {
+	// Copilot configuration directory to read the state document from, taking precedence over
+	// the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to
+	// read the directory the server resolved for itself.
+	ConfigDir *string `json:"configDir,omitempty"`
+}
+
+// The host's machine-wide state. Every field is optional because a fresh install has
+// recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a
+// negative answer. Stored credentials are deliberately absent from this shape.
+// Experimental: GlobalStateLoadResult is part of an experimental API and may change or be
+// removed.
+// Internal: GlobalStateLoadResult is an internal SDK API and is not part of the public
+// surface.
+type GlobalStateLoadResult struct {
+	// Whether the user has answered the prompt suggesting they install the desktop app.
+	AppInstallNudgeResponded *bool `json:"appInstallNudgeResponded,omitempty"`
+	// Whether the app tip has been shown.
+	AppTipShown *bool `json:"appTipShown,omitempty"`
+	// Terminals the user has already been asked to set up, so the host does not ask twice.
+	AskedSetupTerminals []string `json:"askedSetupTerminals,omitzero"`
+	// When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the
+	// once-per-day cap for non-staff users across restarts.
+	AutoFeedbackLastPromptedAt *string `json:"autoFeedbackLastPromptedAt,omitempty"`
+	// When the host first ran on this machine.
+	FirstLaunchAt *string `json:"firstLaunchAt,omitempty"`
+	// Plugins installed on this machine.
+	InstalledPlugins []InstalledPlugin `json:"installedPlugins,omitzero"`
+	// Account used for the most recent sign-in.
+	// Internal: LastLoggedInUser is part of the SDK's internal API surface and is not intended
+	// for external use.
+	LastLoggedInUser *LoggedInUser `json:"lastLoggedInUser,omitempty"`
+	// Every account the host has signed in to on this machine.
+	// Internal: LoggedInUsers is part of the SDK's internal API surface and is not intended for
+	// external use.
+	LoggedInUsers []LoggedInUser `json:"loggedInUsers,omitzero"`
+	// Whether the one-off cleanup of stored reasoning summaries has run.
+	ReasoningSummariesCleanupDone *bool `json:"reasoningSummariesCleanupDone,omitempty"`
+	// Models the user selected recently, most recent first.
+	RecentModelIDs []string `json:"recentModelIds,omitzero"`
+	// Whether the user declined to trust the sandbox credential proxy CA.
+	SandboxCredentialProxyCaDeclined *bool `json:"sandboxCredentialProxyCaDeclined,omitempty"`
+	// Whether the sandbox onboarding has been shown.
+	SandboxOnboardingShown *bool `json:"sandboxOnboardingShown,omitempty"`
+	// Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only
+	// behavior.
+	Staff *bool `json:"staff,omitempty"`
+	// Whether the user was recognized as GitHub staff.
+	StaffGitHub *bool `json:"staffGithub,omitempty"`
+	// When the staff-only log level migration last ran.
+	StaffLogLevelMigrationAt *string `json:"staffLogLevelMigrationAt,omitempty"`
+	// Whether the user was recognized as Microsoft staff.
+	StaffMicrosoft *bool `json:"staffMicrosoft,omitempty"`
+	// When the staff-only model reset last ran.
+	StaffModelResetAt *string `json:"staffModelResetAt,omitempty"`
+	// When the staff-only update channel migration last ran.
+	StaffUpdateChannelMigrationAt *string `json:"staffUpdateChannelMigrationAt,omitempty"`
+	// Folders where the user declined the init prompt, so it stays hidden there.
+	SuppressInitFolders []string `json:"suppressInitFolders,omitzero"`
+	// Folders the user has marked as trusted.
+	TrustedFolders []string `json:"trustedFolders,omitzero"`
+}
+
+// A single top-level key to record in the host's machine-wide state. The write replaces
+// only that key and leaves the rest of the document untouched, so two writers recording
+// different one-off flags do not overwrite each other. The stored credential keys cannot be
+// written through this method.
+// Experimental: GlobalStateWriteKeyRequest is part of an experimental API and may change or
+// be removed.
+// Internal: GlobalStateWriteKeyRequest is an internal SDK API and is not part of the public
+// surface.
+type GlobalStateWriteKeyRequest struct {
+	// Copilot configuration directory to write the state document in, taking precedence over
+	// the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to
+	// write the directory the server resolved for itself. Mirrors
+	// `globalState.loadForConfigDir`, so a caller can read and write the same directory.
+	ConfigDir *string `json:"configDir,omitempty"`
+	// Top-level key to write, named as it appears in the result of `globalState.load`. It must
+	// be one of the writable keys that `globalState.writeKey` lists.
+	Key string `json:"key"`
+	// Value to store for the key. Omit it, or pass null, to remove the key instead.
+	Value any `json:"value,omitempty"`
+}
+
+// Experimental: GlobalStateWriteKeyResult is part of an experimental API and may change or
+// be removed.
+type GlobalStateWriteKeyResult struct {
+}
+
 // Pending external tool call request ID, with the tool result or an error describing why it
 // failed.
 // Experimental: HandlePendingToolCallRequest is part of an experimental API and may change
@@ -6520,6 +6617,22 @@ type LocalSessionMetadataValue struct {
 	StartTime string `json:"startTime"`
 	// Short summary of the session, when one has been derived
 	Summary *string `json:"summary,omitempty"`
+}
+
+// An account the host has signed in to, identified by the server it lives on and the login
+// it uses there. The same person can appear more than once when they use both github.com
+// and an Enterprise server.
+// Experimental: LoggedInUser is part of an experimental API and may change or be removed.
+// Internal: LoggedInUser is an internal SDK API and is not part of the public surface.
+type LoggedInUser struct {
+	// Source account this account was derived from, when one was recorded.
+	DerivedFrom *string `json:"derivedFrom,omitempty"`
+	// Host the account belongs to, such as `github.com` or an Enterprise server.
+	Host string `json:"host"`
+	// Account kind, when the host recorded one. Consumers must tolerate new strings.
+	Kind *string `json:"kind,omitempty"`
+	// Account login on that host.
+	Login string `json:"login"`
 }
 
 // Message text, optional severity level, persistence flag, optional follow-up URL, and
@@ -9443,6 +9556,9 @@ type MCPServer struct {
 	// Connection status: connected, failed, needs-auth, pending, disabled, stopped, or
 	// not_configured
 	Status MCPServerStatus `json:"status"`
+	// Configured URL for an HTTP/SSE server, regardless of configuration source. Omitted for
+	// local and in-memory servers.
+	URL *string `json:"url,omitempty"`
 }
 
 // Set to `true` to use defaults, or provide an object with additional auth or OIDC settings.
@@ -9827,9 +9943,11 @@ type MetadataContextHeaviestMessagesResult struct {
 // Experimental: MetadataContextInfoRequest is part of an experimental API and may change or
 // be removed.
 type MetadataContextInfoRequest struct {
-	// Maximum output tokens allowed by the target model. Pass 0 if unknown.
+	// Requested output allowance to reserve against the combined context ceiling. Pass 0 to
+	// resolve the session's request cap, falling back to the model's advertised output limit.
 	OutputTokenLimit int64 `json:"outputTokenLimit"`
-	// Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default.
+	// Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from
+	// the session.
 	PromptTokenLimit int64 `json:"promptTokenLimit"`
 	// Model identifier used for tokenization. Omit to use the session default. Used both for
 	// token counting and to compute display values.
@@ -10019,6 +10137,11 @@ type Model struct {
 	SupportedContextTiers []string `json:"supportedContextTiers,omitzero"`
 	// Supported reasoning effort levels (only present if model supports reasoning effort)
 	SupportedReasoningEfforts []string `json:"supportedReasoningEfforts,omitzero"`
+	// Model vendor as the Copilot API reports it, for example "Anthropic" or "Azure OpenAI".
+	// Open vocabulary, passed through unchanged. It can name the vendor that serves the model
+	// instead of the one that built it, or a label that is not a vendor, such as
+	// "Experimental". Absent when the Copilot API reports no vendor.
+	Vendor *string `json:"vendor,omitempty"`
 	// Warnings the service published for this model, such as a deprecated client version.
 	// Present only when the service published at least one warning. The model remains usable;
 	// hosts should surface these as advisory rather than blocking.
@@ -14986,7 +15109,8 @@ type SessionContext struct {
 // Experimental: SessionContextAttribution is part of an experimental API and may change or
 // be removed.
 type SessionContextAttribution struct {
-	// Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors
+	// Output reservation overlapping the displayed prompt allowance plus the tokens past the
+	// effective input budget's buffer-exhaustion blocking threshold. Mirrors
 	// `SessionContextInfo.bufferTokens`.
 	BufferTokens int64 `json:"bufferTokens"`
 	// The six normalized `/context` header buckets, computed from the same tokenization as
@@ -15002,9 +15126,9 @@ type SessionContextAttribution struct {
 	// Flat list of per-source attribution entries. Group by `kind` and render unrecognized
 	// kinds generically. Nesting and rollups are expressed via `parentId`.
 	Entries []SessionContextAttributionEntriesItem `json:"entries"`
-	// Prompt limit plus the model's output reserve: the full context window
-	// `categories.freeSpace` and `categories.buffer` are measured against. Mirrors
-	// `SessionContextInfo.limit`.
+	// Advertised prompt allowance for the selected context tier: the denominator for
+	// context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`.
+	// Mirrors `SessionContextInfo.limit`.
 	Limit int64 `json:"limit"`
 	// The concrete model id the entire breakdown was tokenized against (feeds the per-model
 	// token multiplier). Under `Auto` (Free/Student) this is the resolved model, not the
@@ -15015,8 +15139,8 @@ type SessionContextAttribution struct {
 	// `autoResolved` (the model Auto resolved to), `selected` (the user's explicitly selected
 	// model), `default` (a fallback before any model is known).
 	ModelSource string `json:"modelSource"`
-	// Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k`
-	// context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+	// Effective input budget after reserving requested output against the combined context
+	// ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
 	PromptTokenLimit int64 `json:"promptTokenLimit"`
 	// Total token count of the current context window the entries are measured against (system
 	// message + conversation messages + tool definitions — the same total reported by
@@ -15029,7 +15153,7 @@ type SessionContextAttribution struct {
 // describe window capacity rather than occupied context, so the values do not sum to
 // `totalTokens`.
 type SessionContextAttributionCategories struct {
-	// Output reserve plus post-blocking-threshold buffer.
+	// Overlapping output reservation plus post-blocking-threshold buffer.
 	Buffer int64 `json:"buffer"`
 	// Custom-instructions tokens (0 when none are configured).
 	CustomInstructions int64 `json:"customInstructions"`
@@ -15079,21 +15203,25 @@ type SessionContextAttributionEntriesItem struct {
 // Experimental: SessionContextInfo is part of an experimental API and may change or be
 // removed.
 type SessionContextInfo struct {
-	// Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)
+	// Output reservation overlapping the displayed prompt allowance plus tokens after the
+	// effective input budget's buffer-exhaustion blocking threshold (default 95%).
 	BufferTokens int64 `json:"bufferTokens"`
 	// Token count at which background compaction starts (configurable percentage of
 	// promptTokenLimit)
 	CompactionThreshold int64 `json:"compactionThreshold"`
 	// Tokens consumed by user/assistant/tool messages
 	ConversationTokens int64 `json:"conversationTokens"`
-	// Prompt token limit plus the model's full output token limit.
+	// Advertised prompt allowance for the selected context tier, without adding output tokens.
+	// The denominator for context-usage displays.
 	Limit int64 `json:"limit"`
 	// Tokens consumed by MCP tool definitions (subset of toolDefinitionsTokens, excludes
 	// deferred tools)
 	MCPToolsTokens int64 `json:"mcpToolsTokens"`
 	// The model used for token counting
 	ModelName string `json:"modelName"`
-	// Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)
+	// Effective input budget: the selected tier's prompt allowance bounded by the combined
+	// context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when
+	// limits are unspecified.
 	PromptTokenLimit int64 `json:"promptTokenLimit"`
 	// Tokens consumed by the system prompt
 	SystemTokens int64 `json:"systemTokens"`
@@ -15853,6 +15981,11 @@ type SessionManagedPermissions struct {
 	// restrict something, so a mode this runtime cannot interpret fails closed to the most
 	// restrictive one it knows. Omit the key entirely to impose no restriction.
 	DisableBypassPermissionsMode *string `json:"disableBypassPermissionsMode,omitempty"`
+	// Closed-world host boundary expressed as `Domain(hostname)`, `Domain(IP)`, or
+	// `Domain(*.example.com)` rules. Schemes, ports, paths, queries, and fragments are rejected
+	// because every network request must be enforceable at host-level egress. Multiple managed
+	// sources intersect their lists; an empty list denies all hosts.
+	LimitTo []string `json:"limitTo,omitzero"`
 }
 
 // Managed settings an SDK host may inject at session startup. Only permissions are accepted
@@ -20618,20 +20751,14 @@ type UserSettingMetadata struct {
 	Value any `json:"value"`
 }
 
-// Per-key metadata for every known user setting (settings.json overlaid with the legacy
-// config.json, config.json wins), including settings left at their default. Excludes
-// repository- and enterprise-managed overrides.
+// Per-key metadata for every known user setting in settings.json, including settings left
+// at their default. Excludes repository- and enterprise-managed overrides.
 // Experimental: UserSettingsGetResult is part of an experimental API and may change or be
 // removed.
 type UserSettingsGetResult struct {
 	// Every known user setting keyed by setting name, each with its effective value, default,
 	// and whether it is at the default.
 	Settings map[string]UserSettingMetadata `json:"settings"`
-}
-
-// Experimental: UserSettingsReloadResult is part of an experimental API and may change or
-// be removed.
-type UserSettingsReloadResult struct {
 }
 
 // Partial user settings to write to settings.json. Each top-level key is written
@@ -20643,14 +20770,9 @@ type UserSettingsSetRequest struct {
 	Settings any `json:"settings"`
 }
 
-// Outcome of writing user settings.
 // Experimental: UserSettingsSetResult is part of an experimental API and may change or be
 // removed.
 type UserSettingsSetResult struct {
-	// Top-level keys whose write landed in settings.json but is shadowed by a value still
-	// present in the legacy config.json (config.json wins on read). The write does not take
-	// effect until the legacy value is removed.
-	ShadowedKeys []string `json:"shadowedKeys"`
 }
 
 // The approval to add as a session-scoped rule
@@ -24631,11 +24753,13 @@ const (
 	MCPServerConfigStdioTypeStdio MCPServerConfigStdioType = "stdio"
 )
 
-// Configuration source: user, workspace, plugin, builtin, or managed
+// Configuration source: user, workspace, plugin, builtin, managed, or account
 // Experimental: MCPServerSource is part of an experimental API and may change or be removed.
 type MCPServerSource string
 
 const (
+	// Server contributed by a signed-in account; enablement and organization policy still apply.
+	MCPServerSourceAccount MCPServerSource = "account"
 	// Server bundled with the runtime.
 	MCPServerSourceBuiltin MCPServerSource = "builtin"
 	// Server supplied by a trusted host-managed catalog.
@@ -29625,17 +29749,15 @@ type ServerUserAPI serverAPI
 // removed.
 type ServerUserSettingsAPI serverAPI
 
-// Get lists every known user setting (settings.json overlaid with the legacy config.json,
-// config.json wins), each with its effective value, its default, and whether it is at the
-// default — so settings the user has never set still appear with their default value. Does
-// not include repository- or enterprise-managed overrides that the runtime layers on top at
-// session time.
+// Get lists every known user setting from settings.json, each with its effective value, its
+// default, and whether it is at the default — so settings the user has never set still
+// appear with their default value. Does not include repository- or enterprise-managed
+// overrides that the runtime layers on top at session time.
 //
 // RPC method: user.settings.get.
 //
-// Returns: Per-key metadata for every known user setting (settings.json overlaid with the
-// legacy config.json, config.json wins), including settings left at their default. Excludes
-// repository- and enterprise-managed overrides.
+// Returns: Per-key metadata for every known user setting in settings.json, including
+// settings left at their default. Excludes repository- and enterprise-managed overrides.
 func (a *ServerUserSettingsAPI) Get(ctx context.Context) (*UserSettingsGetResult, error) {
 	raw, err := a.client.Request(ctx, "user.settings.get", nil)
 	if err != nil {
@@ -29648,33 +29770,13 @@ func (a *ServerUserSettingsAPI) Get(ctx context.Context) (*UserSettingsGetResult
 	return &result, nil
 }
 
-// Reload drops this runtime process's in-memory user settings cache so the next settings
-// read observes disk.
-//
-// RPC method: user.settings.reload.
-func (a *ServerUserSettingsAPI) Reload(ctx context.Context) (*UserSettingsReloadResult, error) {
-	raw, err := a.client.Request(ctx, "user.settings.reload", nil)
-	if err != nil {
-		return nil, err
-	}
-	var result UserSettingsReloadResult
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
 // Set writes one or more user settings to settings.json, replacing each provided top-level
-// key. A key whose value is null is removed. Returns the keys whose new value is shadowed
-// by a legacy config.json entry (config.json wins on read), which the runtime leaves in
-// place — such writes do not take effect until the legacy value is removed.
+// key. A key whose value is null is removed.
 //
 // RPC method: user.settings.set.
 //
 // Parameters: Partial user settings to write to settings.json. Each top-level key is
 // written individually, replacing the existing value; a key whose value is null is removed.
-//
-// Returns: Outcome of writing user settings.
 func (a *ServerUserSettingsAPI) Set(ctx context.Context, params *UserSettingsSetRequest) (*UserSettingsSetResult, error) {
 	raw, err := a.client.Request(ctx, "user.settings.set", params)
 	if err != nil {
@@ -30138,6 +30240,101 @@ func (a *InternalServerGitHubRepositoryAPI) AtPath(ctx context.Context, params *
 	return &result, nil
 }
 
+// Experimental: InternalServerGlobalStateAPI contains experimental APIs that may change or
+// be removed.
+type InternalServerGlobalStateAPI internalServerAPI
+
+// Load reads the host's machine-wide state: which plugins are installed and the one-off
+// flags and timestamps that record what the user has already been shown or migrated. This
+// is the state that outlives a single session and a single workspace, so a host reads it to
+// decide whether to run a first-launch step, offer an onboarding prompt, or skip one it has
+// already completed. The stored credentials are deliberately not part of this result; a
+// caller that needs an authenticated identity asks the account methods for it instead.
+// Reading is non-destructive and every field is optional, because a fresh install has
+// recorded nothing yet.
+//
+// RPC method: globalState.load.
+//
+// Returns: The host's machine-wide state. Every field is optional because a fresh install
+// has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a
+// negative answer. Stored credentials are deliberately absent from this shape.
+// Internal: Load is part of the SDK's internal handshake/plumbing; external callers should
+// not use it.
+func (a *InternalServerGlobalStateAPI) Load(ctx context.Context) (*GlobalStateLoadResult, error) {
+	raw, err := a.client.Request(ctx, "globalState.load", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result GlobalStateLoadResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// LoadForConfigDir reads the host's machine-wide state exactly as `globalState.load` does,
+// but from a caller-supplied configuration directory instead of the one the server resolved
+// for itself. Use this when a consumer scopes a session to its own Copilot home — the SDK's
+// per-session `configDir` override — so the state read matches the directory that session
+// actually uses. An absent or empty `configDir` resolves the server's own home, making this
+// identical to `globalState.load`. The stored credentials are omitted here for the same
+// reason they are omitted from `globalState.load`: a caller that needs an authenticated
+// identity asks the account methods instead, so pointing this at another directory cannot
+// be used to read the credentials kept in it.
+//
+// RPC method: globalState.loadForConfigDir.
+//
+// Parameters: Selects the configuration directory whose machine-wide state to read.
+//
+// Returns: The host's machine-wide state. Every field is optional because a fresh install
+// has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a
+// negative answer. Stored credentials are deliberately absent from this shape.
+// Internal: LoadForConfigDir is part of the SDK's internal handshake/plumbing; external
+// callers should not use it.
+func (a *InternalServerGlobalStateAPI) LoadForConfigDir(ctx context.Context, params *GlobalStateLoadForConfigDirRequest) (*GlobalStateLoadResult, error) {
+	raw, err := a.client.Request(ctx, "globalState.loadForConfigDir", params)
+	if err != nil {
+		return nil, err
+	}
+	var result GlobalStateLoadResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// WriteKey records one top-level key in the host's machine-wide state, the counterpart to
+// `globalState.load`. A host calls this to remember that it has shown an onboarding step,
+// asked a one-off question, or completed a migration, so the next run can skip it. Only the
+// named key is replaced and the rest of the document is preserved, which lets two writers
+// record different flags without overwriting each other; passing no value removes the key
+// instead. Only the keys a host records itself are writable: `appInstallNudgeResponded`,
+// `appTipShown`, `askedSetupTerminals`, `autoFeedbackLastPromptedAt`, `firstLaunchAt`,
+// `recentModelIds`, `sandboxCredentialProxyCaDeclined` and `sandboxOnboardingShown`. Every
+// other key is refused, including `installedPlugins`, the stored credentials,
+// `trustedFolders`, the staff flags and the signed-in accounts. Plugin enablement must use
+// the plugin APIs, which apply repository and managed-policy checks.
+//
+// RPC method: globalState.writeKey.
+//
+// Parameters: A single top-level key to record in the host's machine-wide state. The write
+// replaces only that key and leaves the rest of the document untouched, so two writers
+// recording different one-off flags do not overwrite each other. The stored credential keys
+// cannot be written through this method.
+// Internal: WriteKey is part of the SDK's internal handshake/plumbing; external callers
+// should not use it.
+func (a *InternalServerGlobalStateAPI) WriteKey(ctx context.Context, params *GlobalStateWriteKeyRequest) (*GlobalStateWriteKeyResult, error) {
+	raw, err := a.client.Request(ctx, "globalState.writeKey", params)
+	if err != nil {
+		return nil, err
+	}
+	var result GlobalStateWriteKeyResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // Experimental: InternalServerHostAPI contains experimental APIs that may change or be
 // removed.
 type InternalServerHostAPI internalServerAPI
@@ -30507,6 +30704,7 @@ type InternalServerRPC struct {
 	Git              *InternalServerGitAPI
 	GitHubOwners     *InternalServerGitHubOwnersAPI
 	GitHubRepository *InternalServerGitHubRepositoryAPI
+	GlobalState      *InternalServerGlobalStateAPI
 	Host             *InternalServerHostAPI
 	Sessions         *InternalServerSessionsAPI
 }
@@ -30547,6 +30745,7 @@ func NewInternalServerRPC(client *jsonrpc2.Client) *InternalServerRPC {
 	r.Git = (*InternalServerGitAPI)(&r.common)
 	r.GitHubOwners = (*InternalServerGitHubOwnersAPI)(&r.common)
 	r.GitHubRepository = (*InternalServerGitHubRepositoryAPI)(&r.common)
+	r.GlobalState = (*InternalServerGlobalStateAPI)(&r.common)
 	r.Host = (*InternalServerHostAPI)(&r.common)
 	r.Sessions = (*InternalServerSessionsAPI)(&r.common)
 	return r

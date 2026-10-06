@@ -17271,7 +17271,7 @@ public readonly struct AbortReason : IEquatable<AbortReason>
     }
 }
 
-/// <summary>Configuration source: user, workspace, plugin, builtin, or managed.</summary>
+/// <summary>Configuration source: user, workspace, plugin, builtin, managed, or account.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
 public readonly struct McpServerSource : IEquatable<McpServerSource>
@@ -17304,6 +17304,9 @@ public readonly struct McpServerSource : IEquatable<McpServerSource>
 
     /// <summary>Server supplied by a trusted host-managed catalog.</summary>
     public static McpServerSource Managed { get; } = new("managed");
+
+    /// <summary>Server contributed by a signed-in account; enablement and organization policy still apply.</summary>
+    public static McpServerSource Account { get; } = new("account");
 
     /// <summary>Returns a value indicating whether two <see cref="McpServerSource"/> instances are equivalent.</summary>
     public static bool operator ==(McpServerSource left, McpServerSource right) => left.Equals(right);

@@ -288,6 +288,28 @@ describe("Python append-last fields for a selected schema", () => {
         ).toContainEqual(["Response", "addedField"]);
     });
 
+    it.each(["anyOf", "oneOf"] as const)(
+        "includes marked fields in inline %s variants once",
+        (keyword) => {
+            expect(
+                pythonAppendLastFieldsPresentIn({
+                    Response: {
+                        [keyword]: ["first", "second"].map((kind) => ({
+                            type: "object",
+                            properties: {
+                                kind: { const: kind },
+                                addedField: {
+                                    type: "string",
+                                    "x-copilot-sdk-append-last": true,
+                                },
+                            },
+                        })),
+                    },
+                })
+            ).toEqual([["Response", "addedField"]]);
+        }
+    );
+
     it("skips an entry for a legacy request or a schema without the definition", () => {
         expect(
             pythonAppendLastFieldsPresentIn(

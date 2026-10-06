@@ -512,6 +512,7 @@ export type AuthLoginResultStatus =
 export type AuthReadValue =
   | {
       account?: AccountStatus;
+      authInfo?: AuthIdentity;
       /**
        * Account read-datum variant discriminator.
        */
@@ -2086,6 +2087,18 @@ export type GitHubTokenAcquireResult =
       kind: "cancelled";
     };
 /**
+ * Source for direct repo installs (when marketplace is empty)
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstalledPluginSource".
+ */
+/** @experimental */
+export type InstalledPluginSource =
+  | string
+  | InstalledPluginSourceGitHub
+  | InstalledPluginSourceUrl
+  | InstalledPluginSourceLocal;
+/**
  * Optional compaction parameters.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -2563,18 +2576,6 @@ export type InstallationDecision =
   | "decline"
   /** The user cancelled the pending decision without granting consent. */
   | "cancel";
-/**
- * Source for direct repo installs (when marketplace is empty)
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstalledPluginSource".
- */
-/** @experimental */
-export type InstalledPluginSource =
-  | string
-  | InstalledPluginSourceGitHub
-  | InstalledPluginSourceUrl
-  | InstalledPluginSourceLocal;
 /**
  * Which tier this target belongs to
  *
@@ -3568,15 +3569,15 @@ export type SessionContextAttribution = {
    */
   modelSource: string;
   /**
-   * Maximum prompt tokens the resolved model accepts — the denominator for a `##k/###k` context-usage display. Mirrors `SessionContextInfo.promptTokenLimit`.
+   * Effective input budget after reserving requested output against the combined context ceiling. Mirrors `SessionContextInfo.promptTokenLimit`.
    */
   promptTokenLimit: number;
   /**
-   * Prompt limit plus the model's output reserve: the full context window `categories.freeSpace` and `categories.buffer` are measured against. Mirrors `SessionContextInfo.limit`.
+   * Advertised prompt allowance for the selected context tier: the denominator for context-usage displays and capacity for `categories.freeSpace` and `categories.buffer`. Mirrors `SessionContextInfo.limit`.
    */
   limit: number;
   /**
-   * Output reserve plus the tokens past the buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
+   * Output reservation overlapping the displayed prompt allowance plus the tokens past the effective input budget's buffer-exhaustion blocking threshold. Mirrors `SessionContextInfo.bufferTokens`.
    */
   bufferTokens: number;
   /**
@@ -3612,7 +3613,7 @@ export type SessionContextAttribution = {
      */
     freeSpace: number;
     /**
-     * Output reserve plus post-blocking-threshold buffer.
+     * Overlapping output reservation plus post-blocking-threshold buffer.
      */
     buffer: number;
   };
@@ -3690,7 +3691,7 @@ export type SessionContextInfo = {
    */
   totalTokens: number;
   /**
-   * Maximum prompt tokens allowed by the model (or DEFAULT_TOKEN_LIMIT if unspecified)
+   * Effective input budget: the selected tier's prompt allowance bounded by the combined context ceiling minus the requested output allowance. Uses DEFAULT_TOKEN_LIMIT when limits are unspecified.
    */
   promptTokenLimit: number;
   /**
@@ -3698,11 +3699,11 @@ export type SessionContextInfo = {
    */
   compactionThreshold: number;
   /**
-   * Prompt token limit plus the model's full output token limit.
+   * Advertised prompt allowance for the selected context tier, without adding output tokens. The denominator for context-usage displays.
    */
   limit: number;
   /**
-   * Output reserve plus tokens after the buffer-exhaustion blocking threshold (default 95%)
+   * Output reservation overlapping the displayed prompt allowance plus tokens after the effective input budget's buffer-exhaustion blocking threshold (default 95%).
    */
   bufferTokens: number;
 } | null;
@@ -12323,6 +12324,272 @@ export interface GitReposFromRemotesResult {
   repositories: GitRemoteRepository[];
 }
 /**
+ * Selects the configuration directory whose machine-wide state to read.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "GlobalStateLoadForConfigDirRequest".
+ */
+/** @experimental */
+/** @internal */
+export interface GlobalStateLoadForConfigDirRequest {
+  /**
+   * Copilot configuration directory to read the state document from, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to read the directory the server resolved for itself.
+   */
+  configDir?: string;
+}
+/**
+ * The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "GlobalStateLoadResult".
+ */
+/** @experimental */
+/** @internal */
+export interface GlobalStateLoadResult {
+  /**
+   * Plugins installed on this machine.
+   */
+  installedPlugins?: InstalledPlugin[];
+  /**
+   * Models the user selected recently, most recent first.
+   */
+  recentModelIds?: string[];
+  /**
+   * When the host first ran on this machine.
+   */
+  firstLaunchAt?: string;
+  /**
+   * Terminals the user has already been asked to set up, so the host does not ask twice.
+   */
+  askedSetupTerminals?: string[];
+  /**
+   * Folders where the user declined the init prompt, so it stays hidden there.
+   */
+  suppressInitFolders?: string[];
+  /**
+   * Whether the sandbox onboarding has been shown.
+   */
+  sandboxOnboardingShown?: boolean;
+  /**
+   * Whether the user declined to trust the sandbox credential proxy CA.
+   */
+  sandboxCredentialProxyCaDeclined?: boolean;
+  /**
+   * Whether the app tip has been shown.
+   */
+  appTipShown?: boolean;
+  /**
+   * Whether the one-off cleanup of stored reasoning summaries has run.
+   */
+  reasoningSummariesCleanupDone?: boolean;
+  lastLoggedInUser?: LoggedInUser;
+  /**
+   * Every account the host has signed in to on this machine.
+   */
+  loggedInUsers?: LoggedInUser[];
+  /**
+   * Whether the user is a GitHub or Microsoft staff member, which unlocks internal-only behavior.
+   */
+  staff?: boolean;
+  /**
+   * Whether the user was recognized as GitHub staff.
+   */
+  staffGithub?: boolean;
+  /**
+   * Whether the user was recognized as Microsoft staff.
+   */
+  staffMicrosoft?: boolean;
+  /**
+   * When the staff-only model reset last ran.
+   */
+  staffModelResetAt?: string;
+  /**
+   * When the staff-only log level migration last ran.
+   */
+  staffLogLevelMigrationAt?: string;
+  /**
+   * When the staff-only update channel migration last ran.
+   */
+  staffUpdateChannelMigrationAt?: string;
+  /**
+   * Folders the user has marked as trusted.
+   */
+  trustedFolders?: string[];
+  /**
+   * Whether the user has answered the prompt suggesting they install the desktop app.
+   */
+  appInstallNudgeResponded?: boolean;
+  /**
+   * When the Auto-feedback hint was last shown, as an ISO 8601 timestamp. It enforces the once-per-day cap for non-staff users across restarts.
+   */
+  autoFeedbackLastPromptedAt?: string;
+}
+/**
+ * Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstalledPlugin".
+ */
+/** @experimental */
+export interface InstalledPlugin {
+  /**
+   * Plugin name
+   */
+  name: string;
+  /**
+   * Marketplace the plugin came from (empty string for direct repo installs)
+   */
+  marketplace: string;
+  /**
+   * Version installed (if available)
+   */
+  version?: string;
+  /**
+   * Installation timestamp
+   */
+  installed_at: string;
+  /**
+   * Whether the plugin is currently enabled
+   */
+  enabled: boolean;
+  /**
+   * Path where the plugin is cached locally
+   */
+  cache_path?: string;
+  source?: InstalledPluginSource;
+  /**
+   * Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.
+   */
+  source_sha?: string;
+  /**
+   * Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.
+   */
+  installed_from?: string;
+}
+/**
+ * Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or full commit SHA, and optional subpath.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstalledPluginSourceGitHub".
+ */
+/** @experimental */
+export interface InstalledPluginSourceGitHub {
+  /**
+   * Constant value. Always "github".
+   */
+  source: "github";
+  /**
+   * GitHub repository in `owner/repo` form.
+   */
+  repo: string;
+  /**
+   * Optional Git ref to resolve.
+   */
+  ref?: string;
+  /**
+   * Optional full 40-character hexadecimal commit SHA.
+   */
+  sha?: string;
+  /**
+   * Optional repository-relative path to the plugin.
+   */
+  path?: string;
+}
+/**
+ * Source descriptor for a direct URL plugin install, with URL, optional ref or full commit SHA, and optional subpath.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstalledPluginSourceUrl".
+ */
+/** @experimental */
+export interface InstalledPluginSourceUrl {
+  /**
+   * Constant value. Always "url".
+   */
+  source: "url";
+  /**
+   * URL of the plugin source.
+   */
+  url: string;
+  /**
+   * Optional Git ref to resolve.
+   */
+  ref?: string;
+  /**
+   * Optional full 40-character hexadecimal commit SHA.
+   */
+  sha?: string;
+  /**
+   * Optional source-relative path to the plugin.
+   */
+  path?: string;
+}
+/**
+ * Source descriptor for a direct local plugin install, with a local filesystem path.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "InstalledPluginSourceLocal".
+ */
+/** @experimental */
+export interface InstalledPluginSourceLocal {
+  /**
+   * Constant value. Always "local".
+   */
+  source: "local";
+  /**
+   * Local filesystem path to the plugin.
+   */
+  path: string;
+}
+/**
+ * An account the host has signed in to, identified by the server it lives on and the login it uses there. The same person can appear more than once when they use both github.com and an Enterprise server.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "LoggedInUser".
+ */
+/** @experimental */
+/** @internal */
+export interface LoggedInUser {
+  /**
+   * Host the account belongs to, such as `github.com` or an Enterprise server.
+   */
+  host: string;
+  /**
+   * Account login on that host.
+   */
+  login: string;
+  /**
+   * Account kind, when the host recorded one. Consumers must tolerate new strings.
+   */
+  kind?: string;
+  /**
+   * Source account this account was derived from, when one was recorded.
+   */
+  derivedFrom?: string;
+}
+/**
+ * A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "GlobalStateWriteKeyRequest".
+ */
+/** @experimental */
+/** @internal */
+export interface GlobalStateWriteKeyRequest {
+  /**
+   * Copilot configuration directory to write the state document in, taking precedence over the server's own `COPILOT_HOME` and default home. Omit it, or pass an empty string, to write the directory the server resolved for itself. Mirrors `globalState.loadForConfigDir`, so a caller can read and write the same directory.
+   */
+  configDir?: string;
+  /**
+   * Top-level key to write, named as it appears in the result of `globalState.load`. It must be one of the writable keys that `globalState.writeKey` lists.
+   */
+  key: string;
+  /**
+   * Value to store for the key. Omit it, or pass null, to remove the key instead.
+   */
+  value?: JsonValue;
+}
+/**
  * Pending external tool call request ID, with the tool result or an error describing why it failed.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -13642,123 +13909,6 @@ export interface InstallationConfirmationResponse {
    */
   reviewFingerprint: string;
   decision: InstallationDecision;
-}
-/**
- * Installed plugin record from global state, with marketplace, version, install time, enabled state, cache path, and source.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstalledPlugin".
- */
-/** @experimental */
-export interface InstalledPlugin {
-  /**
-   * Plugin name
-   */
-  name: string;
-  /**
-   * Marketplace the plugin came from (empty string for direct repo installs)
-   */
-  marketplace: string;
-  /**
-   * Version installed (if available)
-   */
-  version?: string;
-  /**
-   * Installation timestamp
-   */
-  installed_at: string;
-  /**
-   * Whether the plugin is currently enabled
-   */
-  enabled: boolean;
-  /**
-   * Path where the plugin is cached locally
-   */
-  cache_path?: string;
-  source?: InstalledPluginSource;
-  /**
-   * Per-plugin source fingerprint (a SHA-256 hash of the plugin's catalog source spec plus its resolved source subtree — NOT a Git commit SHA) captured at marketplace install/update time. Auto-update compares it against the freshly recomputed fingerprint to detect a content change that does not bump the version. Absent for pre-existing installs and for direct (non-marketplace) installs.
-   */
-  source_sha?: string;
-  /**
-   * Absolute path of the marketplace directory a live plugin was resolved from. Present only on live, never-persisted records — those synthesized at session start for a directory/local marketplace, whose cache_path points at the real plugin directory on disk rather than a copy under the installed-plugins cache. Its presence is what marks a record as live, and no record carrying it is ever written to the persisted installedPlugins key.
-   */
-  installed_from?: string;
-}
-/**
- * Source descriptor for a direct GitHub plugin install, with `owner/repo`, optional ref or full commit SHA, and optional subpath.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstalledPluginSourceGitHub".
- */
-/** @experimental */
-export interface InstalledPluginSourceGitHub {
-  /**
-   * Constant value. Always "github".
-   */
-  source: "github";
-  /**
-   * GitHub repository in `owner/repo` form.
-   */
-  repo: string;
-  /**
-   * Optional Git ref to resolve.
-   */
-  ref?: string;
-  /**
-   * Optional full 40-character hexadecimal commit SHA.
-   */
-  sha?: string;
-  /**
-   * Optional repository-relative path to the plugin.
-   */
-  path?: string;
-}
-/**
- * Source descriptor for a direct URL plugin install, with URL, optional ref or full commit SHA, and optional subpath.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstalledPluginSourceUrl".
- */
-/** @experimental */
-export interface InstalledPluginSourceUrl {
-  /**
-   * Constant value. Always "url".
-   */
-  source: "url";
-  /**
-   * URL of the plugin source.
-   */
-  url: string;
-  /**
-   * Optional Git ref to resolve.
-   */
-  ref?: string;
-  /**
-   * Optional full 40-character hexadecimal commit SHA.
-   */
-  sha?: string;
-  /**
-   * Optional source-relative path to the plugin.
-   */
-  path?: string;
-}
-/**
- * Source descriptor for a direct local plugin install, with a local filesystem path.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "InstalledPluginSourceLocal".
- */
-/** @experimental */
-export interface InstalledPluginSourceLocal {
-  /**
-   * Constant value. Always "local".
-   */
-  source: "local";
-  /**
-   * Local filesystem path to the plugin.
-   */
-  path: string;
 }
 /**
  * Information about an installed plugin tracked in global state.
@@ -17018,6 +17168,10 @@ export interface McpServer {
   status: McpServerStatus;
   source?: McpServerSource;
   /**
+   * Configured URL for an HTTP/SSE server, regardless of configuration source. Omitted for local and in-memory servers.
+   */
+  url?: string;
+  /**
    * Plugin name that provided this server, when source is plugin.
    */
   sourcePlugin?: string;
@@ -17313,11 +17467,11 @@ export interface MetadataContextHeaviestMessagesResult {
 /** @experimental */
 export interface MetadataContextInfoRequest {
   /**
-   * Maximum prompt tokens allowed by the target model. Pass 0 to use the runtime default.
+   * Advertised prompt allowance. Pass 0 to resolve the selected model and context tier from the session.
    */
   promptTokenLimit: number;
   /**
-   * Maximum output tokens allowed by the target model. Pass 0 if unknown.
+   * Requested output allowance to reserve against the combined context ceiling. Pass 0 to resolve the session's request cap, falling back to the model's advertised output limit.
    */
   outputTokenLimit: number;
   /**
@@ -17555,6 +17709,10 @@ export interface Model {
   metadata?: {
     [k: string]: JsonValue | undefined;
   };
+  /**
+   * Model vendor as the Copilot API reports it, for example "Anthropic" or "Azure OpenAI". Open vocabulary, passed through unchanged. It can name the vendor that serves the model instead of the one that built it, or a label that is not a vendor, such as "Experimental". Absent when the Copilot API reports no vendor.
+   */
+  vendor?: string;
   policy?: ModelPolicy;
   billing?: ModelBilling;
   /**
@@ -24305,6 +24463,10 @@ export interface SessionManagedPermissions {
    * Permission rules that allow matching operations unless another managed source, deny, or ask rule restricts them.
    */
   allow?: string[];
+  /**
+   * Closed-world host boundary expressed as `Domain(hostname)`, `Domain(IP)`, or `Domain(*.example.com)` rules. Schemes, ports, paths, queries, and fragments are rejected because every network request must be enforceable at host-level egress. Multiple managed sources intersect their lists; an empty list denies all hosts.
+   */
+  limitTo?: string[];
 }
 /**
  * Managed settings an SDK host may inject at session startup. Only permissions are accepted in this initial contract.
@@ -29221,7 +29383,7 @@ export interface UserSettingMetadata {
   isDefault: boolean;
 }
 /**
- * Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.
+ * Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "UserSettingsGetResult".
@@ -29247,19 +29409,6 @@ export interface UserSettingsSetRequest {
    * Partial user settings to write, as a free-form object keyed by setting name
    */
   settings: JsonValue;
-}
-/**
- * Outcome of writing user settings.
- *
- * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
- * via the `definition` "UserSettingsSetResult".
- */
-/** @experimental */
-export interface UserSettingsSetResult {
-  /**
-   * Top-level keys whose write landed in settings.json but is shadowed by a value still present in the legacy config.json (config.json wins on read). The write does not take effect until the legacy value is removed.
-   */
-  shadowedKeys: string[];
 }
 /**
  * Current sharing status and shareable GitHub URL for a session.
@@ -32079,25 +32228,18 @@ export function createServerRpc(connection: MessageConnection) {
             /** @experimental */
             settings: {
                 /**
-                 * Drops this runtime process's in-memory user settings cache so the next settings read observes disk.
-                 */
-                reload: async (): Promise<void> =>
-                    connection.sendRequest("user.settings.reload", {}),
-                /**
-                 * Lists every known user setting (settings.json overlaid with the legacy config.json, config.json wins), each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.
+                 * Lists every known user setting from settings.json, each with its effective value, its default, and whether it is at the default — so settings the user has never set still appear with their default value. Does not include repository- or enterprise-managed overrides that the runtime layers on top at session time.
                  *
-                 * @returns Per-key metadata for every known user setting (settings.json overlaid with the legacy config.json, config.json wins), including settings left at their default. Excludes repository- and enterprise-managed overrides.
+                 * @returns Per-key metadata for every known user setting in settings.json, including settings left at their default. Excludes repository- and enterprise-managed overrides.
                  */
                 get: async (): Promise<UserSettingsGetResult> =>
                     connection.sendRequest("user.settings.get", {}),
                 /**
-                 * Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed. Returns the keys whose new value is shadowed by a legacy config.json entry (config.json wins on read), which the runtime leaves in place — such writes do not take effect until the legacy value is removed.
+                 * Writes one or more user settings to settings.json, replacing each provided top-level key. A key whose value is null is removed.
                  *
                  * @param params Partial user settings to write to settings.json. Each top-level key is written individually, replacing the existing value; a key whose value is null is removed.
-                 *
-                 * @returns Outcome of writing user settings.
                  */
-                set: async (params: UserSettingsSetRequest): Promise<UserSettingsSetResult> =>
+                set: async (params: UserSettingsSetRequest): Promise<void> =>
                     connection.sendRequest("user.settings.set", params),
             },
         },
@@ -32579,6 +32721,32 @@ export function createInternalServerRpc(connection: MessageConnection) {
              */
             customAgentInitialModelDecision: async (params: AgentsCustomAgentInitialModelDecisionParams): Promise<AgentsCustomAgentInitialModelDecisionResult> =>
                 connection.sendRequest("agents.customAgentInitialModelDecision", params),
+        },
+        /** @experimental */
+        globalState: {
+            /**
+             * Reads the host's machine-wide state: which plugins are installed and the one-off flags and timestamps that record what the user has already been shown or migrated. This is the state that outlives a single session and a single workspace, so a host reads it to decide whether to run a first-launch step, offer an onboarding prompt, or skip one it has already completed. The stored credentials are deliberately not part of this result; a caller that needs an authenticated identity asks the account methods for it instead. Reading is non-destructive and every field is optional, because a fresh install has recorded nothing yet.
+             *
+             * @returns The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+             */
+            load: async (): Promise<GlobalStateLoadResult> =>
+                connection.sendRequest("globalState.load", {}),
+            /**
+             * Reads the host's machine-wide state exactly as `globalState.load` does, but from a caller-supplied configuration directory instead of the one the server resolved for itself. Use this when a consumer scopes a session to its own Copilot home — the SDK's per-session `configDir` override — so the state read matches the directory that session actually uses. An absent or empty `configDir` resolves the server's own home, making this identical to `globalState.load`. The stored credentials are omitted here for the same reason they are omitted from `globalState.load`: a caller that needs an authenticated identity asks the account methods instead, so pointing this at another directory cannot be used to read the credentials kept in it.
+             *
+             * @param params Selects the configuration directory whose machine-wide state to read.
+             *
+             * @returns The host's machine-wide state. Every field is optional because a fresh install has recorded nothing yet, so a reader must treat an absent field as `not yet`, never as a negative answer. Stored credentials are deliberately absent from this shape.
+             */
+            loadForConfigDir: async (params: GlobalStateLoadForConfigDirRequest): Promise<GlobalStateLoadResult> =>
+                connection.sendRequest("globalState.loadForConfigDir", params),
+            /**
+             * Records one top-level key in the host's machine-wide state, the counterpart to `globalState.load`. A host calls this to remember that it has shown an onboarding step, asked a one-off question, or completed a migration, so the next run can skip it. Only the named key is replaced and the rest of the document is preserved, which lets two writers record different flags without overwriting each other; passing no value removes the key instead. Only the keys a host records itself are writable: `appInstallNudgeResponded`, `appTipShown`, `askedSetupTerminals`, `autoFeedbackLastPromptedAt`, `firstLaunchAt`, `recentModelIds`, `sandboxCredentialProxyCaDeclined` and `sandboxOnboardingShown`. Every other key is refused, including `installedPlugins`, the stored credentials, `trustedFolders`, the staff flags and the signed-in accounts. Plugin enablement must use the plugin APIs, which apply repository and managed-policy checks.
+             *
+             * @param params A single top-level key to record in the host's machine-wide state. The write replaces only that key and leaves the rest of the document untouched, so two writers recording different one-off flags do not overwrite each other. The stored credential keys cannot be written through this method.
+             */
+            writeKey: async (params: GlobalStateWriteKeyRequest): Promise<void> =>
+                connection.sendRequest("globalState.writeKey", params),
         },
         /** @experimental */
         gitHubRepository: {

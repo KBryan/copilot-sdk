@@ -368,6 +368,12 @@ class ManagedSettingsPermissions:
     allow: list[str] | None = None
     """Operations permitted without prompting. Every declared ``allow`` list
     across managed layers must admit an operation for it to be allowed."""
+    limit_to: list[str] | None = None
+    """Closed-world host boundary expressed as ``Domain(hostname)``,
+    ``Domain(IP)``, or ``Domain(*.example.com)`` rules. Schemes, ports, paths,
+    queries, and fragments are rejected. Multiple managed layers intersect
+    their lists; an empty list denies all hosts. Sent on the wire as
+    ``limitTo``."""
 
 
 @dataclass
@@ -401,6 +407,8 @@ def _managed_settings_to_dict(settings: ManagedSettings) -> dict[str, Any]:
             perms["ask"] = list(permissions.ask)
         if permissions.allow is not None:
             perms["allow"] = list(permissions.allow)
+        if permissions.limit_to is not None:
+            perms["limitTo"] = list(permissions.limit_to)
         wire["permissions"] = perms
     return wire
 

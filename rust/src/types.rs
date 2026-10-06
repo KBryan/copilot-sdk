@@ -1881,6 +1881,12 @@ pub struct ManagedSettingsPermissions {
     /// Tool-permission patterns that are allowed without prompting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow: Option<Vec<String>>,
+    /// Closed-world host boundary expressed as `Domain(hostname)`,
+    /// `Domain(IP)`, or `Domain(*.example.com)` rules. Schemes, ports, paths,
+    /// queries, and fragments are rejected. Multiple managed layers intersect
+    /// their lists. A present empty list denies all hosts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit_to: Option<Vec<String>>,
 }
 
 impl ManagedSettingsPermissions {
@@ -1905,6 +1911,12 @@ impl ManagedSettingsPermissions {
     /// Sets the rules that are allowed without prompting.
     pub fn with_allow(mut self, rules: Vec<String>) -> Self {
         self.allow = Some(rules);
+        self
+    }
+
+    /// Sets the closed-world domain boundary for this managed layer.
+    pub fn with_limit_to(mut self, rules: Vec<String>) -> Self {
+        self.limit_to = Some(rules);
         self
     }
 }

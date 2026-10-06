@@ -88,12 +88,6 @@ describe("Miscellaneous server-scoped RPC", async () => {
         }
     }
 
-    it("should reload user settings", { timeout: 120_000 }, async () => {
-        await client.start();
-
-        await client.rpc.user.settings.reload();
-    });
-
     it("should get set and clear user settings", { timeout: 120_000 }, async () => {
         const { client: isolatedClient, home } = await createIsolatedStartedClient();
         try {
@@ -111,12 +105,10 @@ describe("Miscellaneous server-scoped RPC", async () => {
             const [settingKey, setting] = entry!;
             const toggledValue = setting.value !== true;
 
-            const set = await isolatedClient.rpc.user.settings.set({
+            await isolatedClient.rpc.user.settings.set({
                 settings: { [settingKey]: toggledValue },
             });
-            expect(set.shadowedKeys).not.toContain(settingKey);
 
-            await isolatedClient.rpc.user.settings.reload();
             const afterSet = await isolatedClient.rpc.user.settings.get();
             expect(afterSet.settings[settingKey].isDefault).toBe(false);
             expect(afterSet.settings[settingKey].value).toBe(toggledValue);
@@ -124,7 +116,6 @@ describe("Miscellaneous server-scoped RPC", async () => {
             await isolatedClient.rpc.user.settings.set({
                 settings: { [settingKey]: null },
             });
-            await isolatedClient.rpc.user.settings.reload();
             const afterClear = await isolatedClient.rpc.user.settings.get();
             expect(afterClear.settings[settingKey].isDefault).toBe(true);
         } finally {
@@ -213,14 +204,14 @@ describe("Miscellaneous server-scoped RPC", async () => {
         const dedicatedClient = createClient({}, DEFAULT_GITHUB_TOKEN);
         try {
             await dedicatedClient.start();
-            await dedicatedClient.rpc.user.settings.reload();
+            await dedicatedClient.rpc.user.settings.get();
 
             await dedicatedClient.rpc.runtime.shutdown();
 
             await waitForCondition(
                 async () => {
                     try {
-                        await dedicatedClient.rpc.user.settings.reload();
+                        await dedicatedClient.rpc.user.settings.get();
                         return false;
                     } catch {
                         return true;

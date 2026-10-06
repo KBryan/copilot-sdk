@@ -14235,7 +14235,7 @@ class McpOauthRequestReason(Enum):
 
 
 class McpServerSource(Enum):
-    "Configuration source: user, workspace, plugin, builtin, or managed"
+    "Configuration source: user, workspace, plugin, builtin, managed, or account"
     # Server configured in the user's global MCP configuration.
     USER = "user"
     # Server configured by the current workspace.
@@ -14246,6 +14246,8 @@ class McpServerSource(Enum):
     BUILTIN = "builtin"
     # Server supplied by a trusted host-managed catalog.
     MANAGED = "managed"
+    # Server contributed by a signed-in account; enablement and organization policy still apply.
+    ACCOUNT = "account"
 
 
 class McpServerStatus(Enum):

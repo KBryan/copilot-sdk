@@ -28,6 +28,7 @@ import com.github.copilot.rpc.ToolDefinition;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.io.BufferedReader;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -411,21 +412,42 @@ public class CopilotClientTest {
                         process.exit(1);
                     }
                 });
-                fs.closeSync(0);
                 process.stdout.write('started\\n');
                 """);
         var options = new CopilotClientOptions().setCliPath(script.toString()).setUseStdio(true);
         var manager = spy(new CliServerManager(options));
         var child = new AtomicReference<Process>();
+        var failedOutput = new AtomicReference<OutputStream>();
+        var writeFailure = new IOException("Controlled startup write failure");
+        doAnswer(invocation -> {
+            CliServerManager.ProcessInfo info = (CliServerManager.ProcessInfo) invocation.callRealMethod();
+            child.set(info.process());
+            // Closing fd 0 does not reliably fail the first parent write on Windows.
+            var output = new FilterOutputStream(info.process().getOutputStream()) {
+                @Override
+                public void write(int value) throws IOException {
+                    throw writeFailure;
+                }
+
+                @Override
+                public void write(byte[] bytes, int offset, int length) throws IOException {
+                    throw writeFailure;
+                }
+            };
+            failedOutput.set(output);
+            var transportProcess = mock(Process.class, org.mockito.AdditionalAnswers.delegatesTo(info.process()));
+            doReturn(output).when(transportProcess).getOutputStream();
+            return new CliServerManager.ProcessInfo(transportProcess, info.port());
+        }).when(manager).startCliServer();
         doAnswer(invocation -> {
             Process process = invocation.getArgument(0);
-            child.set(process);
             var reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
             assertEquals("started", reader.readLine());
             return invocation.callRealMethod();
         }).when(manager).connectToServer(any(Process.class), isNull(), isNull());
         doAnswer(invocation -> {
             // Release stderr only when startup drains it, while the child is still alive.
+            assertTrue(child.get().isAlive(), "Startup must drain stderr before killing the controlled child.");
             Files.createFile(tempDir.resolve("release-stderr"));
             return invocation.callRealMethod();
         }).when(manager).awaitStderrReader();
@@ -444,10 +466,13 @@ public class CopilotClientTest {
             while (original.getCause() != null) {
                 original = original.getCause();
             }
-            assertInstanceOf(IOException.class, original);
+            assertSame(writeFailure, original, "Startup must preserve the actual failed transport write.");
             assertNotSame(cause, original, "The startup error must retain its original transport failure.");
             assertFalse(child.get().isAlive(), "Failed startup retained its child process.");
         } finally {
+            if (failedOutput.get() != null) {
+                failedOutput.get().close();
+            }
             if (child.get() != null && child.get().isAlive()) {
                 child.get().destroyForcibly();
                 assertTrue(child.get().waitFor(10, TimeUnit.SECONDS), "Could not reap the controlled child.");

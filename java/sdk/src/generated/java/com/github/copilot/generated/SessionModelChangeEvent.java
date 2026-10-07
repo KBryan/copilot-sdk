@@ -44,6 +44,8 @@ public final class SessionModelChangeEvent extends SessionEvent {
         @JsonProperty("reasoningEffort") String reasoningEffort,
         /** Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events. */
         @JsonProperty("reasoningEffortModel") String reasoningEffortModel,
+        /** True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort. */
+        @JsonProperty("reasoningEffortManaged") Boolean reasoningEffortManaged,
         /** Reasoning summary mode before the model change, if applicable */
         @JsonProperty("previousReasoningSummary") ReasoningSummary previousReasoningSummary,
         /** Reasoning summary mode after the model change, if applicable */
@@ -54,6 +56,8 @@ public final class SessionModelChangeEvent extends SessionEvent {
         @JsonProperty("verbosity") Verbosity verbosity,
         /** Context tier after the model change; null explicitly clears a previously selected tier */
         @JsonProperty("contextTier") ContextTier contextTier,
+        /** True when contextTier is a managed-policy default. Omitted for user-authored and legacy values. */
+        @JsonProperty("contextTierManaged") Boolean contextTierManaged,
         /** Reason the change happened, when not user-initiated. `"rate_limit_auto_switch"` for changes triggered by the auto-mode-switch rate-limit recovery path, or `"refusal_fallback"` when the active model declined a request (content refusal) and the runtime switched to the configured refusal-fallback model. UI clients can use this to render contextual copy. */
         @JsonProperty("cause") String cause,
         /** Origin of the effective model change, when known. */
@@ -61,7 +65,31 @@ public final class SessionModelChangeEvent extends SessionEvent {
         /** Previously committed Auto preference, when one was explicitly selected. */
         @JsonProperty("previousAutoTier") AutoTier previousAutoTier,
         /** Committed Auto preference after the model configuration change, when applicable. */
-        @JsonProperty("autoTier") AutoTier autoTier
+        @JsonProperty("autoTier") AutoTier autoTier,
+        /** True when autoTier is a managed-policy default. Omitted for user-authored and legacy values. */
+        @JsonProperty("autoTierManaged") Boolean autoTierManaged
     ) {
+
+        /**
+         * Creates event data with the components it had before later optional fields were added.
+         */
+        public SessionModelChangeEventData(
+            String previousModel,
+            String newModel,
+            String previousReasoningEffort,
+            String reasoningEffort,
+            String reasoningEffortModel,
+            ReasoningSummary previousReasoningSummary,
+            ReasoningSummary reasoningSummary,
+            Verbosity previousVerbosity,
+            Verbosity verbosity,
+            ContextTier contextTier,
+            String cause,
+            ModelChangeSource source,
+            AutoTier previousAutoTier,
+            AutoTier autoTier
+        ) {
+            this(previousModel, newModel, previousReasoningEffort, reasoningEffort, reasoningEffortModel, null, previousReasoningSummary, reasoningSummary, previousVerbosity, verbosity, contextTier, null, cause, source, previousAutoTier, autoTier, null);
+        }
     }
 }

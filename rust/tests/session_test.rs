@@ -1784,6 +1784,13 @@ fn managed_bypass_permissions_modes_use_wire_values() {
         serde_json::to_value(future).unwrap()["disableBypassPermissionsMode"],
         "future-fail-closed-mode"
     );
+
+    let assisted_disabled =
+        ManagedSettingsPermissions::default().with_disable_assisted_permissions_mode(true);
+    assert_eq!(
+        serde_json::to_value(assisted_disabled).unwrap()["disableAssistedPermissionsMode"],
+        true
+    );
 }
 
 #[tokio::test]
@@ -1795,6 +1802,7 @@ async fn create_and_resume_send_managed_settings_permissions() {
     let managed = ManagedSettings::default().with_permissions(
         ManagedSettingsPermissions::default()
             .with_disable_bypass_permissions_mode(DisableBypassPermissionsModes::ALLOW_AUTO_ONLY)
+            .with_disable_assisted_permissions_mode(true)
             .with_deny(vec!["shell(rm*)".to_string()])
             .with_ask(vec!["write".to_string()])
             .with_allow(vec![])
@@ -1821,6 +1829,7 @@ async fn create_and_resume_send_managed_settings_permissions() {
     assert_eq!(request["params"]["enableManagedSettings"], true);
     let perms = &request["params"]["managedSettings"]["permissions"];
     assert_eq!(perms["disableBypassPermissionsMode"], "allow-auto-only");
+    assert_eq!(perms["disableAssistedPermissionsMode"], true);
     assert_eq!(perms["deny"][0], "shell(rm*)");
     assert_eq!(perms["ask"][0], "write");
     assert_eq!(perms["allow"], serde_json::json!([]));

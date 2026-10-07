@@ -119,6 +119,7 @@ public class SessionConfig {
     private CloudSessionOptions cloud;
     private CopilotExpAssignmentResponse expAssignments;
     private Boolean enableManagedSettings;
+    private Boolean enforceManagedModelDefaults;
     private Map<String, Boolean> featureFlags;
     private ManagedSettings managedSettings;
 
@@ -2294,6 +2295,29 @@ public class SessionConfig {
     }
 
     /**
+     * Gets whether locked managed model controls are enforced.
+     *
+     * @return the explicit choice, or empty to use the runtime default
+     */
+    @JsonIgnore
+    public Optional<Boolean> getEnforceManagedModelDefaults() {
+        return Optional.ofNullable(enforceManagedModelDefaults);
+    }
+
+    /**
+     * Sets whether locked managed model controls are enforced for this session.
+     * Conflicting model changes are rejected; overridable defaults remain mutable.
+     *
+     * @param enforceManagedModelDefaults
+     *            whether to enforce locked managed model controls
+     * @return this config instance for method chaining
+     */
+    public SessionConfig setEnforceManagedModelDefaults(boolean enforceManagedModelDefaults) {
+        this.enforceManagedModelDefaults = enforceManagedModelDefaults;
+        return this;
+    }
+
+    /**
      * Gets host-injected managed settings for this session.
      *
      * @return the managed settings, or {@code null} when unset
@@ -2415,6 +2439,7 @@ public class SessionConfig {
         copy.featureFlags = this.featureFlags != null ? new java.util.HashMap<>(this.featureFlags) : null;
         copy.expAssignments = this.expAssignments;
         copy.enableManagedSettings = this.enableManagedSettings;
+        copy.enforceManagedModelDefaults = this.enforceManagedModelDefaults;
         copy.managedSettings = this.managedSettings;
         return copy;
     }

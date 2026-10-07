@@ -28,6 +28,10 @@ public record ManagedSettingsMeta(
     /** Lock state and provenance of `values.model`. */
     @JsonProperty("model") ManagedSettingMeta model,
     /** Lock state and provenance of `values.autoTier`. */
-    @JsonProperty("autoTier") ManagedSettingMeta autoTier
+    @JsonProperty("autoTier") ManagedSettingMeta autoTier,
+    /** Lock state and provenance of `values.effortLevel`. */
+    @JsonProperty("effortLevel") ManagedSettingMeta effortLevel,
+    /** Lock state and provenance of `values.contextTier`. */
+    @JsonProperty("contextTier") ManagedSettingMeta contextTier
 ) {
 }

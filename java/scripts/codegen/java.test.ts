@@ -10,6 +10,7 @@ import test from "node:test";
 import type { JSONSchema7 } from "json-schema";
 
 import {
+    buildNamespaceTree,
     collectDirectDiscriminatedUnionTypeNames,
     collectNestedDiscriminatedUnionTypeNames,
     generateApiMethod,
@@ -22,6 +23,27 @@ import {
     schemaTypeToJava,
 } from "./java.js";
 import { RPC_VARIANT_OWNERS } from "./rpc-variant-owners.js";
+
+test("wrapper Javadoc preserves the operation contract ahead of parameter documentation", () => {
+    const tree = buildNamespaceTree({
+        reconcile: {
+            rpcMethod: "session.extensions.reconcile",
+            description: "Host-only reconciliation; method-not-found must not fall back to persistent disables.",
+            params: {
+                type: "object",
+                description: "Identifies the target session.",
+                properties: { sessionId: { type: "string" } },
+                required: ["sessionId"],
+            },
+            result: { type: "object", properties: { extensions: { type: "array", items: { type: "string" } } } },
+        },
+    });
+    const method = tree.methods.get("reconcile");
+    assert.ok(method);
+    const source = generateApiMethod("reconcile", method, true, "sessionId").lines.join("\n");
+    assert.match(source, /Host-only reconciliation; method-not-found must not fall back to persistent disables/);
+    assert.doesNotMatch(source, /Identifies the target session/);
+});
 
 test("arbitrary handoff maps accept scalar and structured JSON values", () => {
     const result = schemaTypeToJava(
@@ -264,6 +286,23 @@ test("ordinary and empty root objects retain their existing records", () => {
     const empty = renderPayload({ type: "object", properties: {} });
     assert.match(empty, /public record ExampleNotificationEventData\(\)/);
     assert.doesNotMatch(empty, /JsonNode|DELEGATING|JsonValue/);
+});
+
+test("session event records preserve constructors declared by x-legacy-parameters", () => {
+    const source = renderPayload({
+        type: "object",
+        properties: {
+            before: { type: "string" },
+            added: { type: ["string", "null"] },
+            after: { type: "string" },
+        },
+        "x-legacy-parameters": ["before", "after"],
+    } as JSONSchema7);
+
+    assert.match(
+        source,
+        /public ExampleNotificationEventData\(\s*String before,\s*String after\s*\) \{\s*this\(before, null, after\);/,
+    );
 });
 
 test("session event fields promote directly referenced discriminated response unions", () => {
@@ -1068,6 +1107,44 @@ test("x-legacy-parameters response records keep every component and add the prev
 
     const twice = recordSource(legacyRecordSchema(["owned", "traceId"]));
     assert.deepEqual(legacyConstructors(twice), ["String name, String status, String error => name, status, null, error, null"]);
+});
+
+test("managed settings params keep their previous positional constructor", async () => {
+    const fixture = {
+        server: {
+            managedSettings: {
+                resolve: {
+                    rpcMethod: "managedSettings.resolve",
+                    params: { $ref: "#/definitions/ManagedSettingsResolveRequest" },
+                    result: null,
+                },
+            },
+        },
+        definitions: {
+            ManagedSettingsResolveRequest: {
+                anyOf: [
+                    { not: {} },
+                    {
+                        type: "object",
+                        properties: {
+                            selectionId: { type: "string" },
+                            gitHubToken: { type: "string" },
+                            clientName: { type: "string" },
+                            workingDirectory: { type: "string" },
+                        },
+                        additionalProperties: false,
+                    },
+                ],
+            },
+        },
+    } as Parameters<typeof renderRpcTypes>[0];
+
+    const files = await renderRpcTypes(fixture, {});
+    const params = generatedFile(files, "ManagedSettingsResolveParams")!;
+    assert.match(
+        params,
+        /public ManagedSettingsResolveParams\(\s*String selectionId,\s*String gitHubToken,\s*String clientName\s*\) \{\s*this\(selectionId, gitHubToken, clientName, null\);\s*\}/
+    );
 });
 
 test("x-legacy-parameters response records reject metadata a positional constructor cannot preserve", () => {

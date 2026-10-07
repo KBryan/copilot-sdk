@@ -1872,6 +1872,9 @@ pub struct ManagedSettingsPermissions {
     /// are forwarded so newer runtime policies fail closed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disable_bypass_permissions_mode: Option<String>,
+    /// When true, prevents Assisted Permissions from being activated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_assisted_permissions_mode: Option<bool>,
     /// Tool-permission patterns that are always denied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deny: Option<Vec<String>>,
@@ -1893,6 +1896,12 @@ impl ManagedSettingsPermissions {
     /// Sets the bypass-permissions policy for this managed layer.
     pub fn with_disable_bypass_permissions_mode(mut self, value: impl Into<String>) -> Self {
         self.disable_bypass_permissions_mode = Some(value.into());
+        self
+    }
+
+    /// Sets whether this managed layer disables Assisted Permissions.
+    pub fn with_disable_assisted_permissions_mode(mut self, value: bool) -> Self {
+        self.disable_assisted_permissions_mode = Some(value);
         self
     }
 
@@ -2307,6 +2316,11 @@ pub struct SessionConfig {
     /// session creation (fail-closed). When `None`, behaves exactly as before. Set via
     /// [`with_enable_managed_settings`](Self::with_enable_managed_settings).
     pub enable_managed_settings: Option<bool>,
+    /// When `Some(true)`, locked managed model controls are enforced for this
+    /// session. Conflicting model changes are rejected; overridable managed
+    /// defaults remain mutable. Set via
+    /// [`with_enforce_managed_model_defaults`](Self::with_enforce_managed_model_defaults).
+    pub enforce_managed_model_defaults: Option<bool>,
     /// Optional managed-settings layer injected at session bootstrap. Currently
     /// carries a [`permissions`](ManagedSettingsPermissions) object that composes
     /// restrictively with any server- or device-level managed settings. This
@@ -2503,6 +2517,10 @@ impl std::fmt::Debug for SessionConfig {
             .field("feature_flags", &self.feature_flags)
             .field("exp_assignments", &self.exp_assignments)
             .field("enable_managed_settings", &self.enable_managed_settings)
+            .field(
+                "enforce_managed_model_defaults",
+                &self.enforce_managed_model_defaults,
+            )
             .field("enable_experimental_mode", &self.enable_experimental_mode)
             .field("managed_settings", &self.managed_settings)
             .field(
@@ -2627,6 +2645,7 @@ impl Default for SessionConfig {
             feature_flags: None,
             exp_assignments: None,
             enable_managed_settings: None,
+            enforce_managed_model_defaults: None,
             managed_settings: None,
             session_fs_provider: None,
             permission_handler: None,
@@ -2799,6 +2818,7 @@ impl SessionConfig {
             feature_flags: self.feature_flags,
             exp_assignments: self.exp_assignments,
             enable_managed_settings: self.enable_managed_settings,
+            enforce_managed_model_defaults: self.enforce_managed_model_defaults,
             is_experimental_mode: self.enable_experimental_mode,
             managed_settings: self.managed_settings,
         };
@@ -3518,6 +3538,12 @@ impl SessionConfig {
         self
     }
 
+    /// Enforce locked managed model controls for this session.
+    pub fn with_enforce_managed_model_defaults(mut self, enforce: bool) -> Self {
+        self.enforce_managed_model_defaults = Some(enforce);
+        self
+    }
+
     /// Inject a managed-settings layer (currently permission rules) at session
     /// bootstrap. This layer is startup-only and is not persisted, so it must be
     /// re-supplied on resume to remain in effect. Can be combined with
@@ -3757,6 +3783,9 @@ pub struct ResumeSessionConfig {
     /// process restart. Set via
     /// [`with_enable_managed_settings`](Self::with_enable_managed_settings).
     pub enable_managed_settings: Option<bool>,
+    /// Re-applies managed model lock enforcement on resume. See
+    /// [`SessionConfig::enforce_managed_model_defaults`].
+    pub enforce_managed_model_defaults: Option<bool>,
     /// Optional managed-settings layer injected on resume. See
     /// [`SessionConfig::managed_settings`]. This layer is not persisted, so it
     /// must be re-supplied on resume to remain in effect; omitting it clears the
@@ -3930,6 +3959,10 @@ impl std::fmt::Debug for ResumeSessionConfig {
             .field("feature_flags", &self.feature_flags)
             .field("exp_assignments", &self.exp_assignments)
             .field("enable_managed_settings", &self.enable_managed_settings)
+            .field(
+                "enforce_managed_model_defaults",
+                &self.enforce_managed_model_defaults,
+            )
             .field("enable_experimental_mode", &self.enable_experimental_mode)
             .field("managed_settings", &self.managed_settings)
             .field(
@@ -4092,6 +4125,7 @@ impl ResumeSessionConfig {
             feature_flags: self.feature_flags,
             exp_assignments: self.exp_assignments,
             enable_managed_settings: self.enable_managed_settings,
+            enforce_managed_model_defaults: self.enforce_managed_model_defaults,
             is_experimental_mode: self.enable_experimental_mode,
             managed_settings: self.managed_settings,
             suppress_resume_event: self.suppress_resume_event,
@@ -4199,6 +4233,7 @@ impl ResumeSessionConfig {
             feature_flags: None,
             exp_assignments: None,
             enable_managed_settings: None,
+            enforce_managed_model_defaults: None,
             managed_settings: None,
             session_fs_provider: None,
             suppress_resume_event: None,
@@ -4896,6 +4931,12 @@ impl ResumeSessionConfig {
     /// See [`SessionConfig::with_enable_managed_settings`].
     pub fn with_enable_managed_settings(mut self, enabled: bool) -> Self {
         self.enable_managed_settings = Some(enabled);
+        self
+    }
+
+    /// Enforce locked managed model controls after resume.
+    pub fn with_enforce_managed_model_defaults(mut self, enforce: bool) -> Self {
+        self.enforce_managed_model_defaults = Some(enforce);
         self
     }
 

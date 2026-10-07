@@ -24,6 +24,10 @@ interface McpServerStats {
     toolsListRequests: number;
     toolCalls: number;
     activeSessions: number;
+    pings: number;
+    expiredRequests: number;
+    expiredRequestLog: { method: string; elapsedMs: number }[];
+    protocolVersions: string[];
 }
 
 describe("MCP remote session closure", async () => {
@@ -65,11 +69,26 @@ describe("MCP remote session closure", async () => {
             // expires one: every later request for it answers 404.
             await remoteServer.expireSessions();
 
-            await waitForCondition(async () => (await remoteServer.stats()).initializations >= 2, {
-                timeoutMs: 120_000,
-                intervalMs: 250,
-                timeoutMessage: "remote MCP server was never re-initialized after session expiry",
-            });
+            let lastStats: McpServerStats | undefined;
+            try {
+                await waitForCondition(
+                    async () => {
+                        lastStats = await remoteServer.stats();
+                        return lastStats.initializations >= 2;
+                    },
+                    {
+                        timeoutMs: 120_000,
+                        intervalMs: 250,
+                        timeoutMessage:
+                            "remote MCP server was never re-initialized after session expiry",
+                    }
+                );
+            } catch (error) {
+                const details = JSON.stringify(lastStats);
+                throw new Error(`MCP reconnection failed; last server stats: ${details}`, {
+                    cause: error,
+                });
+            }
             await waitForMcpServerStatus(session, serverName, "connected");
 
             const result = await session.rpc.mcp.apps.callTool({

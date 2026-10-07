@@ -119,6 +119,7 @@ public class ResumeSessionConfig {
     private String remoteSession;
     private CopilotExpAssignmentResponse expAssignments;
     private Boolean enableManagedSettings;
+    private Boolean enforceManagedModelDefaults;
     private Map<String, Boolean> featureFlags;
     private ManagedSettings managedSettings;
 
@@ -2202,6 +2203,28 @@ public class ResumeSessionConfig {
         return this;
     }
 
+    /**
+     * Gets whether locked managed model controls are enforced on resume.
+     *
+     * @return the explicit choice, or empty to use the runtime default
+     */
+    @JsonIgnore
+    public Optional<Boolean> getEnforceManagedModelDefaults() {
+        return Optional.ofNullable(enforceManagedModelDefaults);
+    }
+
+    /**
+     * Sets whether locked managed model controls are enforced after resume.
+     *
+     * @param enforceManagedModelDefaults
+     *            whether to enforce locked managed model controls
+     * @return this config for method chaining
+     */
+    public ResumeSessionConfig setEnforceManagedModelDefaults(boolean enforceManagedModelDefaults) {
+        this.enforceManagedModelDefaults = enforceManagedModelDefaults;
+        return this;
+    }
+
     /** @return host-injected managed settings, or {@code null} when unset */
     public ManagedSettings getManagedSettings() {
         return managedSettings;
@@ -2315,6 +2338,7 @@ public class ResumeSessionConfig {
         copy.featureFlags = this.featureFlags != null ? new java.util.HashMap<>(this.featureFlags) : null;
         copy.expAssignments = this.expAssignments;
         copy.enableManagedSettings = this.enableManagedSettings;
+        copy.enforceManagedModelDefaults = this.enforceManagedModelDefaults;
         copy.managedSettings = this.managedSettings;
         return copy;
     }

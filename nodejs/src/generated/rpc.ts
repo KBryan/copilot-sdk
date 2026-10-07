@@ -14595,6 +14595,10 @@ export interface ManagedSettingMeta {
    * Channel that supplied this scalar value, matching a `layers[].source`: `device`, `server`, or `policyHelper`. These scalar defaults select one winning channel, not a mixed source. Treat unknown values as additional channels; more may be added.
    */
   source: string;
+  /**
+   * Original managed value when the runtime adjusted it to a supported effective value. Omitted when no adjustment was needed.
+   */
+  requested?: string;
 }
 /**
  * One candidate channel; absent settings represents a channel that delivered no document.
@@ -14652,10 +14656,15 @@ export interface ManagedSettingsComposeResult {
 /** @experimental */
 export interface ManagedSettingsValues {
   /**
-   * Managed default model identifier, as configured. New sessions start with it; it can name a model the account cannot use, so hosts match it against the listed models.
+   * Managed default model identifier. When model availability was resolved, aliases and family names are projected to a concrete available model ID; otherwise the configured value is returned.
    */
   model?: string;
   autoTier?: AutoTier;
+  /**
+   * Managed reasoning-effort default for the managed concrete model. The runtime clamps it to an entitled effort when model availability is known.
+   */
+  effortLevel?: string;
+  contextTier?: ContextTier;
 }
 /**
  * Per-key lock state and provenance for `ManagedSettingsValues`, with the same field names. Producers emit each typed key in values and meta together; both outer objects are omitted when no typed key is set.
@@ -14667,6 +14676,8 @@ export interface ManagedSettingsValues {
 export interface ManagedSettingsMeta {
   model?: ManagedSettingMeta;
   autoTier?: ManagedSettingMeta;
+  effortLevel?: ManagedSettingMeta;
+  contextTier?: ManagedSettingMeta;
 }
 /**
  * One managed-settings channel and the document it delivered.
@@ -14735,6 +14746,10 @@ export interface ManagedSettingsResolveRequest {
    * Embedding client identity for server policy requests, as in session creation. Omit for the CLI identity.
    */
   clientName?: string;
+  /**
+   * Working directory used to run an organization policy helper. When omitted, sessionless resolution does not run the helper.
+   */
+  workingDirectory?: string;
 }
 /**
  * Effective enterprise managed settings for an account, resolved without a session.
@@ -24520,6 +24535,10 @@ export interface SessionManagedPermissions {
    */
   disableBypassPermissionsMode?: string;
   /**
+   * When true, prevents Assisted Permissions from being activated. An actively Assisted session falls back to Manual Approval while the policy is in force. Omit the key or set it to false to impose no restriction.
+   */
+  disableAssistedPermissionsMode?: boolean;
+  /**
    * Permission rules that block matching operations. Deny has highest precedence.
    */
   deny?: string[];
@@ -24721,6 +24740,10 @@ export interface SessionOpenOptions {
    * Opt-in: self-fetch and enforce enterprise managed settings, including managed hook policies, at session bootstrap.
    */
   enableManagedSettings?: boolean;
+  /**
+   * Opt in to enforcing non-overridable managed model controls on session model, Auto-tier, reasoning-effort, and context-tier changes. Managed defaults still apply when omitted; this option only turns conflicting changes into errors.
+   */
+  enforceManagedModelDefaults?: boolean;
   managedSettings?: SessionManagedSettings;
   /**
    * Opt in to capturing file changes for session rewind and session diff. Capture cannot reconstruct changes made before it was enabled. On create it starts capture from the first turn. It is also honored on resume: for a session that already has tracked prior turns, tracking continues automatically even if this is omitted; passing it on resume additionally enables tracking for an eligible session that has no prior root turn yet. Resuming a session whose prior root turns were never tracked has no restorable baseline, so tracking stays disabled for it and rewind reports file change tracking as unavailable; the resume itself still succeeds, so sessions that predate tracking remain loadable. The opt-in is only rejected when the session can never track (a subagent session, or one without local session storage). It is intentionally absent from the mutable options update because enabling it after edits have occurred would create an incomplete, misleading baseline. Subagents share the parent session's capture store and are not tracked as separate rewind points: a file a subagent writes is attributed to whichever root user turn was open when the capture was staged, just before the tool body ran. A turn cannot open while a staged capture is still in flight, so a subagent tool that staged under the spawning turn stays attributed to it however late the write lands, while a capture it stages after the user's next message belongs to that later turn. Attribution decides which turn's rewind point counts and file preview include that write; it does not narrow which rewinds revert it, because a rewind restores every capture from the selected turn onward, so the earlier spawning turn reverts it as well.
@@ -34543,14 +34566,14 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
             list: async (): Promise<ExtensionList> =>
                 connection.sendRequest("session.extensions.list", { sessionId }),
             /**
-             * Enables an extension for the session.
+             * Enables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.
              *
              * @param params Source-qualified extension identifier to enable for the session.
              */
             enable: async (params: ExtensionsEnableRequest): Promise<void> =>
                 connection.sendRequest("session.extensions.enable", { ...params, sessionId }),
             /**
-             * Disables an extension for the session.
+             * Disables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.
              *
              * @param params Source-qualified extension identifier to disable for the session.
              */
@@ -34561,6 +34584,13 @@ export function createSessionRpc(connection: MessageConnection, sessionId: strin
              */
             reload: async (): Promise<void> =>
                 connection.sendRequest("session.extensions.reload", { sessionId }),
+            /**
+             * Host-only reconciliation of authoritative session-effective extension membership and enablement. Refreshes runtime-owned discovery and preferences without persisting settings, installing plugins, or restarting unchanged activations. Returns ExtensionList only after required starts and process/contribution cleanup settle. Takes no caller inventory or overrides. Missing controllers, unready/incomplete discovery, unavailable workspaces, superseded inputs, and lifecycle failures are errors, not empty membership. Independently proven revocations may be applied before an error; retry converges without restarting healthy activations. Error data contains lifecycleChangesApplied and code: extension_reconciliation_host_required, extension_reconciliation_unavailable, extension_reconciliation_not_ready, extension_reconciliation_discovery_failed, extension_reconciliation_workspace_unavailable, extension_reconciliation_superseded, or extension_reconciliation_lifecycle_failed. Mark host reconciliation state applied only on success. On older runtimes, method-not-found must not fall back to global discovery and persistent extension disables.
+             *
+             * @returns Extensions discovered for the session, with their current status.
+             */
+            reconcile: async (): Promise<ExtensionList> =>
+                connection.sendRequest("session.extensions.reconcile", { sessionId }),
             /**
              * Push attachments into the next user-message turn from an extension. The host should surface them as composer pills and forward them via the next session.send call. Callable only by extension-owned connections.
              *

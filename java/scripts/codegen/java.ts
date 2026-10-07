@@ -1982,6 +1982,28 @@ export function renderEventVariantClass(variant: EventVariant, packageName: stri
                 lines.push(`        @JsonProperty("${field.jsonName}") ${field.javaType} ${field.javaName}${comma}`);
             }
             lines.push(`    ) {`);
+            const legacy = readLegacyParameters(variant.dataSchema, `${variant.className}Data`, {
+                ordered: true,
+            });
+            if (legacy) {
+                const legacyNames = new Set(legacy.legacy);
+                const legacyFields = dataFields.filter((field) => legacyNames.has(field.jsonName));
+                lines.push("");
+                lines.push(`        /**`);
+                lines.push(`         * Creates event data with the components it had before later optional fields were added.`);
+                lines.push(`         */`);
+                lines.push(`        public ${variant.className}Data(`);
+                for (let i = 0; i < legacyFields.length; i++) {
+                    const field = legacyFields[i];
+                    const comma = i < legacyFields.length - 1 ? "," : "";
+                    lines.push(`            ${field.javaType} ${field.javaName}${comma}`);
+                }
+                lines.push(`        ) {`);
+                lines.push(`            this(${dataFields
+                    .map((field) => legacyNames.has(field.jsonName) ? field.javaName : "null")
+                    .join(", ")});`);
+                lines.push(`        }`);
+            }
         }
         // Render nested types inside Data record
         for (const [, nested] of nestedTypes) {
@@ -2420,6 +2442,12 @@ export function generateRpcClass(
                 omittedField: "scope",
                 description: "Creates a static OAuth client configuration without an explicit scope.",
             }
+            : className === "ManagedSettingsResolveParams"
+              ? {
+                  fieldNames: ["selectionId", "gitHubToken", "clientName"],
+                  omittedField: "workingDirectory",
+                  description: "Creates managed-settings resolution parameters without a working directory.",
+              }
             : className === "SessionFsSetProviderCapabilities"
               ? {
                   fieldNames: ["sqlite"],
@@ -2999,7 +3027,7 @@ interface NamespaceTree {
 }
 
 /** Build a namespace tree by recursively walking a schema section object */
-function buildNamespaceTree(node: Record<string, unknown>): NamespaceTree {
+export function buildNamespaceTree(node: Record<string, unknown>): NamespaceTree {
     const tree: NamespaceTree = { methods: new Map(), subspaces: new Map() };
     for (const [key, value] of Object.entries(node)) {
         if (typeof value !== "object" || value === null) continue;
@@ -3212,7 +3240,7 @@ export function generateApiMethod(
         ?? `Invokes {@code ${method.rpcMethod}}.`;
     const pushJavadoc = (extraLines: string[] = [], includeSessionIdNote = true): void => {
         lines.push(`    /**`);
-        lines.push(`     * ${description}`);
+        lines.push(...description.split(/\r?\n/).map((line) => `     * ${line}`));
         if (includeSessionIdNote && isSession && hasExtraParams && hasSessionId) {
             lines.push(`     * <p>`);
             lines.push(`     * Note: the {@code sessionId} field in the params record is overridden`);

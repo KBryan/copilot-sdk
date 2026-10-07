@@ -25,7 +25,16 @@ const PROTOCOL_VERSION = "2025-03-26";
 export async function startSessionExpiryMcpServer({ host = "127.0.0.1", port = 0 } = {}) {
   const activeSessions = new Set();
   const expiredSessions = new Set();
-  const stats = { initializations: 0, toolsListRequests: 0, toolCalls: 0 };
+  let expiredAt = 0;
+  const stats = {
+    initializations: 0,
+    toolsListRequests: 0,
+    toolCalls: 0,
+    pings: 0,
+    expiredRequests: 0,
+    expiredRequestLog: [],
+    protocolVersions: [],
+  };
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}:${port}`}`);
@@ -36,6 +45,7 @@ export async function startSessionExpiryMcpServer({ host = "127.0.0.1", port = 0
     }
 
     if (req.method === "POST" && url.pathname === "/__expire") {
+      expiredAt = performance.now();
       for (const sessionId of activeSessions) {
         expiredSessions.add(sessionId);
       }
@@ -51,6 +61,13 @@ export async function startSessionExpiryMcpServer({ host = "127.0.0.1", port = 0
 
     const sessionId = req.headers["mcp-session-id"];
     if (typeof sessionId === "string" && expiredSessions.has(sessionId)) {
+      stats.expiredRequests++;
+      if (stats.expiredRequestLog.length < 8) {
+        stats.expiredRequestLog.push({
+          method: req.method ?? "UNKNOWN",
+          elapsedMs: Math.round(performance.now() - expiredAt),
+        });
+      }
       respondJson(res, 404, { error: "session_expired" });
       return;
     }
@@ -129,6 +146,7 @@ function handleJsonRpcMessage(message, stats) {
 
   switch (message.method) {
     case "initialize":
+      stats.protocolVersions.push(message.params?.protocolVersion ?? PROTOCOL_VERSION);
       return {
         jsonrpc: "2.0",
         id: message.id,
@@ -140,6 +158,7 @@ function handleJsonRpcMessage(message, stats) {
         },
       };
     case "ping":
+      stats.pings++;
       return { jsonrpc: "2.0", id: message.id, result: {} };
     case "tools/list":
       stats.toolsListRequests++;

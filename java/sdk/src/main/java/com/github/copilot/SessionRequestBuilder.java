@@ -248,6 +248,7 @@ final class SessionRequestBuilder {
         request.setFeatureFlags(config.getFeatureFlags());
         request.setExpAssignments(config.getExpAssignments());
         config.getEnableManagedSettings().ifPresent(request::setEnableManagedSettings);
+        config.getEnforceManagedModelDefaults().ifPresent(request::setEnforceManagedModelDefaults);
         request.setManagedSettings(config.getManagedSettings());
 
         return request;
@@ -395,6 +396,7 @@ final class SessionRequestBuilder {
         request.setFeatureFlags(config.getFeatureFlags());
         request.setExpAssignments(config.getExpAssignments());
         config.getEnableManagedSettings().ifPresent(request::setEnableManagedSettings);
+        config.getEnforceManagedModelDefaults().ifPresent(request::setEnforceManagedModelDefaults);
         request.setManagedSettings(config.getManagedSettings());
 
         return request;

@@ -7747,6 +7747,7 @@ func (r *SessionOpenOptions) UnmarshalJSON(data []byte) error {
 		EnableScriptSafety                     *bool                                                `json:"enableScriptSafety,omitempty"`
 		EnableSkills                           *bool                                                `json:"enableSkills,omitempty"`
 		EnableStreaming                        *bool                                                `json:"enableStreaming,omitempty"`
+		EnforceManagedModelDefaults            *bool                                                `json:"enforceManagedModelDefaults,omitempty"`
 		EnvValueMode                           *SessionOpenOptionsEnvValueMode                      `json:"envValueMode,omitempty"`
 		EventsLogDirectory                     *string                                              `json:"eventsLogDirectory,omitempty"`
 		EventsLogIncludesSubagents             *bool                                                `json:"eventsLogIncludesSubagents,omitempty"`
@@ -7834,6 +7835,7 @@ func (r *SessionOpenOptions) UnmarshalJSON(data []byte) error {
 	r.EnableScriptSafety = raw.EnableScriptSafety
 	r.EnableSkills = raw.EnableSkills
 	r.EnableStreaming = raw.EnableStreaming
+	r.EnforceManagedModelDefaults = raw.EnforceManagedModelDefaults
 	r.EnvValueMode = raw.EnvValueMode
 	r.EventsLogDirectory = raw.EventsLogDirectory
 	r.EventsLogIncludesSubagents = raw.EventsLogIncludesSubagents

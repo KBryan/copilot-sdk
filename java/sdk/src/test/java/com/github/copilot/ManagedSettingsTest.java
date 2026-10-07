@@ -23,24 +23,29 @@ class ManagedSettingsTest {
     @Test
     void forwardsManagedSettingsOnCreateAndResume() throws Exception {
         var permissions = new ManagedSettingsPermissions()
-                .setDisableBypassPermissionsMode(DisableBypassPermissionsModes.DISABLE).setDeny(List.of("Shell(rm *)"))
+                .setDisableBypassPermissionsMode(DisableBypassPermissionsModes.DISABLE)
+                .setDisableAssistedPermissionsMode(true).setDeny(List.of("Shell(rm *)"))
                 .setAsk(List.of("Domain(publish.example)")).setAllow(List.of("Read(**)"))
                 .setLimitTo(List.of("Domain(github.com)"));
         var managedSettings = new ManagedSettings().setPermissions(permissions);
 
-        var create = SessionRequestBuilder.buildCreateRequest(
-                new SessionConfig().setEnableManagedSettings(true).setManagedSettings(managedSettings),
-                "managed-create");
+        var create = SessionRequestBuilder.buildCreateRequest(new SessionConfig().setEnableManagedSettings(true)
+                .setEnforceManagedModelDefaults(true).setManagedSettings(managedSettings), "managed-create");
         var resume = SessionRequestBuilder.buildResumeRequest("managed-resume",
-                new ResumeSessionConfig().setEnableManagedSettings(true).setManagedSettings(managedSettings));
+                new ResumeSessionConfig().setEnableManagedSettings(true).setEnforceManagedModelDefaults(true)
+                        .setManagedSettings(managedSettings));
 
         assertEquals(managedSettings, create.getManagedSettings());
         assertEquals(managedSettings, resume.getManagedSettings());
+        assertTrue(create.getEnforceManagedModelDefaults());
+        assertTrue(resume.getEnforceManagedModelDefaults());
         var json = new ObjectMapper().writeValueAsString(create);
         assertTrue(json.contains("\"enableManagedSettings\":true"));
+        assertTrue(json.contains("\"enforceManagedModelDefaults\":true"));
         assertTrue(json.contains("\"managedSettings\":{\"permissions\""));
         assertTrue(json.contains("\"disableBypassPermissionsMode\":\"disable\""));
         assertTrue(json.contains("\"limitTo\":[\"Domain(github.com)\"]"));
+        assertTrue(json.contains("\"disableAssistedPermissionsMode\":true"));
     }
 
     @Test

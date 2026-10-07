@@ -27,6 +27,7 @@ import {
   chatCompletionResponseToAnthropicSseChunks,
 } from "./anthropicMessagesAdapter";
 import { canonicalUserMessageSeparator } from "./modelProtocolAdapterShared";
+import { isLegacyExitPlanNotice } from "./legacyExitPlanNotice";
 import {
   chatCompletionResponseToResponsesApiMessage,
   chatCompletionResponseToResponsesApiSseChunks,
@@ -1180,7 +1181,7 @@ function coalesceAdjacentUserMessages(requestBody: string): string {
     if (
       message.role === "user" &&
       typeof message.content === "string" &&
-      containsModeChangedNotice(message.content) &&
+      containsRuntimeNotice(message.content) &&
       normalizeUserMessage(message.content) === ""
     ) {
       continue;
@@ -1621,19 +1622,19 @@ function transformOpenAIRequestMessage(
   m: ChatCompletionMessageParam,
 ): NormalizedMessage | undefined {
   let content: string | undefined;
-  let strippedModeNoticeOnly = false;
+  let strippedRuntimeNoticeOnly = false;
   if (m.role === "system") {
     // System message changes too often to include in snapshots - just store placeholder
     content = "${system}";
   } else if (m.role === "user" && typeof m.content === "string") {
     content = normalizeUserMessage(m.content);
-    strippedModeNoticeOnly =
-      content === "" && containsModeChangedNotice(m.content);
+    strippedRuntimeNoticeOnly =
+      content === "" && containsRuntimeNotice(m.content);
   } else if (m.role === "user" && Array.isArray(m.content)) {
     // Multimodal user messages have array content with text and image_url parts.
     // Extract and normalize text parts; represent image_url parts as a stable marker.
     const parts: string[] = [];
-    let sawModeNotice = false;
+    let sawRuntimeNotice = false;
     let sawVisibleContent = false;
     for (const part of m.content) {
       if (
@@ -1641,7 +1642,7 @@ function transformOpenAIRequestMessage(
         part.type === "text" &&
         typeof part.text === "string"
       ) {
-        sawModeNotice ||= containsModeChangedNotice(part.text);
+        sawRuntimeNotice ||= containsRuntimeNotice(part.text);
         const normalized = normalizeUserMessage(part.text);
         if (normalized) {
           parts.push(normalized);
@@ -1653,7 +1654,7 @@ function transformOpenAIRequestMessage(
       }
     }
     content = parts.join("\n") || undefined;
-    strippedModeNoticeOnly = sawModeNotice && !sawVisibleContent;
+    strippedRuntimeNoticeOnly = sawRuntimeNotice && !sawVisibleContent;
   } else if (m.role === "tool" && typeof m.content === "string") {
     // If it's a JSON tool call result, normalize the whitespace and property ordering.
     // For successful tool results wrapped in {resultType, textResultForLlm}, unwrap to
@@ -1680,7 +1681,7 @@ function transformOpenAIRequestMessage(
     content = m.content;
   }
 
-  if (strippedModeNoticeOnly) {
+  if (strippedRuntimeNoticeOnly) {
     return undefined;
   }
   const msg: NormalizedMessage = { role: m.role };
@@ -1695,7 +1696,7 @@ function transformOpenAIRequestMessage(
 }
 
 function normalizeUserMessage(content: string): string {
-  return stripModeChangedNotice(normalizeSkillContext(content))
+  return stripRuntimeNotice(normalizeSkillContext(content))
     .replace(
       taskCompletionNotificationPattern,
       taskCompletionNotificationReplacement,
@@ -1717,41 +1718,44 @@ const taskCompletionNotificationPattern =
 const taskCompletionNotificationReplacement =
   'Agent "$1" ($2) has completed successfully. Use read_agent with agent_id "$1" to retrieve the full results.';
 
-const modeChangedNoticePattern =
-  /(\s*)<mode_changed_notice>[\s\S]*?<\/mode_changed_notice>(\s*)/g;
+// Only the obsolete exit_plan_mode withdrawal is optional; other catalog deltas stay strict.
+const runtimeNoticePattern =
+  /<(mode_changed_notice|tools_changed_notice)>([\s\S]*?)<\/\1>/g;
 
-function containsModeChangedNotice(content: string): boolean {
-  return /<mode_changed_notice>[\s\S]*?<\/mode_changed_notice>/.test(content);
+function containsRuntimeNotice(content: string): boolean {
+  return /<(mode_changed_notice|tools_changed_notice)>[\s\S]*?<\/\1>/.test(
+    content,
+  );
 }
 
-function stripModeChangedNotice(content: string): string {
-  let removed = false;
-  const stripped = content.replace(
-    modeChangedNoticePattern,
-    (
-      match,
-      leading: string,
-      trailing: string,
-      offset: number,
-      source: string,
-    ) => {
-      removed = true;
-      const before = source.slice(0, offset);
-      const after = source.slice(offset + match.length);
-      if (!before.trim() || !after.trim()) {
-        return "";
-      }
-      return /[\r\n]/.test(leading + trailing) ? "\n\n" : " ";
-    },
-  );
-  return removed ? stripped.trim() : content;
+function stripRuntimeNotice(content: string): string {
+  let stripped = content;
+  // Work backward to preserve offsets and include separators held by retained notices.
+  for (const match of [...content.matchAll(runtimeNoticePattern)].reverse()) {
+    const [, tag, body] = match;
+    if (tag === "tools_changed_notice" && !isLegacyExitPlanNotice(body)) {
+      continue;
+    }
+    const before = stripped.slice(0, match.index);
+    const after = stripped.slice(match.index + match[0].length);
+    const whitespace = [
+      before.match(/\s*$/)?.[0],
+      after.match(/^\s*/)?.[0],
+    ].join("");
+    let separator = "";
+    if (before.trim() && after.trim()) {
+      separator = /[\r\n]/.test(whitespace) ? "\n\n" : " ";
+    }
+    stripped = before.trimEnd() + separator + after.trimStart();
+  }
+  return stripped === content ? content : stripped.trim();
 }
 
 function normalizeStoredUserMessages(conversations: NormalizedConversation[]) {
   for (const conversation of conversations) {
     for (const message of conversation.messages) {
       if (message.role === "user" && typeof message.content === "string") {
-        message.content = stripModeChangedNotice(
+        message.content = stripRuntimeNotice(
           normalizeSkillContext(message.content).replace(
             taskCompletionNotificationPattern,
             taskCompletionNotificationReplacement,

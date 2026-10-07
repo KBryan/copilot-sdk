@@ -889,6 +889,23 @@ fn resume_session_config_into_wire_serializes_plugin_directories_and_large_outpu
 }
 
 #[test]
+fn session_configs_serialize_managed_model_enforcement() {
+    let (create_wire, _) = SessionConfig::default()
+        .with_enforce_managed_model_defaults(true)
+        .into_wire(Some(SessionId::from("create")))
+        .expect("no duplicate handlers");
+    let create_json = serde_json::to_value(&create_wire).unwrap();
+    assert_eq!(create_json["enforceManagedModelDefaults"], true);
+
+    let (resume_wire, _) = ResumeSessionConfig::new(SessionId::from("resume"))
+        .with_enforce_managed_model_defaults(true)
+        .into_wire()
+        .expect("no duplicate handlers");
+    let resume_json = serde_json::to_value(&resume_wire).unwrap();
+    assert_eq!(resume_json["enforceManagedModelDefaults"], true);
+}
+
+#[test]
 fn auth_client_id_metadata_url_reaches_create_and_resume_wire_payloads() {
     let url = "https://example.com/oauth/client-metadata.json";
 

@@ -1447,17 +1447,17 @@ export type ManagedSettingsResolvedSource =
  * The category of runtime action that enterprise managed settings governed (blocked or capped)
  */
 export type ManagedSettingsEnforcedAction =
-  /** An attempt to turn on a bypass-permissions ("yolo") escalation was refused or capped because policy disables bypass-permissions mode. */
+  /** An attempt to enter a permission mode governed by managed policy was refused or capped. The `setting` and `escalation` fields identify whether this was bypass permissions or Assisted Permissions. */
   "bypass_permissions_blocked";
 /**
- * For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused
+ * For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused
  */
 export type ManagedSettingsEnforcedEscalation =
   /** Full allow-all permissions — automatically approving tools, paths, and URLs. */
   | "allow_all"
   /** Automatic approval of all tool permission requests. */
   | "approve_all"
-  /** Assisted mode — keeps normal prompt paths and adds an LLM recommendation, distinct from allow-all. */
+  /** Assisted Permissions — uses an LLM review to reduce prompts, distinct from allow-all and not a hard security boundary. */
   | "assisted_approval"
   /** Unrestricted filesystem access outside the session's allowed directories. */
   | "unrestricted_paths"
@@ -1690,11 +1690,19 @@ export interface StartData {
    */
   alreadyInUse?: boolean;
   autoTier?: AutoTier;
+  /**
+   * True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  autoTierManaged?: boolean;
   context?: WorkingDirectoryContext;
   /**
    * Context tier selected at session creation time for models with tiered context pricing; null when no tier is selected (e.g., non-tiered model)
    */
   contextTier?: ContextTier | null;
+  /**
+   * True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  contextTierManaged?: boolean;
   /**
    * Version string of the Copilot application
    */
@@ -1712,6 +1720,10 @@ export interface StartData {
    * Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
    */
   reasoningEffort?: string;
+  /**
+   * True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+   */
+  reasoningEffortManaged?: boolean;
   /**
    * Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
    */
@@ -1847,11 +1859,19 @@ export interface ResumeData {
    */
   alreadyInUse?: boolean;
   autoTier?: AutoTier;
+  /**
+   * True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  autoTierManaged?: boolean;
   context?: WorkingDirectoryContext;
   /**
    * Context tier currently selected at resume time; null when no tier is active
    */
   contextTier?: ContextTier | null;
+  /**
+   * True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  contextTierManaged?: boolean;
   /**
    * When true, tool calls and permission requests left in flight by the previous session lifetime remain pending after resume and the agentic loop awaits their results. User sends are queued behind the pending work until all such requests reach a terminal state. When false or omitted, pending work is normally marked as interrupted unless the resume passively joined live work owned by another client; sessionWasActive distinguishes that case.
    */
@@ -1868,6 +1888,10 @@ export interface ResumeData {
    * Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
    */
   reasoningEffort?: string;
+  /**
+   * True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+   */
+  reasoningEffortManaged?: boolean;
   /**
    * Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
    */
@@ -2448,6 +2472,10 @@ export interface ModelChangeData {
    */
   autoTier?: AutoTier | null;
   /**
+   * True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  autoTierManaged?: boolean;
+  /**
    * Reason the change happened, when not user-initiated. `"rate_limit_auto_switch"` for changes triggered by the auto-mode-switch rate-limit recovery path, or `"refusal_fallback"` when the active model declined a request (content refusal) and the runtime switched to the configured refusal-fallback model. UI clients can use this to render contextual copy.
    */
   cause?: string;
@@ -2455,6 +2483,10 @@ export interface ModelChangeData {
    * Context tier after the model change; null explicitly clears a previously selected tier
    */
   contextTier?: ContextTier | null;
+  /**
+   * True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+   */
+  contextTierManaged?: boolean;
   /**
    * Newly selected model identifier
    */
@@ -2474,6 +2506,10 @@ export interface ModelChangeData {
    * Reasoning effort level after the model change, if applicable
    */
   reasoningEffort?: string | null;
+  /**
+   * True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+   */
+  reasoningEffortManaged?: boolean;
   /**
    * Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
    */
@@ -12129,7 +12165,7 @@ export interface ManagedSettingsResolvedData {
   source: ManagedSettingsResolvedSource;
 }
 /**
- * Session event "session.managed_settings_enforced". Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
+ * Session event "session.managed_settings_enforced". Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
  */
 /** @experimental */
 export interface ManagedSettingsEnforcedEvent {
@@ -12160,7 +12196,7 @@ export interface ManagedSettingsEnforcedEvent {
   type: "session.managed_settings_enforced";
 }
 /**
- * Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
+ * Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
  */
 /** @experimental */
 export interface ManagedSettingsEnforcedData {
@@ -12175,7 +12211,7 @@ export interface ManagedSettingsEnforcedData {
    */
   message: string;
   /**
-   * The managed setting key responsible for the enforcement (e.g. `permissions.disableBypassPermissionsMode`).
+   * The managed setting key responsible for the enforcement (for example `permissions.disableBypassPermissionsMode` or `permissions.disableAssistedPermissionsMode`).
    */
   setting: string;
 }

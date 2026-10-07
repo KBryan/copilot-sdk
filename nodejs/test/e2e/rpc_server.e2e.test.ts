@@ -110,7 +110,15 @@ describe("Server-scoped RPC", async () => {
 
     it.skipIf(isInProcessTransport)("should round trip sessionless managed settings", async () => {
         const policyPath = path.join(workDir, "managed-settings.json");
-        const policy = { model: "gpt-5.4", autoTier: "balance" };
+        const policy = {
+            model: "auto",
+            autoTier: "balance",
+        };
+        const concretePolicy = {
+            model: "gpt-5",
+            effortLevel: { overridable: "high" },
+            contextTier: "long_context",
+        };
         fs.writeFileSync(policyPath, JSON.stringify(policy));
         const policyClient = new CopilotClient({
             workingDirectory: workDir,
@@ -140,6 +148,10 @@ describe("Server-scoped RPC", async () => {
         expect(validated.valid).toBe(true);
         expect(validated.settings).toEqual(policy);
         expect(validated.diagnostics).toEqual([]);
+        const validatedConcrete = await api.validate({ content: concretePolicy });
+        expect(validatedConcrete.valid).toBe(true);
+        expect(validatedConcrete.settings).toEqual(concretePolicy);
+        expect(validatedConcrete.diagnostics).toEqual([]);
 
         const resolved = await api.resolve({});
         expect(resolved.account).toBeUndefined();
@@ -162,6 +174,99 @@ describe("Server-scoped RPC", async () => {
         ).rejects.toMatchObject({ code: -32602 });
         const absent = await api.compose({ layers: [{ source: "device" }] });
         expect(absent.resolved.source).toBe("none");
+
+        const managedSession = await policyClient.createSession({
+            enableManagedSettings: true,
+            model: "auto",
+        });
+        onTestFinished(() => managedSession.disconnect());
+        await expect
+            .poll(() => managedSession.rpc.model.getCurrent())
+            .toMatchObject({ modelId: "auto", autoTier: "balance" });
+
+        const explicitSession = await policyClient.createSession({
+            enableManagedSettings: true,
+            model: "auto",
+            capi: { autoTier: "fast" },
+        });
+        onTestFinished(() => explicitSession.disconnect());
+        await expect
+            .poll(() => explicitSession.rpc.model.getCurrent())
+            .toMatchObject({ modelId: "auto", autoTier: "fast" });
+
+        const concretePolicyPath = path.join(workDir, "managed-concrete-settings.json");
+        fs.writeFileSync(
+            concretePolicyPath,
+            JSON.stringify({
+                model: "gpt-5",
+                effortLevel: "high",
+                contextTier: "long_context",
+            })
+        );
+        const concretePolicyClient = new CopilotClient({
+            workingDirectory: workDir,
+            connection: RuntimeConnection.forStdio({ path: process.env.COPILOT_CLI_PATH }),
+            useLoggedInUser: false,
+            env: {
+                ...env,
+                GH_TOKEN: "",
+                GITHUB_TOKEN: "",
+                COPILOT_GITHUB_TOKEN: "",
+                GITHUB_COPILOT_API_TOKEN: "",
+                COPILOT_HMAC_KEY: "",
+                CAPI_HMAC_KEY: "",
+                COPILOT_E2E_TEST_HOOKS: "1",
+                COPILOT_TEST_MANAGED_SETTINGS_FILE_PATH: concretePolicyPath,
+            },
+        });
+        onTestFinished(() => concretePolicyClient.stop());
+        await concretePolicyClient.start();
+
+        const enforcedSession = await concretePolicyClient.createSession({
+            enableManagedSettings: true,
+            enforceManagedModelDefaults: true,
+            model: "gpt-5",
+        });
+        onTestFinished(() => enforcedSession.disconnect());
+        await expect(enforcedSession.rpc.managedSettings.get()).resolves.toMatchObject({
+            settings: {
+                model: "gpt-5",
+                effortLevel: "high",
+                contextTier: "long_context",
+            },
+        });
+        await expect
+            .poll(() => enforcedSession.rpc.model.getCurrent())
+            .toMatchObject({
+                modelId: "gpt-5",
+                reasoningEffort: "high",
+                contextTier: "long_context",
+            });
+        await expect(
+            enforcedSession.rpc.model.setReasoningEffort({ reasoningEffort: "low" })
+        ).rejects.toThrow(/reasoningEffort is locked to 'high'/);
+
+        const relaxedSession = await concretePolicyClient.resumeSession(enforcedSession.sessionId, {
+            enableManagedSettings: true,
+            enforceManagedModelDefaults: false,
+        });
+        onTestFinished(() => relaxedSession.disconnect());
+        await expect(
+            relaxedSession.rpc.model.setReasoningEffort({ reasoningEffort: "low" })
+        ).resolves.toMatchObject({ reasoningEffort: "low" });
+        await relaxedSession.rpc.model.setReasoningEffort({ reasoningEffort: "high" });
+
+        const reenforcedSession = await concretePolicyClient.resumeSession(
+            enforcedSession.sessionId,
+            {
+                enableManagedSettings: true,
+                enforceManagedModelDefaults: true,
+            }
+        );
+        onTestFinished(() => reenforcedSession.disconnect());
+        await expect(
+            reenforcedSession.rpc.model.setReasoningEffort({ reasoningEffort: "low" })
+        ).rejects.toThrow(/reasoningEffort is locked to 'high'/);
     });
 
     it("should reject llm inference response frames for missing request", async () => {

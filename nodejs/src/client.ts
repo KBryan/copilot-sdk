@@ -1884,6 +1884,7 @@ export class CopilotClient {
                 featureFlags: config.featureFlags,
                 expAssignments: config.expAssignments,
                 enableManagedSettings: config.enableManagedSettings,
+                enforceManagedModelDefaults: config.enforceManagedModelDefaults,
                 managedSettings: config.managedSettings,
             });
 
@@ -2190,6 +2191,7 @@ export class CopilotClient {
                 featureFlags: config.featureFlags,
                 expAssignments: config.expAssignments,
                 enableManagedSettings: config.enableManagedSettings,
+                enforceManagedModelDefaults: config.enforceManagedModelDefaults,
                 managedSettings: config.managedSettings,
                 ...(extensionOptions?.requestedEnvironmentVariables
                     ? {

@@ -34,4 +34,47 @@ describe("Scenario permission mode RPC", async () => {
             await session.disconnect();
         }
     });
+
+    it("refuses Assisted Permissions when managed policy disables it", async () => {
+        const session = await client.createSession({
+            onPermissionRequest: approveAll,
+            featureFlags: { AUTO_APPROVAL: true },
+            managedSettings: {
+                permissions: {
+                    disableAssistedPermissionsMode: true,
+                },
+            },
+        });
+        let enforcement:
+            | {
+                  escalation?: string;
+                  setting: string;
+                  failClosed: boolean;
+              }
+            | undefined;
+        session.on((event) => {
+            if (event.type === "session.managed_settings_enforced") {
+                enforcement = event.data;
+            }
+        });
+
+        try {
+            expect((await session.rpc.permissions.getMode()).mode).toBe("manual");
+            await expect(
+                session.rpc.permissions.setMode({
+                    mode: "assisted",
+                    assistedApprovalModel: "gpt-5.5",
+                    source: "rpc",
+                })
+            ).resolves.toMatchObject({ success: false, mode: "manual" });
+            expect((await session.rpc.permissions.getMode()).mode).toBe("manual");
+            expect(enforcement).toMatchObject({
+                escalation: "assisted_approval",
+                setting: "permissions.disableAssistedPermissionsMode",
+                failClosed: false,
+            });
+        } finally {
+            await session.disconnect();
+        }
+    });
 });

@@ -374,6 +374,10 @@ class ManagedSettingsPermissions:
     queries, and fragments are rejected. Multiple managed layers intersect
     their lists; an empty list denies all hosts. Sent on the wire as
     ``limitTo``."""
+    disable_assisted_permissions_mode: bool | None = None
+    """When true, prevents Assisted Permissions from being activated. Omit or
+    set to false to impose no restriction. Sent on the wire as
+    ``disableAssistedPermissionsMode``."""
 
 
 @dataclass
@@ -401,6 +405,8 @@ def _managed_settings_to_dict(settings: ManagedSettings) -> dict[str, Any]:
         perms: dict[str, Any] = {}
         if permissions.disable_bypass_permissions_mode is not None:
             perms["disableBypassPermissionsMode"] = permissions.disable_bypass_permissions_mode
+        if permissions.disable_assisted_permissions_mode is not None:
+            perms["disableAssistedPermissionsMode"] = permissions.disable_assisted_permissions_mode
         if permissions.deny is not None:
             perms["deny"] = list(permissions.deny)
         if permissions.ask is not None:
@@ -2421,6 +2427,7 @@ class CopilotClient:
         feature_flags: dict[str, bool] | None = None,
         exp_assignments: CopilotExpAssignmentResponse | None = None,
         enable_managed_settings: bool | None = None,
+        enforce_managed_model_defaults: bool | None = None,
         github_mcp_tool_config: GitHubMcpToolConfig | None = None,
         managed_settings: ManagedSettings | None = None,
     ) -> CopilotSession:
@@ -2600,6 +2607,10 @@ class CopilotClient:
                 expected to reject session creation (fail-closed). When unset,
                 behaves exactly as before. Sent on the wire as
                 ``enableManagedSettings``.
+            enforce_managed_model_defaults: When ``True``, locked managed model
+                controls are enforced for this session. Conflicting model changes
+                are rejected, while overridable managed defaults remain mutable.
+                Sent on the wire as ``enforceManagedModelDefaults``.
             managed_settings: Host-injected enterprise managed settings for the
                 session. Supplies managed policy directly instead of
                 self-fetching; the runtime validates it and composes it
@@ -2753,6 +2764,8 @@ class CopilotClient:
         # Opt the runtime into self-fetching enterprise managed settings
         if enable_managed_settings is not None:
             payload["enableManagedSettings"] = enable_managed_settings
+        if enforce_managed_model_defaults is not None:
+            payload["enforceManagedModelDefaults"] = enforce_managed_model_defaults
 
         # Host-injected managed settings (permissions-only contract)
         if managed_settings is not None:
@@ -3270,6 +3283,7 @@ class CopilotClient:
         feature_flags: dict[str, bool] | None = None,
         exp_assignments: CopilotExpAssignmentResponse | None = None,
         enable_managed_settings: bool | None = None,
+        enforce_managed_model_defaults: bool | None = None,
         github_mcp_tool_config: GitHubMcpToolConfig | None = None,
         managed_settings: ManagedSettings | None = None,
     ) -> CopilotSession:
@@ -3450,6 +3464,10 @@ class CopilotClient:
                 expected to reject session creation (fail-closed). When unset,
                 behaves exactly as before. Sent on the wire as
                 ``enableManagedSettings``.
+            enforce_managed_model_defaults: When ``True``, locked managed model
+                controls are enforced after resume. Conflicting model changes are
+                rejected, while overridable managed defaults remain mutable. Sent
+                on the wire as ``enforceManagedModelDefaults``.
             managed_settings: Host-injected enterprise managed settings for the
                 session. Must be re-supplied on resume; it replaces the prior
                 injected layer, and omitting it clears that layer so warm and
@@ -3621,6 +3639,8 @@ class CopilotClient:
         # Opt the runtime into self-fetching enterprise managed settings
         if enable_managed_settings is not None:
             payload["enableManagedSettings"] = enable_managed_settings
+        if enforce_managed_model_defaults is not None:
+            payload["enforceManagedModelDefaults"] = enforce_managed_model_defaults
 
         # Host-injected managed settings (permissions-only contract)
         if managed_settings is not None:

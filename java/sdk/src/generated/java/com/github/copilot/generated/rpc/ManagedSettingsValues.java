@@ -25,9 +25,13 @@ import javax.annotation.processing.Generated;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ManagedSettingsValues(
-    /** Managed default model identifier, as configured. New sessions start with it; it can name a model the account cannot use, so hosts match it against the listed models. */
+    /** Managed default model identifier. When model availability was resolved, aliases and family names are projected to a concrete available model ID; otherwise the configured value is returned. */
     @JsonProperty("model") String model,
     /** Managed Auto routing preference, used when the selected model is `auto`. */
-    @JsonProperty("autoTier") AutoTier autoTier
+    @JsonProperty("autoTier") AutoTier autoTier,
+    /** Managed reasoning-effort default for the managed concrete model. The runtime clamps it to an entitled effort when model availability is known. */
+    @JsonProperty("effortLevel") String effortLevel,
+    /** Managed context-tier default for the managed concrete model. */
+    @JsonProperty("contextTier") ContextTier contextTier
 ) {
 }

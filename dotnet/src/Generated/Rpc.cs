@@ -7567,6 +7567,10 @@ public sealed class ManagedSettingMeta
     [JsonPropertyName("overridable")]
     public bool Overridable { get; set; }
 
+    /// <summary>Original managed value when the runtime adjusted it to a supported effective value. Omitted when no adjustment was needed.</summary>
+    [JsonPropertyName("requested")]
+    public string? Requested { get; set; }
+
     /// <summary>Channel that supplied this scalar value, matching a `layers[].source`: `device`, `server`, or `policyHelper`. These scalar defaults select one winning channel, not a mixed source. Treat unknown values as additional channels; more may be added.</summary>
     [JsonPropertyName("source")]
     public string Source { get; set; } = string.Empty;
@@ -7579,6 +7583,14 @@ public sealed class ManagedSettingsMeta
     /// <summary>Lock state and provenance of `values.autoTier`.</summary>
     [JsonPropertyName("autoTier")]
     public ManagedSettingMeta? AutoTier { get; set; }
+
+    /// <summary>Lock state and provenance of `values.contextTier`.</summary>
+    [JsonPropertyName("contextTier")]
+    public ManagedSettingMeta? ContextTier { get; set; }
+
+    /// <summary>Lock state and provenance of `values.effortLevel`.</summary>
+    [JsonPropertyName("effortLevel")]
+    public ManagedSettingMeta? EffortLevel { get; set; }
 
     /// <summary>Lock state and provenance of `values.model`.</summary>
     [JsonPropertyName("model")]
@@ -7642,7 +7654,15 @@ public sealed class ManagedSettingsValues
     [JsonPropertyName("autoTier")]
     public AutoTier? AutoTier { get; set; }
 
-    /// <summary>Managed default model identifier, as configured. New sessions start with it; it can name a model the account cannot use, so hosts match it against the listed models.</summary>
+    /// <summary>Managed context-tier default for the managed concrete model.</summary>
+    [JsonPropertyName("contextTier")]
+    public ContextTier? ContextTier { get; set; }
+
+    /// <summary>Managed reasoning-effort default for the managed concrete model. The runtime clamps it to an entitled effort when model availability is known.</summary>
+    [JsonPropertyName("effortLevel")]
+    public string? EffortLevel { get; set; }
+
+    /// <summary>Managed default model identifier. When model availability was resolved, aliases and family names are projected to a concrete available model ID; otherwise the configured value is returned.</summary>
     [JsonPropertyName("model")]
     public string? Model { get; set; }
 }
@@ -7691,6 +7711,10 @@ internal sealed class ManagedSettingsResolveRequest
     /// <summary>Opaque account identifier returned by `account.getAllUsers`. When omitted, the current account is used, or device policy only when no account is signed in.</summary>
     [JsonPropertyName("selectionId")]
     public string? SelectionId { get; set; }
+
+    /// <summary>Working directory used to run an organization policy helper. When omitted, sessionless resolution does not run the helper.</summary>
+    [JsonPropertyName("workingDirectory")]
+    public string? WorkingDirectory { get; set; }
 }
 
 /// <summary>The authoring JSON schema for managed settings recognized by this runtime.</summary>
@@ -19990,6 +20014,15 @@ internal sealed class ExtensionsDisableRequest
 /// <summary>Identifies the target session.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 internal sealed class SessionExtensionsReloadRequest
+{
+    /// <summary>Target session identifier.</summary>
+    [JsonPropertyName("sessionId")]
+    public string SessionId { get; set; } = string.Empty;
+}
+
+/// <summary>Identifies the target session.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class SessionExtensionsReconcileRequest
 {
     /// <summary>Target session identifier.</summary>
     [JsonPropertyName("sessionId")]
@@ -44744,13 +44777,18 @@ public sealed class ServerManagedSettingsApi
     /// <param name="selectionId">Opaque account identifier returned by `account.getAllUsers`. When omitted, the current account is used, or device policy only when no account is signed in.</param>
     /// <param name="gitHubToken">GitHub token to resolve instead of the current account. The call fails when the token cannot be resolved.</param>
     /// <param name="clientName">Embedding client identity for server policy requests, as in session creation. Omit for the CLI identity.</param>
+    /// <param name="workingDirectory">Working directory used to run an organization policy helper. When omitted, sessionless resolution does not run the helper.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>Effective enterprise managed settings for an account, resolved without a session.</returns>
-    public async Task<ManagedSettingsResolveResult> ResolveAsync(string? selectionId = null, string? gitHubToken = null, string? clientName = null, CancellationToken cancellationToken = default)
+    public async Task<ManagedSettingsResolveResult> ResolveAsync(string? selectionId = null, string? gitHubToken = null, string? clientName = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
-        var request = new ManagedSettingsResolveRequest { SelectionId = selectionId, GitHubToken = gitHubToken, ClientName = clientName };
+        var request = new ManagedSettingsResolveRequest { SelectionId = selectionId, GitHubToken = gitHubToken, ClientName = clientName, WorkingDirectory = workingDirectory };
         return await CopilotClient.InvokeRpcAsync<ManagedSettingsResolveResult>(_rpc, "managedSettings.resolve", [request], cancellationToken);
     }
+
+    /// <summary>Compatibility overload preserving the positional CancellationToken parameter from before workingDirectory was added.</summary>
+    public Task<ManagedSettingsResolveResult> ResolveAsync(string? selectionId, string? gitHubToken, string? clientName, CancellationToken cancellationToken)
+        => ResolveAsync(selectionId, gitHubToken, clientName, workingDirectory: null, cancellationToken);
 
     /// <summary>Returns the managed-settings authoring JSON schema with descriptive `x-composition` annotations aligned with the shared settings-engine vocabulary. These annotations are not a complete runtime composition contract: model, effortLevel, and contextTier remain coupled. Use `managedSettings.compose` for the runtime's effective result. Performs no I/O.</summary>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
@@ -49045,7 +49083,7 @@ public sealed class ExtensionsApi
         return await CopilotClient.InvokeRpcAsync<ExtensionList>(_session.Rpc, "session.extensions.list", [request], cancellationToken);
     }
 
-    /// <summary>Enables an extension for the session.</summary>
+    /// <summary>Enables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.</summary>
     /// <param name="id">Source-qualified extension ID to enable.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public async Task EnableAsync(string id, CancellationToken cancellationToken = default)
@@ -49057,7 +49095,7 @@ public sealed class ExtensionsApi
         await CopilotClient.InvokeRpcAsync(_session.Rpc, "session.extensions.enable", [request], cancellationToken);
     }
 
-    /// <summary>Disables an extension for the session.</summary>
+    /// <summary>Disables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.</summary>
     /// <param name="id">Source-qualified extension ID to disable.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     public async Task DisableAsync(string id, CancellationToken cancellationToken = default)
@@ -49077,6 +49115,17 @@ public sealed class ExtensionsApi
 
         var request = new SessionExtensionsReloadRequest { SessionId = _session.SessionId };
         await CopilotClient.InvokeRpcAsync(_session.Rpc, "session.extensions.reload", [request], cancellationToken);
+    }
+
+    /// <summary>Host-only reconciliation of authoritative session-effective extension membership and enablement. Refreshes runtime-owned discovery and preferences without persisting settings, installing plugins, or restarting unchanged activations. Returns ExtensionList only after required starts and process/contribution cleanup settle. Takes no caller inventory or overrides. Missing controllers, unready/incomplete discovery, unavailable workspaces, superseded inputs, and lifecycle failures are errors, not empty membership. Independently proven revocations may be applied before an error; retry converges without restarting healthy activations. Error data contains lifecycleChangesApplied and code: extension_reconciliation_host_required, extension_reconciliation_unavailable, extension_reconciliation_not_ready, extension_reconciliation_discovery_failed, extension_reconciliation_workspace_unavailable, extension_reconciliation_superseded, or extension_reconciliation_lifecycle_failed. Mark host reconciliation state applied only on success. On older runtimes, method-not-found must not fall back to global discovery and persistent extension disables.</summary>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Extensions discovered for the session, with their current status.</returns>
+    public async Task<ExtensionList> ReconcileAsync(CancellationToken cancellationToken = default)
+    {
+        _session.ThrowIfDisposed();
+
+        var request = new SessionExtensionsReconcileRequest { SessionId = _session.SessionId };
+        return await CopilotClient.InvokeRpcAsync<ExtensionList>(_session.Rpc, "session.extensions.reconcile", [request], cancellationToken);
     }
 
     /// <summary>Push attachments into the next user-message turn from an extension. The host should surface them as composer pills and forward them via the next session.send call. Callable only by extension-owned connections.</summary>
@@ -52630,6 +52679,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(SessionEnrichMetadataResult))]
 [JsonSerializable(typeof(SessionEventLogTailRequest))]
 [JsonSerializable(typeof(SessionExtensionsListRequest))]
+[JsonSerializable(typeof(SessionExtensionsReconcileRequest))]
 [JsonSerializable(typeof(SessionExtensionsReloadRequest))]
 [JsonSerializable(typeof(SessionFsAppendFileRequest))]
 [JsonSerializable(typeof(SessionFsError))]

@@ -2607,11 +2607,13 @@ public sealed partial class ClientSessionLifetimeTests
 
         await using var session = await client.CreateSessionAsync(new SessionConfig
         {
+            EnforceManagedModelDefaults = true,
             ManagedSettings = new ManagedSettings
             {
                 Permissions = new ManagedSettingsPermissions
                 {
                     DisableBypassPermissionsMode = DisableBypassPermissionsModes.Disable,
+                    DisableAssistedPermissionsMode = true,
                     Deny = ["shell(rm*)"],
                     Ask = ["write"],
                     Allow = [],
@@ -2626,9 +2628,11 @@ public sealed partial class ClientSessionLifetimeTests
         });
 
         var request = Assert.Single(server.Requests, request => request.Method == "session.create");
+        Assert.True(request.Params.GetProperty("enforceManagedModelDefaults").GetBoolean());
         Assert.False(request.Params.TryGetProperty("enableManagedSettings", out _));
         var permissions = request.Params.GetProperty("managedSettings").GetProperty("permissions");
         Assert.Equal("disable", permissions.GetProperty("disableBypassPermissionsMode").GetString());
+        Assert.True(permissions.GetProperty("disableAssistedPermissionsMode").GetBoolean());
         Assert.Equal("shell(rm*)", Assert.Single(permissions.GetProperty("deny").EnumerateArray()).GetString());
         Assert.Equal("write", Assert.Single(permissions.GetProperty("ask").EnumerateArray()).GetString());
         Assert.Empty(permissions.GetProperty("allow").EnumerateArray());
@@ -2900,6 +2904,7 @@ public sealed partial class ClientSessionLifetimeTests
 
         await using var session = await client.ResumeSessionAsync("session-managed", new ResumeSessionConfig
         {
+            EnforceManagedModelDefaults = true,
             ManagedSettings = new ManagedSettings
             {
                 Permissions = new ManagedSettingsPermissions
@@ -2912,6 +2917,7 @@ public sealed partial class ClientSessionLifetimeTests
         });
 
         var request = Assert.Single(server.Requests, request => request.Method == "session.resume");
+        Assert.True(request.Params.GetProperty("enforceManagedModelDefaults").GetBoolean());
         var permissions = request.Params.GetProperty("managedSettings").GetProperty("permissions");
         Assert.Equal("shell(rm*)", Assert.Single(permissions.GetProperty("deny").EnumerateArray()).GetString());
     }

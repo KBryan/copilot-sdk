@@ -2349,6 +2349,11 @@ export interface ManagedSettingsPermissions {
      * values are forwarded so newer runtime policies fail closed.
      */
     disableBypassPermissionsMode?: string;
+    /**
+     * When true, prevents Assisted Permissions from being activated. Omit or
+     * set to false to impose no restriction.
+     */
+    disableAssistedPermissionsMode?: boolean;
     /** Operations that must always be denied. Unioned across managed layers. */
     deny?: string[];
     /**
@@ -3010,6 +3015,13 @@ export interface SessionConfigBase {
      * if omitted, the runtime is expected to reject session creation (fail-closed).
      */
     enableManagedSettings?: boolean;
+
+    /**
+     * When true, locked managed model controls are enforced for this session.
+     * Conflicting model changes are rejected, and locked startup values replace
+     * conflicting session options. Overridable managed defaults remain mutable.
+     */
+    enforceManagedModelDefaults?: boolean;
 
     /**
      * Host-injected enterprise managed settings for this session.

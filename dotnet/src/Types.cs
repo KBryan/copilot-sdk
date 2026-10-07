@@ -3491,6 +3491,14 @@ public sealed class ManagedSettingsPermissions
     [JsonPropertyName("disableBypassPermissionsMode")]
     public string? DisableBypassPermissionsMode { get; set; }
 
+    /// <summary>
+    /// When <see langword="true"/>, prevents Assisted Permissions from being
+    /// activated. Omit or set to <see langword="false"/> to impose no restriction.
+    /// Serialized as <c>disableAssistedPermissionsMode</c>.
+    /// </summary>
+    [JsonPropertyName("disableAssistedPermissionsMode")]
+    public bool? DisableAssistedPermissionsMode { get; set; }
+
     /// <summary>Tool-permission patterns that are always denied.</summary>
     [JsonPropertyName("deny")]
     public IList<string>? Deny { get; set; }
@@ -3648,6 +3656,7 @@ public abstract class SessionConfigBase
             : null;
         ExpAssignments = other.ExpAssignments;
         EnableManagedSettings = other.EnableManagedSettings;
+        EnforceManagedModelDefaults = other.EnforceManagedModelDefaults;
         ManagedSettings = other.ManagedSettings;
         SkillProvider = other.SkillProvider;
 #pragma warning disable GHCP001
@@ -4190,6 +4199,13 @@ public abstract class SessionConfigBase
     /// wire as <c>enableManagedSettings</c>.
     /// </summary>
     public bool? EnableManagedSettings { get; set; }
+
+    /// <summary>
+    /// When true, enforces locked managed model controls for this session.
+    /// Conflicting model changes are rejected; overridable managed defaults
+    /// remain mutable.
+    /// </summary>
+    public bool? EnforceManagedModelDefaults { get; set; }
 
     /// <summary>
     /// Optional managed-settings layer injected at session bootstrap. Currently

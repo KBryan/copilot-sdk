@@ -331,9 +331,13 @@ describe("Session tasks RPC and pending handlers", async () => {
                     model: string;
                     reasoningEffort?: string;
                 }> = [];
+                const lifecycleEvents: SessionEvent[] = [];
                 const unsubscribe = session.on((event) => {
                     if (event.type === "subagent.configured") {
                         configurations.push({ agentId: event.agentId, ...event.data });
+                    }
+                    if (event.type.startsWith("subagent.") || event.type === "session.shutdown") {
+                        lifecycleEvents.push(event);
                     }
                 });
                 try {
@@ -382,6 +386,26 @@ describe("Session tasks RPC and pending handlers", async () => {
                             reasoning_effort: "high",
                         });
                     }
+                    await waitForCondition(
+                        () =>
+                            lifecycleEvents.some(
+                                (event) =>
+                                    event.type === "subagent.completed" &&
+                                    event.agentId === started.agentId
+                            ),
+                        { timeoutMessage: `Agent ${started.agentId} never emitted its completion` }
+                    );
+                    const completions = lifecycleEvents.filter(
+                        (event) => event.type === "subagent.completed"
+                    );
+                    expect(completions).toHaveLength(1);
+                    expect(completions[0].data.cancelled).not.toBe(true);
+                    const beforeStop = [...lifecycleEvents];
+                    expect(await recordingClient.stop()).toEqual([]);
+                    expect(
+                        lifecycleEvents.filter((event) => event.type.startsWith("subagent."))
+                    ).toEqual(beforeStop);
+                    expect(lifecycleEvents.at(-1)?.type).toBe("session.shutdown");
                 } finally {
                     unsubscribe();
                 }
@@ -429,9 +453,13 @@ describe("Session tasks RPC and pending handlers", async () => {
                     model: string;
                     reasoningEffort?: string;
                 }> = [];
+                const lifecycleEvents: SessionEvent[] = [];
                 const unsubscribe = session.on((event) => {
                     if (event.type === "subagent.configured") {
                         configurations.push({ agentId: event.agentId, ...event.data });
+                    }
+                    if (event.type.startsWith("subagent.") || event.type === "session.shutdown") {
+                        lifecycleEvents.push(event);
                     }
                 });
                 try {
@@ -476,6 +504,18 @@ describe("Session tasks RPC and pending handlers", async () => {
                     for (const request of parentRequests) {
                         expect(request.reasoning_effort).toBe("medium");
                     }
+                    const completions = lifecycleEvents.filter(
+                        (event) => event.type === "subagent.completed"
+                    );
+                    expect(completions).toHaveLength(1);
+                    expect(completions[0].agentId).toBe(configuration.agentId);
+                    expect(completions[0].data.cancelled).not.toBe(true);
+                    const beforeDisconnect = [...lifecycleEvents];
+                    await session.disconnect();
+                    expect(
+                        lifecycleEvents.filter((event) => event.type.startsWith("subagent."))
+                    ).toEqual(beforeDisconnect);
+                    expect(lifecycleEvents.at(-1)?.type).toBe("session.shutdown");
                 } finally {
                     unsubscribe();
                 }

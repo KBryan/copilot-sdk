@@ -7537,7 +7537,7 @@ impl<'a> SessionRpcExtensions<'a> {
         Ok(serde_json::from_value(_value)?)
     }
 
-    /// Enables an extension for the session.
+    /// Enables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.
     ///
     /// Wire method: `session.extensions.enable`.
     ///
@@ -7563,7 +7563,7 @@ impl<'a> SessionRpcExtensions<'a> {
         Ok(())
     }
 
-    /// Disables an extension for the session.
+    /// Disables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.
     ///
     /// Wire method: `session.extensions.disable`.
     ///
@@ -7608,6 +7608,31 @@ impl<'a> SessionRpcExtensions<'a> {
             .call(rpc_methods::SESSION_EXTENSIONS_RELOAD, Some(wire_params))
             .await?;
         Ok(())
+    }
+
+    /// Host-only reconciliation of authoritative session-effective extension membership and enablement. Refreshes runtime-owned discovery and preferences without persisting settings, installing plugins, or restarting unchanged activations. Returns ExtensionList only after required starts and process/contribution cleanup settle. Takes no caller inventory or overrides. Missing controllers, unready/incomplete discovery, unavailable workspaces, superseded inputs, and lifecycle failures are errors, not empty membership. Independently proven revocations may be applied before an error; retry converges without restarting healthy activations. Error data contains lifecycleChangesApplied and code: extension_reconciliation_host_required, extension_reconciliation_unavailable, extension_reconciliation_not_ready, extension_reconciliation_discovery_failed, extension_reconciliation_workspace_unavailable, extension_reconciliation_superseded, or extension_reconciliation_lifecycle_failed. Mark host reconciliation state applied only on success. On older runtimes, method-not-found must not fall back to global discovery and persistent extension disables.
+    ///
+    /// Wire method: `session.extensions.reconcile`.
+    ///
+    /// # Returns
+    ///
+    /// Extensions discovered for the session, with their current status.
+    ///
+    /// <div class="warning">
+    ///
+    /// **Experimental.** This API is part of an experimental wire-protocol surface
+    /// and may change or be removed in future SDK or CLI releases. Pin both the
+    /// SDK and CLI versions if your code depends on it.
+    ///
+    /// </div>
+    pub async fn reconcile(&self) -> Result<ExtensionList, Error> {
+        let wire_params = serde_json::json!({ "sessionId": self.session.id() });
+        let _value = self
+            .session
+            .client()
+            .call(rpc_methods::SESSION_EXTENSIONS_RECONCILE, Some(wire_params))
+            .await?;
+        Ok(serde_json::from_value(_value)?)
     }
 
     /// Push attachments into the next user-message turn from an extension. The host should surface them as composer pills and forward them via the next session.send call. Callable only by extension-owned connections.

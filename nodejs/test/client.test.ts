@@ -5345,6 +5345,7 @@ describe("managedSettings serialization", () => {
         const managedSettings = {
             permissions: {
                 disableBypassPermissionsMode: DisableBypassPermissionsModes.AllowAutoOnly,
+                disableAssistedPermissionsMode: true,
                 deny: ["Shell(git push)"],
                 ask: ["Domain(publish.example)"],
                 allow: ["Read(**)"],
@@ -5357,6 +5358,7 @@ describe("managedSettings serialization", () => {
         expect(params.managedSettings).toEqual({
             permissions: {
                 disableBypassPermissionsMode: "allow-auto-only",
+                disableAssistedPermissionsMode: true,
                 deny: ["Shell(git push)"],
                 ask: ["Domain(publish.example)"],
                 allow: ["Read(**)"],
@@ -5418,9 +5420,11 @@ describe("managedSettings serialization", () => {
     it("coexists with enableManagedSettings", async () => {
         const params = await captureCreateParams({
             enableManagedSettings: true,
+            enforceManagedModelDefaults: true,
             managedSettings: { permissions: { deny: ["Edit(/secrets/**)"] } },
         });
         expect(params.enableManagedSettings).toBe(true);
+        expect(params.enforceManagedModelDefaults).toBe(true);
         expect(params.managedSettings).toEqual({ permissions: { deny: ["Edit(/secrets/**)"] } });
     });
 

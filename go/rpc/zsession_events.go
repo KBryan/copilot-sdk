@@ -1984,10 +1984,14 @@ func (*ModelCallStartData) Type() SessionEventType { return SessionEventTypeMode
 type SessionModelChangeData struct {
 	// Committed Auto preference after the model configuration change, when applicable.
 	AutoTier *AutoTier `json:"autoTier,omitempty"`
+	// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+	AutoTierManaged *bool `json:"autoTierManaged,omitempty"`
 	// Reason the change happened, when not user-initiated. `"rate_limit_auto_switch"` for changes triggered by the auto-mode-switch rate-limit recovery path, or `"refusal_fallback"` when the active model declined a request (content refusal) and the runtime switched to the configured refusal-fallback model. UI clients can use this to render contextual copy.
 	Cause *string `json:"cause,omitempty"`
 	// Context tier after the model change; null explicitly clears a previously selected tier
 	ContextTier *ContextTier `json:"contextTier,omitempty"`
+	// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+	ContextTierManaged *bool `json:"contextTierManaged,omitempty"`
 	// Newly selected model identifier
 	NewModel string `json:"newModel"`
 	// Previously committed Auto preference, when one was explicitly selected.
@@ -2002,6 +2006,8 @@ type SessionModelChangeData struct {
 	PreviousVerbosity *Verbosity `json:"previousVerbosity,omitempty"`
 	// Reasoning effort level after the model change, if applicable
 	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
+	// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+	ReasoningEffortManaged *bool `json:"reasoningEffortManaged,omitempty"`
 	// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
 	ReasoningEffortModel *string `json:"reasoningEffortModel,omitempty"`
 	// Reasoning summary mode after the model change, if applicable
@@ -2525,18 +2531,18 @@ type SubagentConfiguredData struct {
 func (*SubagentConfiguredData) sessionEventData()      {}
 func (*SubagentConfiguredData) Type() SessionEventType { return SessionEventTypeSubagentConfigured }
 
-// Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
+// Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
 // Experimental: SessionManagedSettingsEnforcedData is part of an experimental API and may change or be removed.
 type SessionManagedSettingsEnforcedData struct {
 	// The category of runtime action that managed policy governed.
 	Action ManagedSettingsEnforcedAction `json:"action"`
-	// For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused. Absent for actions without a specific escalation primitive.
+	// For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused. Absent for actions without a specific primitive.
 	Escalation *ManagedSettingsEnforcedEscalation `json:"escalation,omitempty"`
 	// Whether the enforcement was forced by fail-closed handling (managed policy could not be determined) rather than an explicit managed setting. When true, `setting` still names the restriction that was applied.
 	FailClosed bool `json:"failClosed"`
 	// A human-readable explanation of why the action was governed, suitable for surfacing to the user.
 	Message string `json:"message"`
-	// The managed setting key responsible for the enforcement (e.g. `permissions.disableBypassPermissionsMode`).
+	// The managed setting key responsible for the enforcement (for example `permissions.disableBypassPermissionsMode` or `permissions.disableAssistedPermissionsMode`).
 	Setting string `json:"setting"`
 }
 
@@ -2665,10 +2671,14 @@ type SessionStartData struct {
 	AlreadyInUse *bool `json:"alreadyInUse,omitempty"`
 	// Auto routing preference selected at session creation time
 	AutoTier *AutoTier `json:"autoTier,omitempty"`
+	// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+	AutoTierManaged *bool `json:"autoTierManaged,omitempty"`
 	// Working directory and git context at session start
 	Context *WorkingDirectoryContext `json:"context,omitempty"`
 	// Context tier selected at session creation time for models with tiered context pricing; null when no tier is selected (e.g., non-tiered model)
 	ContextTier *ContextTier `json:"contextTier,omitempty"`
+	// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+	ContextTierManaged *bool `json:"contextTierManaged,omitempty"`
 	// Version string of the Copilot application
 	CopilotVersion string `json:"copilotVersion"`
 	// When set, identifies a parent session whose context this session continues — e.g., a detached headless rem-agent run launched on the parent's interactive shutdown. Telemetry from this session is reported under the parent's session_id.
@@ -2679,6 +2689,8 @@ type SessionStartData struct {
 	Producer string `json:"producer"`
 	// Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
 	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
+	// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+	ReasoningEffortManaged *bool `json:"reasoningEffortManaged,omitempty"`
 	// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
 	ReasoningEffortModel *string `json:"reasoningEffortModel,omitempty"`
 	// Reasoning summary mode used for model calls, if applicable (e.g. "none", "concise", "detailed")
@@ -2747,10 +2759,14 @@ type SessionResumeData struct {
 	AlreadyInUse *bool `json:"alreadyInUse,omitempty"`
 	// Auto routing preference active at resume time
 	AutoTier *AutoTier `json:"autoTier,omitempty"`
+	// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+	AutoTierManaged *bool `json:"autoTierManaged,omitempty"`
 	// Updated working directory and git context at resume time
 	Context *WorkingDirectoryContext `json:"context,omitempty"`
 	// Context tier currently selected at resume time; null when no tier is active
 	ContextTier *ContextTier `json:"contextTier,omitempty"`
+	// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+	ContextTierManaged *bool `json:"contextTierManaged,omitempty"`
 	// When true, tool calls and permission requests left in flight by the previous session lifetime remain pending after resume and the agentic loop awaits their results. User sends are queued behind the pending work until all such requests reach a terminal state. When false or omitted, pending work is normally marked as interrupted unless the resume passively joined live work owned by another client; sessionWasActive distinguishes that case.
 	ContinuePendingWork *bool `json:"continuePendingWork,omitempty"`
 	// Total number of persisted events in the session at the time of resume
@@ -2759,6 +2775,8 @@ type SessionResumeData struct {
 	EventsFileSizeBytes *int64 `json:"eventsFileSizeBytes,omitempty"`
 	// Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
 	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
+	// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+	ReasoningEffortManaged *bool `json:"reasoningEffortManaged,omitempty"`
 	// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
 	ReasoningEffortModel *string `json:"reasoningEffortModel,omitempty"`
 	// Reasoning summary mode used for model calls, if applicable (e.g. "none", "concise", "detailed")
@@ -6209,11 +6227,11 @@ const (
 type ManagedSettingsEnforcedAction string
 
 const (
-	// An attempt to turn on a bypass-permissions ("yolo") escalation was refused or capped because policy disables bypass-permissions mode.
+	// An attempt to enter a permission mode governed by managed policy was refused or capped. The `setting` and `escalation` fields identify whether this was bypass permissions or Assisted Permissions.
 	ManagedSettingsEnforcedActionBypassPermissionsBlocked ManagedSettingsEnforcedAction = "bypass_permissions_blocked"
 )
 
-// For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused
+// For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused
 type ManagedSettingsEnforcedEscalation string
 
 const (
@@ -6221,7 +6239,7 @@ const (
 	ManagedSettingsEnforcedEscalationAllowAll ManagedSettingsEnforcedEscalation = "allow_all"
 	// Automatic approval of all tool permission requests.
 	ManagedSettingsEnforcedEscalationApproveAll ManagedSettingsEnforcedEscalation = "approve_all"
-	// Assisted mode — keeps normal prompt paths and adds an LLM recommendation, distinct from allow-all.
+	// Assisted Permissions — uses an LLM review to reduce prompts, distinct from allow-all and not a hard security boundary.
 	ManagedSettingsEnforcedEscalationAssistedApproval ManagedSettingsEnforcedEscalation = "assisted_approval"
 	// A server-wide MCP "Always Allow" (or `--allow-tool <server>`) blanket that would auto-approve every tool from an MCP server. Capped to per-tool approval; each tool still prompts.
 	ManagedSettingsEnforcedEscalationServerWideMCPApproval ManagedSettingsEnforcedEscalation = "server_wide_mcp_approval"

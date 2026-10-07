@@ -131,6 +131,34 @@ await session.SendAndWaitAsync(new MessageOptions { Prompt = "Analyze my codebas
 
 Later—minutes, hours, or even days—you can resume the session from where you left off.
 
+### Remembered permissions with a session filesystem
+
+When you configure a custom `sessionFs` provider, runtime-owned durable permission choices use provider storage rather than the runtime host's configuration. The files live under the provider's `sessionStatePath` and retain their existing formats:
+
+* `permissions.json`: A top-level `locations` map retaining the existing `tool_approvals` and `allowed_directories` fields
+* `settings.json`: Top-level `allowedUrls` for `approve-permanently` URL approvals and `sandbox` for saved sandbox preferences
+* `config.json`: Top-level `trustedFolders` for remembered folder trust and `sandboxOnboardingShown` for the first-enable sandbox message
+
+Location keys are normalized provider directory paths, such as `/workspace`, without an added prefix. The runtime resolves them lexically using provider path conventions, without inspecting the host filesystem or discovering host Git repositories. An approval saved for `/workspace` is not automatically selected when the working directory is `/workspace/sub`.
+
+Provider-backed folder trust also uses lexical paths: a trusted folder covers itself and its descendants, not linked Git worktrees at other paths. Trust those worktree paths explicitly.
+
+There is no additional session-ID partition inside these files. Sessions that access the same backing files share remembered choices. Use separate provider namespaces when sessions or tenants must not share grants. With a namespace per session, permanent choices survive that session's resumes but do not automatically carry over to new sessions. To restore a session's persisted choices on resume, reconnect it to the same namespace.
+
+Consent updates are serialized per provider endpoint and file within one runtime process. Separate endpoints do not block each other. If different provider endpoints or runtime processes share backing files, the application must coordinate concurrent updates; the runtime cannot infer that those files are shared.
+
+These operations never import, update, or fall back to the host's `permissions-config.json`, `settings.json`, or `config.json`, including when provider reads or writes fail. Existing-format files supplied through the provider are read directly.
+
+As with host configuration, URL approvals are read only from `settings.json`. A legacy `allowedUrls` field in `config.json` is ignored; `config.json` remains the global-state file for remembered folder trust and the sandbox onboarding marker.
+
+Storage routing does not change permission lifetimes, URL denial precedence, or session policy behavior. Approve-once and approve-for-session do not become permanent grants.
+
+Saved sandbox preferences are restored on create and resume. Later explicit SDK `options.update` calls can change the live sandbox configuration without rewriting the saved preference.
+
+Without `sessionFs`, SDK applications in both `empty` and `copilot-cli` modes retain existing host-backed persistence. This includes the existing behavior where permanent URL consent saves host settings and grants access in the live session, but a fresh SDK session does not automatically load the host URL allowlist.
+
+See [Multi-tenancy and server deployments](../setup/multi-tenancy.md#sessionfs) for provider isolation responsibilities.
+
 ### Transcript recovery
 
 The resume option `allowTranscriptRecovery` controls recovery when the runtime loads a

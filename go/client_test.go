@@ -5187,20 +5187,22 @@ func TestIsTerminal(t *testing.T) {
 func TestSessionRequests_ManagedSettings(t *testing.T) {
 	settings := &ManagedSettings{
 		Permissions: &ManagedSettingsPermissions{
-			DisableBypassPermissionsMode: DisableBypassPermissionsModeDisable,
-			Deny:                         []string{"Shell(git push)"},
-			Ask:                          []string{"Domain(publish.example)"},
-			Allow:                        []string{"Read(**)"},
-			LimitTo:                      []string{"Domain(github.com)"},
+			DisableBypassPermissionsMode:   DisableBypassPermissionsModeDisable,
+			DisableAssistedPermissionsMode: Bool(true),
+			Deny:                           []string{"Shell(git push)"},
+			Ask:                            []string{"Domain(publish.example)"},
+			Allow:                          []string{"Read(**)"},
+			LimitTo:                        []string{"Domain(github.com)"},
 		},
 	}
 
 	expectedPermissions := map[string]any{
-		"disableBypassPermissionsMode": "disable",
-		"deny":                         []any{"Shell(git push)"},
-		"ask":                          []any{"Domain(publish.example)"},
-		"allow":                        []any{"Read(**)"},
-		"limitTo":                      []any{"Domain(github.com)"},
+		"disableBypassPermissionsMode":   "disable",
+		"disableAssistedPermissionsMode": true,
+		"deny":                           []any{"Shell(git push)"},
+		"ask":                            []any{"Domain(publish.example)"},
+		"allow":                          []any{"Read(**)"},
+		"limitTo":                        []any{"Domain(github.com)"},
 	}
 
 	t.Run("direct injection enables managed safeguards", func(t *testing.T) {
@@ -5213,7 +5215,11 @@ func TestSessionRequests_ManagedSettings(t *testing.T) {
 	})
 
 	t.Run("includes managedSettings on create when set", func(t *testing.T) {
-		req := createSessionRequest{EnableManagedSettings: Bool(true), ManagedSettings: settings}
+		req := createSessionRequest{
+			EnableManagedSettings:       Bool(true),
+			EnforceManagedModelDefaults: Bool(true),
+			ManagedSettings:             settings,
+		}
 		data, err := json.Marshal(req)
 		if err != nil {
 			t.Fatalf("Failed to marshal: %v", err)
@@ -5224,6 +5230,9 @@ func TestSessionRequests_ManagedSettings(t *testing.T) {
 		}
 		if m["enableManagedSettings"] != true {
 			t.Errorf("Expected enableManagedSettings true, got %v", m["enableManagedSettings"])
+		}
+		if m["enforceManagedModelDefaults"] != true {
+			t.Errorf("Expected enforceManagedModelDefaults true, got %v", m["enforceManagedModelDefaults"])
 		}
 		ms, ok := m["managedSettings"].(map[string]any)
 		if !ok {

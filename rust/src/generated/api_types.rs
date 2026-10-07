@@ -740,6 +740,8 @@ pub mod rpc_methods {
     pub const SESSION_EXTENSIONS_DISABLE: &str = "session.extensions.disable";
     /// `session.extensions.reload`
     pub const SESSION_EXTENSIONS_RELOAD: &str = "session.extensions.reload";
+    /// `session.extensions.reconcile`
+    pub const SESSION_EXTENSIONS_RECONCILE: &str = "session.extensions.reconcile";
     /// `session.extensions.sendAttachmentsToMessage`
     pub const SESSION_EXTENSIONS_SENDATTACHMENTSTOMESSAGE: &str =
         "session.extensions.sendAttachmentsToMessage";
@@ -10940,6 +10942,9 @@ pub struct ManagedMcpServerConfig {
 pub struct ManagedSettingMeta {
     /// Whether users and repositories may choose a different value. `false` means policy locks the value.
     pub overridable: bool,
+    /// Original managed value when the runtime adjusted it to a supported effective value. Omitted when no adjustment was needed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested: Option<String>,
     /// Channel that supplied this scalar value, matching a `layers[].source`: `device`, `server`, or `policyHelper`. These scalar defaults select one winning channel, not a mixed source. Treat unknown values as additional channels; more may be added.
     pub source: String,
 }
@@ -11028,6 +11033,12 @@ pub struct ManagedSettingsMeta {
     /// Lock state and provenance of `values.autoTier`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<ManagedSettingMeta>,
+    /// Lock state and provenance of `values.contextTier`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tier: Option<ManagedSettingMeta>,
+    /// Lock state and provenance of `values.effortLevel`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort_level: Option<ManagedSettingMeta>,
     /// Lock state and provenance of `values.model`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<ManagedSettingMeta>,
@@ -11087,7 +11098,13 @@ pub struct ManagedSettingsValues {
     /// Managed Auto routing preference, used when the selected model is `auto`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<AutoTier>,
-    /// Managed default model identifier, as configured. New sessions start with it; it can name a model the account cannot use, so hosts match it against the listed models.
+    /// Managed context-tier default for the managed concrete model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tier: Option<ContextTier>,
+    /// Managed reasoning-effort default for the managed concrete model. The runtime clamps it to an entitled effort when model availability is known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort_level: Option<String>,
+    /// Managed default model identifier. When model availability was resolved, aliases and family names are projected to a concrete available model ID; otherwise the configured value is returned.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }
@@ -11156,6 +11173,9 @@ pub struct ManagedSettingsResolveRequest {
     /// Opaque account identifier returned by `account.getAllUsers`. When omitted, the current account is used, or device policy only when no account is signed in.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection_id: Option<String>,
+    /// Working directory used to run an organization policy helper. When omitted, sessionless resolution does not run the helper.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
 }
 
 /// Effective enterprise managed settings for an account, resolved without a session.
@@ -22556,6 +22576,9 @@ pub struct SessionManagedPermissions {
     /// Permission rules that block matching operations. Deny has highest precedence.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deny: Option<Vec<String>>,
+    /// When true, prevents Assisted Permissions from being activated. An actively Assisted session falls back to Manual Approval while the policy is in force. Omit the key or set it to false to impose no restriction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_assisted_permissions_mode: Option<bool>,
     /// When set to `disable`, prevents bypass/allow-all permission modes. Advisory auto-approval remains available because normal prompt paths stay active. Any other value is accepted rather than failing the session, but is enforced as `disable`: the key is only present to restrict something, so a mode this runtime cannot interpret fails closed to the most restrictive one it knows. Omit the key entirely to impose no restriction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_bypass_permissions_mode: Option<String>,
@@ -22999,6 +23022,9 @@ pub struct SessionOpenOptions {
     /// Whether model responses stream as delta events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_streaming: Option<bool>,
+    /// Opt in to enforcing non-overridable managed model controls on session model, Auto-tier, reasoning-effort, and context-tier changes. Managed defaults still apply when omitted; this option only turns conflicting changes into errors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enforce_managed_model_defaults: Option<bool>,
     /// How MCP server environment values are interpreted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env_value_mode: Option<SessionOpenOptionsEnvValueMode>,
@@ -34707,6 +34733,36 @@ pub struct SessionExtensionsListResult {
 pub struct SessionExtensionsReloadParams {
     /// Target session identifier
     pub session_id: SessionId,
+}
+
+/// Identifies the target session.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionExtensionsReconcileParams {
+    /// Target session identifier
+    pub session_id: SessionId,
+}
+
+/// Extensions discovered for the session, with their current status.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionExtensionsReconcileResult {
+    /// Discovered extensions and their current status
+    pub extensions: Vec<Extension>,
 }
 
 /// Rust-owned built-in tool descriptors for the session.

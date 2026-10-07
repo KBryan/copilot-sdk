@@ -689,6 +689,9 @@ describe("Session MCP and skills RPC", async () => {
             "Extensions not available"
         );
         await expectFailure(() => session.rpc.extensions.reload(), "Extensions not available");
+        await expect(session.rpc.extensions.reconcile()).rejects.toMatchObject({
+            data: { code: "extension_reconciliation_unavailable", lifecycleChangesApplied: false },
+        });
 
         await session.disconnect();
     });

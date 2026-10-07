@@ -35,6 +35,7 @@ import com.github.copilot.generated.ExternalToolRequestedEvent;
 import com.github.copilot.generated.SessionIdleEvent;
 import com.github.copilot.generated.SessionErrorEvent;
 import com.github.copilot.generated.SessionMode;
+import com.github.copilot.generated.SessionResumeEvent;
 import com.github.copilot.generated.SessionStartEvent;
 import com.github.copilot.generated.rpc.SessionToolsGetCurrentMetadataResult;
 import com.github.copilot.rpc.MessageOptions;
@@ -231,6 +232,24 @@ public class SessionEventHandlingTest {
     }
 
     @Test
+    void testSendReturnsAfterRpcAcceptanceWithoutWaitingForIdle() throws Exception {
+        var rpc = mock(JsonRpcClient.class);
+        when(rpc.invoke(eq("session.send"), any(), eq(SendMessageResponse.class)))
+                .thenReturn(CompletableFuture.completedFuture(new SendMessageResponse("message-1")));
+        session = createTestSession(rpc);
+        var events = new ArrayList<SessionEvent>();
+        session.on(events::add);
+
+        session.send("hello").get(1, TimeUnit.SECONDS);
+
+        verify(rpc).invoke(eq("session.send"), any(), eq(SendMessageResponse.class));
+        assertTrue(events.isEmpty());
+        dispatchEvent(createAssistantMessageEvent("done"));
+        dispatchEvent(createSessionIdleEvent());
+        assertEquals(List.of("assistant.message", "session.idle"), events.stream().map(SessionEvent::getType).toList());
+    }
+
+    @Test
     void testSendAndWaitSkipsAutopilotContinuationIdle() throws Exception {
         var rpc = mock(JsonRpcClient.class);
         when(rpc.invoke(eq("session.send"), any(), eq(SendMessageResponse.class)))
@@ -395,6 +414,17 @@ public class SessionEventHandlingTest {
 
         assertEquals("my-session-123", capturedSessionId.get());
         assertEquals("Test content", capturedContent.get());
+    }
+
+    @Test
+    void testLegacyLifecycleEventConstructorsRemainAvailable() {
+        var start = new SessionStartEvent.SessionStartEventData("session", null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null);
+        var resume = new SessionResumeEvent.SessionResumeEventData(null, 0L, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
+
+        assertEquals("session", start.sessionId());
+        assertEquals(0L, resume.eventCount());
     }
 
     @Test

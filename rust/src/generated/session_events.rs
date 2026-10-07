@@ -1181,12 +1181,18 @@ pub struct SessionStartData {
     /// Auto routing preference selected at session creation time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<AutoTier>,
+    /// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_tier_managed: Option<bool>,
     /// Working directory and git context at session start
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<WorkingDirectoryContext>,
     /// Context tier selected at session creation time for models with tiered context pricing; null when no tier is selected (e.g., non-tiered model)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_tier: Option<ContextTier>,
+    /// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tier_managed: Option<bool>,
     /// Version string of the Copilot application
     pub copilot_version: String,
     /// When set, identifies a parent session whose context this session continues — e.g., a detached headless rem-agent run launched on the parent's interactive shutdown. Telemetry from this session is reported under the parent's session_id.
@@ -1200,6 +1206,9 @@ pub struct SessionStartData {
     /// Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort_managed: Option<bool>,
     /// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort_model: Option<String>,
@@ -1236,12 +1245,18 @@ pub struct SessionResumeData {
     /// Auto routing preference active at resume time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<AutoTier>,
+    /// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_tier_managed: Option<bool>,
     /// Updated working directory and git context at resume time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<WorkingDirectoryContext>,
     /// Context tier currently selected at resume time; null when no tier is active
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_tier: Option<ContextTier>,
+    /// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tier_managed: Option<bool>,
     /// When true, tool calls and permission requests left in flight by the previous session lifetime remain pending after resume and the agentic loop awaits their results. User sends are queued behind the pending work until all such requests reach a terminal state. When false or omitted, pending work is normally marked as interrupted unless the resume passively joined live work owned by another client; sessionWasActive distinguishes that case.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub continue_pending_work: Option<bool>,
@@ -1253,6 +1268,9 @@ pub struct SessionResumeData {
     /// Reasoning effort level used for model calls, if applicable (e.g. "none", "low", "medium", "high", "xhigh", "max")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort_managed: Option<bool>,
     /// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort_model: Option<String>,
@@ -1526,12 +1544,18 @@ pub struct SessionModelChangeData {
     /// Committed Auto preference after the model configuration change, when applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<AutoTier>,
+    /// True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_tier_managed: Option<bool>,
     /// Reason the change happened, when not user-initiated. `"rate_limit_auto_switch"` for changes triggered by the auto-mode-switch rate-limit recovery path, or `"refusal_fallback"` when the active model declined a request (content refusal) and the runtime switched to the configured refusal-fallback model. UI clients can use this to render contextual copy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cause: Option<String>,
     /// Context tier after the model change; null explicitly clears a previously selected tier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_tier: Option<ContextTier>,
+    /// True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tier_managed: Option<bool>,
     /// Newly selected model identifier
     pub new_model: String,
     /// Previously committed Auto preference, when one was explicitly selected.
@@ -1552,6 +1576,9 @@ pub struct SessionModelChangeData {
     /// Reasoning effort level after the model change, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort_managed: Option<bool>,
     /// Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort_model: Option<String>,
@@ -7555,7 +7582,7 @@ pub struct SessionManagedSettingsResolvedData {
     pub source: ManagedSettingsResolvedSource,
 }
 
-/// Session event "session.managed_settings_enforced". Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
+/// Session event "session.managed_settings_enforced". Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.
 ///
 /// <div class="warning">
 ///
@@ -7568,14 +7595,14 @@ pub struct SessionManagedSettingsResolvedData {
 pub struct SessionManagedSettingsEnforcedData {
     /// The category of runtime action that managed policy governed.
     pub action: ManagedSettingsEnforcedAction,
-    /// For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused. Absent for actions without a specific escalation primitive.
+    /// For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused. Absent for actions without a specific primitive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub escalation: Option<ManagedSettingsEnforcedEscalation>,
     /// Whether the enforcement was forced by fail-closed handling (managed policy could not be determined) rather than an explicit managed setting. When true, `setting` still names the restriction that was applied.
     pub fail_closed: bool,
     /// A human-readable explanation of why the action was governed, suitable for surfacing to the user.
     pub message: String,
-    /// The managed setting key responsible for the enforcement (e.g. `permissions.disableBypassPermissionsMode`).
+    /// The managed setting key responsible for the enforcement (for example `permissions.disableBypassPermissionsMode` or `permissions.disableAssistedPermissionsMode`).
     pub setting: String,
 }
 
@@ -11435,7 +11462,7 @@ pub enum ManagedSettingsResolvedSource {
 /// The category of runtime action that enterprise managed settings governed (blocked or capped)
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManagedSettingsEnforcedAction {
-    /// An attempt to turn on a bypass-permissions ("yolo") escalation was refused or capped because policy disables bypass-permissions mode.
+    /// An attempt to enter a permission mode governed by managed policy was refused or capped. The `setting` and `escalation` fields identify whether this was bypass permissions or Assisted Permissions.
     #[serde(rename = "bypass_permissions_blocked")]
     BypassPermissionsBlocked,
     /// Unknown variant for forward compatibility.
@@ -11444,7 +11471,7 @@ pub enum ManagedSettingsEnforcedAction {
     Unknown,
 }
 
-/// For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused
+/// For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManagedSettingsEnforcedEscalation {
     /// Full allow-all permissions — automatically approving tools, paths, and URLs.
@@ -11453,7 +11480,7 @@ pub enum ManagedSettingsEnforcedEscalation {
     /// Automatic approval of all tool permission requests.
     #[serde(rename = "approve_all")]
     ApproveAll,
-    /// Assisted mode — keeps normal prompt paths and adds an LLM recommendation, distinct from allow-all.
+    /// Assisted Permissions — uses an LLM review to reduce prompts, distinct from allow-all and not a hard security boundary.
     #[serde(rename = "assisted_approval")]
     AssistedApproval,
     /// Unrestricted filesystem access outside the session's allowed directories.

@@ -2361,7 +2361,7 @@ public sealed partial class SessionManagedSettingsResolvedEvent : SessionEvent
     public required SessionManagedSettingsResolvedData Data { get; set; }
 }
 
-/// <summary>Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.</summary>
+/// <summary>Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.</summary>
 /// <remarks>Represents the <c>session.managed_settings_enforced</c> event.</remarks>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed partial class SessionManagedSettingsEnforcedEvent : SessionEvent
@@ -2761,6 +2761,11 @@ public sealed partial class SessionStartData
     [JsonPropertyName("autoTier")]
     public AutoTier? AutoTier { get; set; }
 
+    /// <summary>True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("autoTierManaged")]
+    public bool? AutoTierManaged { get; set; }
+
     /// <summary>Working directory and git context at session start.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("context")]
@@ -2770,6 +2775,11 @@ public sealed partial class SessionStartData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("contextTier")]
     public ContextTier? ContextTier { get; set; }
+
+    /// <summary>True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("contextTierManaged")]
+    public bool? ContextTierManaged { get; set; }
 
     /// <summary>Version string of the Copilot application.</summary>
     [JsonPropertyName("copilotVersion")]
@@ -2793,6 +2803,11 @@ public sealed partial class SessionStartData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("reasoningEffort")]
     public string? ReasoningEffort { get; set; }
+
+    /// <summary>True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("reasoningEffortManaged")]
+    public bool? ReasoningEffortManaged { get; set; }
 
     /// <summary>Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -2850,6 +2865,11 @@ public sealed partial class SessionResumeData
     [JsonPropertyName("autoTier")]
     public AutoTier? AutoTier { get; set; }
 
+    /// <summary>True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("autoTierManaged")]
+    public bool? AutoTierManaged { get; set; }
+
     /// <summary>Updated working directory and git context at resume time.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("context")]
@@ -2859,6 +2879,11 @@ public sealed partial class SessionResumeData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("contextTier")]
     public ContextTier? ContextTier { get; set; }
+
+    /// <summary>True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("contextTierManaged")]
+    public bool? ContextTierManaged { get; set; }
 
     /// <summary>When true, tool calls and permission requests left in flight by the previous session lifetime remain pending after resume and the agentic loop awaits their results. User sends are queued behind the pending work until all such requests reach a terminal state. When false or omitted, pending work is normally marked as interrupted unless the resume passively joined live work owned by another client; sessionWasActive distinguishes that case.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -2878,6 +2903,11 @@ public sealed partial class SessionResumeData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("reasoningEffort")]
     public string? ReasoningEffort { get; set; }
+
+    /// <summary>True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("reasoningEffortManaged")]
+    public bool? ReasoningEffortManaged { get; set; }
 
     /// <summary>Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -3161,6 +3191,11 @@ public sealed partial class SessionModelChangeData
     [JsonPropertyName("autoTier")]
     public AutoTier? AutoTier { get; set; }
 
+    /// <summary>True when autoTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("autoTierManaged")]
+    public bool? AutoTierManaged { get; set; }
+
     /// <summary>Reason the change happened, when not user-initiated. `"rate_limit_auto_switch"` for changes triggered by the auto-mode-switch rate-limit recovery path, or `"refusal_fallback"` when the active model declined a request (content refusal) and the runtime switched to the configured refusal-fallback model. UI clients can use this to render contextual copy.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("cause")]
@@ -3170,6 +3205,11 @@ public sealed partial class SessionModelChangeData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("contextTier")]
     public ContextTier? ContextTier { get; set; }
+
+    /// <summary>True when contextTier is a managed-policy default. Omitted for user-authored and legacy values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("contextTierManaged")]
+    public bool? ContextTierManaged { get; set; }
 
     /// <summary>Newly selected model identifier.</summary>
     [JsonPropertyName("newModel")]
@@ -3204,6 +3244,11 @@ public sealed partial class SessionModelChangeData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("reasoningEffort")]
     public string? ReasoningEffort { get; set; }
+
+    /// <summary>True when the reasoning effort is a managed-policy default bound to reasoningEffortModel. Omitted for agent-authored, user-authored, independent, and legacy effort.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("reasoningEffortManaged")]
+    public bool? ReasoningEffortManaged { get; set; }
 
     /// <summary>Model that owns effort embedded in an authored model selection. Omitted for independent reasoning-effort overrides and legacy events.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -7135,7 +7180,7 @@ public sealed partial class SessionManagedSettingsResolvedData
     public required ManagedSettingsResolvedSource Source { get; set; }
 }
 
-/// <summary>Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.</summary>
+/// <summary>Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed partial class SessionManagedSettingsEnforcedData
 {
@@ -7143,7 +7188,7 @@ public sealed partial class SessionManagedSettingsEnforcedData
     [JsonPropertyName("action")]
     public required ManagedSettingsEnforcedAction Action { get; set; }
 
-    /// <summary>For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused. Absent for actions without a specific escalation primitive.</summary>
+    /// <summary>For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused. Absent for actions without a specific primitive.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("escalation")]
     public ManagedSettingsEnforcedEscalation? Escalation { get; set; }
@@ -7156,7 +7201,7 @@ public sealed partial class SessionManagedSettingsEnforcedData
     [JsonPropertyName("message")]
     public required string Message { get; set; }
 
-    /// <summary>The managed setting key responsible for the enforcement (e.g. `permissions.disableBypassPermissionsMode`).</summary>
+    /// <summary>The managed setting key responsible for the enforcement (for example `permissions.disableBypassPermissionsMode` or `permissions.disableAssistedPermissionsMode`).</summary>
     [JsonPropertyName("setting")]
     public required string Setting { get; set; }
 }
@@ -21013,7 +21058,7 @@ public readonly struct ManagedSettingsEnforcedAction : IEquatable<ManagedSetting
     /// <summary>Gets the value associated with this <see cref="ManagedSettingsEnforcedAction"/>.</summary>
     public string Value => _value ?? string.Empty;
 
-    /// <summary>An attempt to turn on a bypass-permissions ("yolo") escalation was refused or capped because policy disables bypass-permissions mode.</summary>
+    /// <summary>An attempt to enter a permission mode governed by managed policy was refused or capped. The `setting` and `escalation` fields identify whether this was bypass permissions or Assisted Permissions.</summary>
     public static ManagedSettingsEnforcedAction BypassPermissionsBlocked { get; } = new("bypass_permissions_blocked");
 
     /// <summary>Returns a value indicating whether two <see cref="ManagedSettingsEnforcedAction"/> instances are equivalent.</summary>
@@ -21052,7 +21097,7 @@ public readonly struct ManagedSettingsEnforcedAction : IEquatable<ManagedSetting
     }
 }
 
-/// <summary>For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused.</summary>
+/// <summary>For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
 public readonly struct ManagedSettingsEnforcedEscalation : IEquatable<ManagedSettingsEnforcedEscalation>
@@ -21077,7 +21122,7 @@ public readonly struct ManagedSettingsEnforcedEscalation : IEquatable<ManagedSet
     /// <summary>Automatic approval of all tool permission requests.</summary>
     public static ManagedSettingsEnforcedEscalation ApproveAll { get; } = new("approve_all");
 
-    /// <summary>Assisted mode — keeps normal prompt paths and adds an LLM recommendation, distinct from allow-all.</summary>
+    /// <summary>Assisted Permissions — uses an LLM review to reduce prompts, distinct from allow-all and not a hard security boundary.</summary>
     public static ManagedSettingsEnforcedEscalation AssistedApproval { get; } = new("assisted_approval");
 
     /// <summary>Unrestricted filesystem access outside the session's allowed directories.</summary>

@@ -1091,9 +1091,11 @@ class TestCreateSessionConfig:
             session = await client.create_session(
                 on_permission_request=PermissionHandler.approve_all,
                 enable_managed_settings=True,
+                enforce_managed_model_defaults=True,
                 managed_settings=ManagedSettings(
                     permissions=ManagedSettingsPermissions(
                         disable_bypass_permissions_mode=DisableBypassPermissionsModes.ALLOW_AUTO_ONLY,
+                        disable_assisted_permissions_mode=True,
                         deny=["Shell(git push)"],
                         ask=["Domain(publish.example)"],
                         allow=["Read(**)"],
@@ -1104,6 +1106,7 @@ class TestCreateSessionConfig:
             resumed_session = await client.resume_session(
                 session.session_id,
                 on_permission_request=PermissionHandler.approve_all,
+                enforce_managed_model_defaults=True,
                 managed_settings=ManagedSettings(
                     permissions=ManagedSettingsPermissions(
                         disable_bypass_permissions_mode="future-fail-closed-mode",
@@ -1115,9 +1118,12 @@ class TestCreateSessionConfig:
             assert session._managed_settings_enabled is True
             assert resumed_session._managed_settings_enabled is True
             assert captured["session.create"]["enableManagedSettings"] is True
+            assert captured["session.create"]["enforceManagedModelDefaults"] is True
+            assert captured["session.resume"]["enforceManagedModelDefaults"] is True
             assert captured["session.create"]["managedSettings"] == {
                 "permissions": {
                     "disableBypassPermissionsMode": "allow-auto-only",
+                    "disableAssistedPermissionsMode": True,
                     "deny": ["Shell(git push)"],
                     "ask": ["Domain(publish.example)"],
                     "allow": ["Read(**)"],

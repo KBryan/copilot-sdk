@@ -29,6 +29,23 @@ public record ManagedSettingsResolveParams(
     /** GitHub token to resolve instead of the current account. The call fails when the token cannot be resolved. */
     @JsonProperty("gitHubToken") String gitHubToken,
     /** Embedding client identity for server policy requests, as in session creation. Omit for the CLI identity. */
-    @JsonProperty("clientName") String clientName
+    @JsonProperty("clientName") String clientName,
+    /** Working directory used to run an organization policy helper. When omitted, sessionless resolution does not run the helper. */
+    @JsonProperty("workingDirectory") String workingDirectory
 ) {
+
+    /**
+     * Creates managed-settings resolution parameters without a working directory.
+     *
+     * @param selectionId Opaque account identifier returned by `account.getAllUsers`. When omitted, the current account is used, or device policy only when no account is signed in.
+     * @param gitHubToken GitHub token to resolve instead of the current account. The call fails when the token cannot be resolved.
+     * @param clientName Embedding client identity for server policy requests, as in session creation. Omit for the CLI identity.
+     */
+    public ManagedSettingsResolveParams(
+        String selectionId,
+        String gitHubToken,
+        String clientName
+    ) {
+        this(selectionId, gitHubToken, clientName, null);
+    }
 }

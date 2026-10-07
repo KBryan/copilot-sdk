@@ -992,6 +992,7 @@ func (c *Client) CreateSession(ctx context.Context, config *SessionConfig) (*Ses
 		req.FeatureFlags = &config.FeatureFlags
 	}
 	req.EnableManagedSettings = config.EnableManagedSettings
+	req.EnforceManagedModelDefaults = config.EnforceManagedModelDefaults
 	req.ManagedSettings = config.ManagedSettings
 
 	if len(config.Commands) > 0 {
@@ -1471,6 +1472,7 @@ func (c *Client) ResumeSessionWithOptions(ctx context.Context, sessionID string,
 		req.FeatureFlags = &config.FeatureFlags
 	}
 	req.EnableManagedSettings = config.EnableManagedSettings
+	req.EnforceManagedModelDefaults = config.EnforceManagedModelDefaults
 	req.ManagedSettings = config.ManagedSettings
 	if config.OnPermissionRequest != nil {
 		req.RequestPermission = Bool(true)

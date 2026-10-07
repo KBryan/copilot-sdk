@@ -6396,6 +6396,10 @@ class ManagedSettingMeta:
 
     Lock state and provenance of `values.autoTier`.
 
+    Lock state and provenance of `values.contextTier`.
+
+    Lock state and provenance of `values.effortLevel`.
+
     Lock state and provenance of `values.model`.
     """
     overridable: bool
@@ -6407,18 +6411,25 @@ class ManagedSettingMeta:
     `server`, or `policyHelper`. These scalar defaults select one winning channel, not a
     mixed source. Treat unknown values as additional channels; more may be added.
     """
+    requested: str | None = None
+    """Original managed value when the runtime adjusted it to a supported effective value.
+    Omitted when no adjustment was needed.
+    """
 
     @staticmethod
     def from_dict(obj: Any) -> 'ManagedSettingMeta':
         assert isinstance(obj, dict)
         overridable = from_bool(obj.get("overridable"))
         source = from_str(obj.get("source"))
-        return ManagedSettingMeta(overridable, source)
+        requested = from_union([from_str, from_none], obj.get("requested"))
+        return ManagedSettingMeta(overridable, source, requested)
 
     def to_dict(self) -> dict:
         result: dict = {}
         result["overridable"] = from_bool(self.overridable)
         result["source"] = from_str(self.source)
+        if self.requested is not None:
+            result["requested"] = from_union([from_str, from_none], self.requested)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -6582,22 +6593,36 @@ class ManagedSettingsValues:
     auto_tier: AutoTier | None = None
     """Managed Auto routing preference, used when the selected model is `auto`."""
 
+    context_tier: ContextTier | None = None
+    """Managed context-tier default for the managed concrete model."""
+
+    effort_level: str | None = None
+    """Managed reasoning-effort default for the managed concrete model. The runtime clamps it to
+    an entitled effort when model availability is known.
+    """
     model: str | None = None
-    """Managed default model identifier, as configured. New sessions start with it; it can name
-    a model the account cannot use, so hosts match it against the listed models.
+    """Managed default model identifier. When model availability was resolved, aliases and
+    family names are projected to a concrete available model ID; otherwise the configured
+    value is returned.
     """
 
     @staticmethod
     def from_dict(obj: Any) -> 'ManagedSettingsValues':
         assert isinstance(obj, dict)
         auto_tier = from_union([AutoTier, from_none], obj.get("autoTier"))
+        context_tier = from_union([ContextTier, from_none], obj.get("contextTier"))
+        effort_level = from_union([from_str, from_none], obj.get("effortLevel"))
         model = from_union([from_str, from_none], obj.get("model"))
-        return ManagedSettingsValues(auto_tier, model)
+        return ManagedSettingsValues(auto_tier, context_tier, effort_level, model)
 
     def to_dict(self) -> dict:
         result: dict = {}
         if self.auto_tier is not None:
             result["autoTier"] = from_union([lambda x: to_enum(AutoTier, x), from_none], self.auto_tier)
+        if self.context_tier is not None:
+            result["contextTier"] = from_union([lambda x: to_enum(ContextTier, x), from_none], self.context_tier)
+        if self.effort_level is not None:
+            result["effortLevel"] = from_union([from_str, from_none], self.effort_level)
         if self.model is not None:
             result["model"] = from_union([from_str, from_none], self.model)
         return result
@@ -6645,6 +6670,10 @@ class ManagedSettingsResolveRequest:
     """Opaque account identifier returned by `account.getAllUsers`. When omitted, the current
     account is used, or device policy only when no account is signed in.
     """
+    working_directory: str | None = None
+    """Working directory used to run an organization policy helper. When omitted, sessionless
+    resolution does not run the helper.
+    """
 
     @staticmethod
     def from_dict(obj: Any) -> 'ManagedSettingsResolveRequest':
@@ -6652,7 +6681,8 @@ class ManagedSettingsResolveRequest:
         client_name = from_union([from_str, from_none], obj.get("clientName"))
         git_hub_token = from_union([from_str, from_none], obj.get("gitHubToken"))
         selection_id = from_union([from_str, from_none], obj.get("selectionId"))
-        return ManagedSettingsResolveRequest(client_name, git_hub_token, selection_id)
+        working_directory = from_union([from_str, from_none], obj.get("workingDirectory"))
+        return ManagedSettingsResolveRequest(client_name, git_hub_token, selection_id, working_directory)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -6662,6 +6692,8 @@ class ManagedSettingsResolveRequest:
             result["gitHubToken"] = from_union([from_str, from_none], self.git_hub_token)
         if self.selection_id is not None:
             result["selectionId"] = from_union([from_str, from_none], self.selection_id)
+        if self.working_directory is not None:
+            result["workingDirectory"] = from_union([from_str, from_none], self.working_directory)
         return result
 
 # Experimental: this type is part of an experimental API and may change or be removed.
@@ -14046,6 +14078,11 @@ class SessionManagedPermissions:
     deny: list[str] | None = None
     """Permission rules that block matching operations. Deny has highest precedence."""
 
+    disable_assisted_permissions_mode: bool | None = None
+    """When true, prevents Assisted Permissions from being activated. An actively Assisted
+    session falls back to Manual Approval while the policy is in force. Omit the key or set
+    it to false to impose no restriction.
+    """
     disable_bypass_permissions_mode: str | None = None
     """When set to `disable`, prevents bypass/allow-all permission modes. Advisory auto-approval
     remains available because normal prompt paths stay active. Any other value is accepted
@@ -14066,9 +14103,10 @@ class SessionManagedPermissions:
         allow = from_union([lambda x: from_list(from_str, x), from_none], obj.get("allow"))
         ask = from_union([lambda x: from_list(from_str, x), from_none], obj.get("ask"))
         deny = from_union([lambda x: from_list(from_str, x), from_none], obj.get("deny"))
+        disable_assisted_permissions_mode = from_union([from_bool, from_none], obj.get("disableAssistedPermissionsMode"))
         disable_bypass_permissions_mode = from_union([from_str, from_none], obj.get("disableBypassPermissionsMode"))
         limit_to = from_union([lambda x: from_list(from_str, x), from_none], obj.get("limitTo"))
-        return SessionManagedPermissions(allow, ask, deny, disable_bypass_permissions_mode, limit_to)
+        return SessionManagedPermissions(allow, ask, deny, disable_assisted_permissions_mode, disable_bypass_permissions_mode, limit_to)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -14078,6 +14116,8 @@ class SessionManagedPermissions:
             result["ask"] = from_union([lambda x: from_list(from_str, x), from_none], self.ask)
         if self.deny is not None:
             result["deny"] = from_union([lambda x: from_list(from_str, x), from_none], self.deny)
+        if self.disable_assisted_permissions_mode is not None:
+            result["disableAssistedPermissionsMode"] = from_union([from_bool, from_none], self.disable_assisted_permissions_mode)
         if self.disable_bypass_permissions_mode is not None:
             result["disableBypassPermissionsMode"] = from_union([from_str, from_none], self.disable_bypass_permissions_mode)
         if self.limit_to is not None:
@@ -24603,6 +24643,12 @@ class ManagedSettingsMeta:
     auto_tier: ManagedSettingMeta | None = None
     """Lock state and provenance of `values.autoTier`."""
 
+    context_tier: ManagedSettingMeta | None = None
+    """Lock state and provenance of `values.contextTier`."""
+
+    effort_level: ManagedSettingMeta | None = None
+    """Lock state and provenance of `values.effortLevel`."""
+
     model: ManagedSettingMeta | None = None
     """Lock state and provenance of `values.model`."""
 
@@ -24610,13 +24656,19 @@ class ManagedSettingsMeta:
     def from_dict(obj: Any) -> 'ManagedSettingsMeta':
         assert isinstance(obj, dict)
         auto_tier = from_union([ManagedSettingMeta.from_dict, from_none], obj.get("autoTier"))
+        context_tier = from_union([ManagedSettingMeta.from_dict, from_none], obj.get("contextTier"))
+        effort_level = from_union([ManagedSettingMeta.from_dict, from_none], obj.get("effortLevel"))
         model = from_union([ManagedSettingMeta.from_dict, from_none], obj.get("model"))
-        return ManagedSettingsMeta(auto_tier, model)
+        return ManagedSettingsMeta(auto_tier, context_tier, effort_level, model)
 
     def to_dict(self) -> dict:
         result: dict = {}
         if self.auto_tier is not None:
             result["autoTier"] = from_union([lambda x: to_class(ManagedSettingMeta, x), from_none], self.auto_tier)
+        if self.context_tier is not None:
+            result["contextTier"] = from_union([lambda x: to_class(ManagedSettingMeta, x), from_none], self.context_tier)
+        if self.effort_level is not None:
+            result["effortLevel"] = from_union([lambda x: to_class(ManagedSettingMeta, x), from_none], self.effort_level)
         if self.model is not None:
             result["model"] = from_union([lambda x: to_class(ManagedSettingMeta, x), from_none], self.model)
         return result
@@ -47615,6 +47667,11 @@ class SessionOpenOptions:
     enable_streaming: bool | None = None
     """Whether model responses stream as delta events."""
 
+    enforce_managed_model_defaults: bool | None = None
+    """Opt in to enforcing non-overridable managed model controls on session model, Auto-tier,
+    reasoning-effort, and context-tier changes. Managed defaults still apply when omitted;
+    this option only turns conflicting changes into errors.
+    """
     env_value_mode: MCPSetEnvValueModeDetails | None = None
     """How MCP server environment values are interpreted."""
 
@@ -47816,6 +47873,7 @@ class SessionOpenOptions:
         enable_script_safety = from_union([from_bool, from_none], obj.get("enableScriptSafety"))
         enable_skills = from_union([from_bool, from_none], obj.get("enableSkills"))
         enable_streaming = from_union([from_bool, from_none], obj.get("enableStreaming"))
+        enforce_managed_model_defaults = from_union([from_bool, from_none], obj.get("enforceManagedModelDefaults"))
         env_value_mode = from_union([MCPSetEnvValueModeDetails, from_none], obj.get("envValueMode"))
         events_log_directory = from_union([from_str, from_none], obj.get("eventsLogDirectory"))
         events_log_includes_subagents = from_union([from_bool, from_none], obj.get("eventsLogIncludesSubagents"))
@@ -47863,7 +47921,7 @@ class SessionOpenOptions:
         verbosity = from_union([Verbosity, from_none], obj.get("verbosity"))
         working_directory = from_union([from_str, from_none], obj.get("workingDirectory"))
         working_directory_context = from_union([SessionContext.from_dict, from_none], obj.get("workingDirectoryContext"))
-        return SessionOpenOptions(additional_content_exclusion_policies, additional_directories, agent_context, allow_all_mcp_server_instructions, ask_user_disabled, auth_client_id_metadata_url, auth_info, auto_tier_is_explicit, available_tools, capi, client_kind, client_name, coauthor_enabled, config_dir, continue_on_auto_mode, copilot_url, custom_agents_local_only, detached_from_spawning_parent_engagement_id, detached_from_spawning_parent_session_id, disabled_instruction_sources, disabled_mcp_servers, disabled_skills, enable_citations, enable_file_change_tracking, enable_managed_settings, enable_on_demand_instruction_discovery, enable_script_safety, enable_skills, enable_streaming, env_value_mode, events_log_directory, events_log_includes_subagents, excluded_builtin_agents, excluded_tools, exp_assignments, feature_flags, has_skill_provider, ignored_skills_locations, included_builtin_agents, included_builtin_skills, installed_plugins, integration_id, is_experimental_mode, log_interactive_shells, lsp_client_name, managed_mcp_servers, managed_settings, max_inline_binary_bytes, memory, model, model_capabilities_overrides, models, name, provider, providers, reasoning_effort, reasoning_summary, refresh_custom_instructions, remote_defaulted_on, remote_exporting, remote_steerable, running_in_interactive_mode, sandbox_config, sandbox_config_source, session_capabilities, session_id, session_limits, shell, shell_init_profile, shell_process_flags, skill_directories, skip_custom_instructions, trajectory_file, verbosity, working_directory, working_directory_context)
+        return SessionOpenOptions(additional_content_exclusion_policies, additional_directories, agent_context, allow_all_mcp_server_instructions, ask_user_disabled, auth_client_id_metadata_url, auth_info, auto_tier_is_explicit, available_tools, capi, client_kind, client_name, coauthor_enabled, config_dir, continue_on_auto_mode, copilot_url, custom_agents_local_only, detached_from_spawning_parent_engagement_id, detached_from_spawning_parent_session_id, disabled_instruction_sources, disabled_mcp_servers, disabled_skills, enable_citations, enable_file_change_tracking, enable_managed_settings, enable_on_demand_instruction_discovery, enable_script_safety, enable_skills, enable_streaming, enforce_managed_model_defaults, env_value_mode, events_log_directory, events_log_includes_subagents, excluded_builtin_agents, excluded_tools, exp_assignments, feature_flags, has_skill_provider, ignored_skills_locations, included_builtin_agents, included_builtin_skills, installed_plugins, integration_id, is_experimental_mode, log_interactive_shells, lsp_client_name, managed_mcp_servers, managed_settings, max_inline_binary_bytes, memory, model, model_capabilities_overrides, models, name, provider, providers, reasoning_effort, reasoning_summary, refresh_custom_instructions, remote_defaulted_on, remote_exporting, remote_steerable, running_in_interactive_mode, sandbox_config, sandbox_config_source, session_capabilities, session_id, session_limits, shell, shell_init_profile, shell_process_flags, skill_directories, skip_custom_instructions, trajectory_file, verbosity, working_directory, working_directory_context)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -47925,6 +47983,8 @@ class SessionOpenOptions:
             result["enableSkills"] = from_union([from_bool, from_none], self.enable_skills)
         if self.enable_streaming is not None:
             result["enableStreaming"] = from_union([from_bool, from_none], self.enable_streaming)
+        if self.enforce_managed_model_defaults is not None:
+            result["enforceManagedModelDefaults"] = from_union([from_bool, from_none], self.enforce_managed_model_defaults)
         if self.env_value_mode is not None:
             result["envValueMode"] = from_union([lambda x: to_enum(MCPSetEnvValueModeDetails, x), from_none], self.env_value_mode)
         if self.events_log_directory is not None:
@@ -56610,13 +56670,13 @@ class ExtensionsApi:
         return ExtensionList.from_dict(await self._client.request("session.extensions.list", {"sessionId": self._session_id}, **_timeout_kwargs(timeout)))
 
     async def enable(self, params: ExtensionsEnableRequest, *, timeout: float | None = None) -> None:
-        "Enables an extension for the session.\n\nArgs:\n    params: Source-qualified extension identifier to enable for the session."
+        "Enables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.\n\nArgs:\n    params: Source-qualified extension identifier to enable for the session."
         params_dict: dict[str, Any] = {k: v for k, v in params.to_dict().items() if v is not None}
         params_dict["sessionId"] = self._session_id
         await self._client.request("session.extensions.enable", params_dict, **_timeout_kwargs(timeout))
 
     async def disable(self, params: ExtensionsDisableRequest, *, timeout: float | None = None) -> None:
-        "Disables an extension for the session.\n\nArgs:\n    params: Source-qualified extension identifier to disable for the session."
+        "Disables an extension for the session and persists the preference when the session has a settings store. Hosts synchronizing effective membership should use extensions.reconcile instead.\n\nArgs:\n    params: Source-qualified extension identifier to disable for the session."
         params_dict: dict[str, Any] = {k: v for k, v in params.to_dict().items() if v is not None}
         params_dict["sessionId"] = self._session_id
         await self._client.request("session.extensions.disable", params_dict, **_timeout_kwargs(timeout))
@@ -56624,6 +56684,10 @@ class ExtensionsApi:
     async def reload(self, *, timeout: float | None = None) -> None:
         "Reloads extension definitions and processes for the session."
         await self._client.request("session.extensions.reload", {"sessionId": self._session_id}, **_timeout_kwargs(timeout))
+
+    async def reconcile(self, *, timeout: float | None = None) -> ExtensionList:
+        "Host-only reconciliation of authoritative session-effective extension membership and enablement. Refreshes runtime-owned discovery and preferences without persisting settings, installing plugins, or restarting unchanged activations. Returns ExtensionList only after required starts and process/contribution cleanup settle. Takes no caller inventory or overrides. Missing controllers, unready/incomplete discovery, unavailable workspaces, superseded inputs, and lifecycle failures are errors, not empty membership. Independently proven revocations may be applied before an error; retry converges without restarting healthy activations. Error data contains lifecycleChangesApplied and code: extension_reconciliation_host_required, extension_reconciliation_unavailable, extension_reconciliation_not_ready, extension_reconciliation_discovery_failed, extension_reconciliation_workspace_unavailable, extension_reconciliation_superseded, or extension_reconciliation_lifecycle_failed. Mark host reconciliation state applied only on success. On older runtimes, method-not-found must not fall back to global discovery and persistent extension disables.\n\nReturns:\n    Extensions discovered for the session, with their current status."
+        return ExtensionList.from_dict(await self._client.request("session.extensions.reconcile", {"sessionId": self._session_id}, **_timeout_kwargs(timeout)))
 
     async def send_attachments_to_message(self, params: SendAttachmentsToMessageParams, *, timeout: float | None = None) -> None:
         "Push attachments into the next user-message turn from an extension. The host should surface them as composer pills and forward them via the next session.send call. Callable only by extension-owned connections.\n\nArgs:\n    params: Parameters for session.extensions.sendAttachmentsToMessage."

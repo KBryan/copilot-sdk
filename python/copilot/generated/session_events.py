@@ -2428,7 +2428,7 @@ class SessionFusionRouteStartedData:
 # Experimental: this type is part of an experimental API and may change or be removed.
 @dataclass
 class SessionManagedSettingsEnforcedData:
-    "Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on a bypass-permissions escalation while policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes."
+    "Runtime enforcement of enterprise managed settings: fires when the session blocks or caps a runtime action because enterprise policy governs it, so SDK clients can explain *why* an action was governed. Unlike `session.managed_settings_resolved` (which reports *what* is managed), this reports a concrete governed action — e.g. a user or host tried to turn on bypass permissions or Assisted Permissions while the corresponding policy disables it. Emitted live (not persisted to the session event log) on user/host-initiated attempts only, never for silent policy application. Marked experimental while the managed-settings surface stabilizes."
     action: ManagedSettingsEnforcedAction
     fail_closed: bool
     message: str
@@ -9814,14 +9814,17 @@ class SessionModelChangeData:
     "Model change details including previous and new model identifiers"
     new_model: str
     auto_tier: AutoTier | None = None
+    auto_tier_managed: bool | None = None
     cause: str | None = None
     context_tier: ContextTier | None = None
+    context_tier_managed: bool | None = None
     previous_auto_tier: AutoTier | None = None
     previous_model: str | None = None
     previous_reasoning_effort: str | None = None
     previous_reasoning_summary: ReasoningSummary | None = None
     previous_verbosity: Verbosity | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_managed: bool | None = None
     reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     source: ModelChangeSource | None = None
@@ -9832,14 +9835,17 @@ class SessionModelChangeData:
         assert isinstance(obj, dict)
         new_model = from_str(obj.get("newModel"))
         auto_tier = from_union([from_none, lambda x: parse_enum(AutoTier, x)], obj.get("autoTier"))
+        auto_tier_managed = from_union([from_none, from_bool], obj.get("autoTierManaged"))
         cause = from_union([from_none, from_str], obj.get("cause"))
         context_tier = from_union([from_none, lambda x: parse_enum(ContextTier, x)], obj.get("contextTier"))
+        context_tier_managed = from_union([from_none, from_bool], obj.get("contextTierManaged"))
         previous_auto_tier = from_union([from_none, lambda x: parse_enum(AutoTier, x)], obj.get("previousAutoTier"))
         previous_model = from_union([from_none, from_str], obj.get("previousModel"))
         previous_reasoning_effort = from_union([from_none, from_str], obj.get("previousReasoningEffort"))
         previous_reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("previousReasoningSummary"))
         previous_verbosity = from_union([from_none, lambda x: parse_enum(Verbosity, x)], obj.get("previousVerbosity"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_managed = from_union([from_none, from_bool], obj.get("reasoningEffortManaged"))
         reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         source = from_union([from_none, lambda x: parse_enum(ModelChangeSource, x)], obj.get("source"))
@@ -9847,14 +9853,17 @@ class SessionModelChangeData:
         return SessionModelChangeData(
             new_model=new_model,
             auto_tier=auto_tier,
+            auto_tier_managed=auto_tier_managed,
             cause=cause,
             context_tier=context_tier,
+            context_tier_managed=context_tier_managed,
             previous_auto_tier=previous_auto_tier,
             previous_model=previous_model,
             previous_reasoning_effort=previous_reasoning_effort,
             previous_reasoning_summary=previous_reasoning_summary,
             previous_verbosity=previous_verbosity,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_managed=reasoning_effort_managed,
             reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             source=source,
@@ -9866,10 +9875,14 @@ class SessionModelChangeData:
         result["newModel"] = from_str(self.new_model)
         if self.auto_tier is not None:
             result["autoTier"] = from_union([from_none, lambda x: to_enum(AutoTier, x)], self.auto_tier)
+        if self.auto_tier_managed is not None:
+            result["autoTierManaged"] = from_union([from_none, from_bool], self.auto_tier_managed)
         if self.cause is not None:
             result["cause"] = from_union([from_none, from_str], self.cause)
         if self.context_tier is not None:
             result["contextTier"] = from_union([from_none, lambda x: to_enum(ContextTier, x)], self.context_tier)
+        if self.context_tier_managed is not None:
+            result["contextTierManaged"] = from_union([from_none, from_bool], self.context_tier_managed)
         if self.previous_auto_tier is not None:
             result["previousAutoTier"] = from_union([from_none, lambda x: to_enum(AutoTier, x)], self.previous_auto_tier)
         if self.previous_model is not None:
@@ -9882,6 +9895,8 @@ class SessionModelChangeData:
             result["previousVerbosity"] = from_union([from_none, lambda x: to_enum(Verbosity, x)], self.previous_verbosity)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_managed is not None:
+            result["reasoningEffortManaged"] = from_union([from_none, from_bool], self.reasoning_effort_managed)
         if self.reasoning_effort_model is not None:
             result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
@@ -10000,11 +10015,14 @@ class SessionResumeData:
     resume_time: datetime
     already_in_use: bool | None = None
     auto_tier: AutoTier | None = None
+    auto_tier_managed: bool | None = None
     context: WorkingDirectoryContext | None = None
     context_tier: ContextTier | None = None
+    context_tier_managed: bool | None = None
     continue_pending_work: bool | None = None
     events_file_size_bytes: int | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_managed: bool | None = None
     reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     remote_steerable: bool | None = None
@@ -10020,11 +10038,14 @@ class SessionResumeData:
         resume_time = from_datetime(obj.get("resumeTime"))
         already_in_use = from_union([from_none, from_bool], obj.get("alreadyInUse"))
         auto_tier = from_union([from_none, lambda x: parse_enum(AutoTier, x)], obj.get("autoTier"))
+        auto_tier_managed = from_union([from_none, from_bool], obj.get("autoTierManaged"))
         context = from_union([from_none, WorkingDirectoryContext.from_dict], obj.get("context"))
         context_tier = from_union([from_none, lambda x: parse_enum(ContextTier, x)], obj.get("contextTier"))
+        context_tier_managed = from_union([from_none, from_bool], obj.get("contextTierManaged"))
         continue_pending_work = from_union([from_none, from_bool], obj.get("continuePendingWork"))
         events_file_size_bytes = from_union([from_none, from_int], obj.get("eventsFileSizeBytes"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_managed = from_union([from_none, from_bool], obj.get("reasoningEffortManaged"))
         reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         remote_steerable = from_union([from_none, from_bool], obj.get("remoteSteerable"))
@@ -10037,11 +10058,14 @@ class SessionResumeData:
             resume_time=resume_time,
             already_in_use=already_in_use,
             auto_tier=auto_tier,
+            auto_tier_managed=auto_tier_managed,
             context=context,
             context_tier=context_tier,
+            context_tier_managed=context_tier_managed,
             continue_pending_work=continue_pending_work,
             events_file_size_bytes=events_file_size_bytes,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_managed=reasoning_effort_managed,
             reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             remote_steerable=remote_steerable,
@@ -10059,16 +10083,22 @@ class SessionResumeData:
             result["alreadyInUse"] = from_union([from_none, from_bool], self.already_in_use)
         if self.auto_tier is not None:
             result["autoTier"] = from_union([from_none, lambda x: to_enum(AutoTier, x)], self.auto_tier)
+        if self.auto_tier_managed is not None:
+            result["autoTierManaged"] = from_union([from_none, from_bool], self.auto_tier_managed)
         if self.context is not None:
             result["context"] = from_union([from_none, lambda x: to_class(WorkingDirectoryContext, x)], self.context)
         if self.context_tier is not None:
             result["contextTier"] = from_union([from_none, lambda x: to_enum(ContextTier, x)], self.context_tier)
+        if self.context_tier_managed is not None:
+            result["contextTierManaged"] = from_union([from_none, from_bool], self.context_tier_managed)
         if self.continue_pending_work is not None:
             result["continuePendingWork"] = from_union([from_none, from_bool], self.continue_pending_work)
         if self.events_file_size_bytes is not None:
             result["eventsFileSizeBytes"] = from_union([from_none, to_int], self.events_file_size_bytes)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_managed is not None:
+            result["reasoningEffortManaged"] = from_union([from_none, from_bool], self.reasoning_effort_managed)
         if self.reasoning_effort_model is not None:
             result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
@@ -10359,11 +10389,14 @@ class SessionStartData:
     version: int
     already_in_use: bool | None = None
     auto_tier: AutoTier | None = None
+    auto_tier_managed: bool | None = None
     context: WorkingDirectoryContext | None = None
     context_tier: ContextTier | None = None
+    context_tier_managed: bool | None = None
     detached_from_spawning_parent_session_id: str | None = None
     github_mcp_tool_config: GitHubMcpToolConfig | None = None
     reasoning_effort: str | None = None
+    reasoning_effort_managed: bool | None = None
     reasoning_effort_model: str | None = None
     reasoning_summary: ReasoningSummary | None = None
     remote_steerable: bool | None = None
@@ -10381,11 +10414,14 @@ class SessionStartData:
         version = from_int(obj.get("version"))
         already_in_use = from_union([from_none, from_bool], obj.get("alreadyInUse"))
         auto_tier = from_union([from_none, lambda x: parse_enum(AutoTier, x)], obj.get("autoTier"))
+        auto_tier_managed = from_union([from_none, from_bool], obj.get("autoTierManaged"))
         context = from_union([from_none, WorkingDirectoryContext.from_dict], obj.get("context"))
         context_tier = from_union([from_none, lambda x: parse_enum(ContextTier, x)], obj.get("contextTier"))
+        context_tier_managed = from_union([from_none, from_bool], obj.get("contextTierManaged"))
         detached_from_spawning_parent_session_id = from_union([from_none, from_str], obj.get("detachedFromSpawningParentSessionId"))
         github_mcp_tool_config = from_union([from_none, GitHubMcpToolConfig.from_dict], obj.get("githubMcpToolConfig"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        reasoning_effort_managed = from_union([from_none, from_bool], obj.get("reasoningEffortManaged"))
         reasoning_effort_model = from_union([from_none, from_str], obj.get("reasoningEffortModel"))
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         remote_steerable = from_union([from_none, from_bool], obj.get("remoteSteerable"))
@@ -10400,11 +10436,14 @@ class SessionStartData:
             version=version,
             already_in_use=already_in_use,
             auto_tier=auto_tier,
+            auto_tier_managed=auto_tier_managed,
             context=context,
             context_tier=context_tier,
+            context_tier_managed=context_tier_managed,
             detached_from_spawning_parent_session_id=detached_from_spawning_parent_session_id,
             github_mcp_tool_config=github_mcp_tool_config,
             reasoning_effort=reasoning_effort,
+            reasoning_effort_managed=reasoning_effort_managed,
             reasoning_effort_model=reasoning_effort_model,
             reasoning_summary=reasoning_summary,
             remote_steerable=remote_steerable,
@@ -10424,16 +10463,22 @@ class SessionStartData:
             result["alreadyInUse"] = from_union([from_none, from_bool], self.already_in_use)
         if self.auto_tier is not None:
             result["autoTier"] = from_union([from_none, lambda x: to_enum(AutoTier, x)], self.auto_tier)
+        if self.auto_tier_managed is not None:
+            result["autoTierManaged"] = from_union([from_none, from_bool], self.auto_tier_managed)
         if self.context is not None:
             result["context"] = from_union([from_none, lambda x: to_class(WorkingDirectoryContext, x)], self.context)
         if self.context_tier is not None:
             result["contextTier"] = from_union([from_none, lambda x: to_enum(ContextTier, x)], self.context_tier)
+        if self.context_tier_managed is not None:
+            result["contextTierManaged"] = from_union([from_none, from_bool], self.context_tier_managed)
         if self.detached_from_spawning_parent_session_id is not None:
             result["detachedFromSpawningParentSessionId"] = from_union([from_none, from_str], self.detached_from_spawning_parent_session_id)
         if self.github_mcp_tool_config is not None:
             result["githubMcpToolConfig"] = from_union([from_none, lambda x: to_class(GitHubMcpToolConfig, x)], self.github_mcp_tool_config)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.reasoning_effort_managed is not None:
+            result["reasoningEffortManaged"] = from_union([from_none, from_bool], self.reasoning_effort_managed)
         if self.reasoning_effort_model is not None:
             result["reasoningEffortModel"] = from_union([from_none, from_str], self.reasoning_effort_model)
         if self.reasoning_summary is not None:
@@ -14170,17 +14215,17 @@ class IndexedSearchState(Enum):
 
 class ManagedSettingsEnforcedAction(Enum):
     "The category of runtime action that enterprise managed settings governed (blocked or capped)"
-    # An attempt to turn on a bypass-permissions ("yolo") escalation was refused or capped because policy disables bypass-permissions mode.
+    # An attempt to enter a permission mode governed by managed policy was refused or capped. The `setting` and `escalation` fields identify whether this was bypass permissions or Assisted Permissions.
     BYPASS_PERMISSIONS_BLOCKED = "bypass_permissions_blocked"
 
 
 class ManagedSettingsEnforcedEscalation(Enum):
-    "For a `bypass_permissions_blocked` action, which permission-escalation primitive was refused"
+    "For a `bypass_permissions_blocked` action, which permission-mode or escalation primitive was refused"
     # Full allow-all permissions — automatically approving tools, paths, and URLs.
     ALLOW_ALL = "allow_all"
     # Automatic approval of all tool permission requests.
     APPROVE_ALL = "approve_all"
-    # Assisted mode — keeps normal prompt paths and adds an LLM recommendation, distinct from allow-all.
+    # Assisted Permissions — uses an LLM review to reduce prompts, distinct from allow-all and not a hard security boundary.
     ASSISTED_APPROVAL = "assisted_approval"
     # Unrestricted filesystem access outside the session's allowed directories.
     UNRESTRICTED_PATHS = "unrestricted_paths"

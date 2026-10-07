@@ -964,69 +964,118 @@ describe("ReplayingCapiProxy", () => {
     expect(result.conversations[0].messages[0].content).toBe("What is 2+2?");
   });
 
-  test("strips mode_changed_notice from user messages", async () => {
-    const requestBody = JSON.stringify({
-      messages: [
+  test.each([
+    ["mode_changed_notice", "<plan_mode>Write a plan only.</plan_mode>"],
+    ["tools_changed_notice", "Tools no longer available: exit_plan_mode"],
+  ])(
+    "strips %s from user messages without losing surrounding text",
+    async (tag, body) => {
+      const requestBody = JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content:
+              `Context before.\n\n<${tag}>\n${body}\n</${tag}>\n\nCreate a brief implementation plan.`,
+          },
+        ],
+      });
+      const responseBody = JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "Plan ready" } }],
+      });
+
+      const outputPath = await createProxy([
+        { url: "/chat/completions", requestBody, responseBody },
+      ]);
+
+      const result = await readYamlOutput(outputPath);
+      expect(result.conversations[0].messages[0].content).toBe(
+        "Context before.\n\nCreate a brief implementation plan.",
+      );
+    },
+  );
+
+  test.each([1, 2])(
+    "strips %i adjacent mode notices without duplicating the retained model separator",
+    async (count) => {
+      const modelNotice =
+        "<tools_changed_notice>\nThe model has been switched from claude-sonnet-5 to claude-haiku-4.5.\n</tools_changed_notice>";
+      const modeNotice =
+        "<mode_changed_notice>\nPlan mode is no longer active.\n</mode_changed_notice>";
+      const instructions = "You are now in fleet mode. Implement the plan.";
+      const outputPath = await createProxy([
         {
-          role: "user",
-          content:
-            "Context before.\n\n<mode_changed_notice>\n<plan_mode>Write a plan only.</plan_mode>\n</mode_changed_notice>\n\nCreate a brief implementation plan.",
+          url: "/chat/completions",
+          requestBody: JSON.stringify({
+            messages: [
+              {
+                role: "user",
+                content: [
+                  modelNotice,
+                  ...Array.from({ length: count }, () => modeNotice),
+                  instructions,
+                ].join(count === 2 ? "\n\n\n\n" : "\n\n"),
+              },
+            ],
+          }),
+          responseBody: JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "Done" } }],
+          }),
         },
-      ],
-    });
-    const responseBody = JSON.stringify({
-      choices: [{ message: { role: "assistant", content: "Plan ready" } }],
-    });
+      ]);
+      const result = await readYamlOutput(outputPath);
+      expect(result.conversations[0].messages[0].content).toBe(
+        `${modelNotice}\n\n${instructions}`,
+      );
+    },
+  );
 
-    const outputPath = await createProxy([
-      { url: "/chat/completions", requestBody, responseBody },
-    ]);
+  test.each([
+    ["mode_changed_notice", "Plan mode is no longer active."],
+    [
+      "tools_changed_notice",
+      "Tools no longer available: exit_plan_mode\n\nImportant: Do not attempt to call tools that are no longer available unless you've been notified that they're available again.",
+    ],
+  ])(
+    "drops %s-only user turns while preserving genuinely empty input",
+    async (tag, body) => {
+      const responseBody = JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "Ready" } }],
+      });
+      const noticeOutputPath = await createProxy([
+        {
+          url: "/chat/completions",
+          requestBody: JSON.stringify({
+            messages: [
+              {
+                role: "user",
+                content: `<${tag}>\n${body}\n</${tag}>`,
+              },
+            ],
+          }),
+          responseBody,
+        },
+      ]);
+      const noticeResult = await readYamlOutput(noticeOutputPath);
+      expect(noticeResult.conversations[0].messages).toEqual([
+        { role: "assistant", content: "Ready" },
+      ]);
 
-    const result = await readYamlOutput(outputPath);
-    expect(result.conversations[0].messages[0].content).toBe(
-      "Context before.\n\nCreate a brief implementation plan.",
-    );
-  });
-
-  test("drops notice-only user turns while preserving genuinely empty input", async () => {
-    const responseBody = JSON.stringify({
-      choices: [{ message: { role: "assistant", content: "Ready" } }],
-    });
-    const noticeOutputPath = await createProxy([
-      {
-        url: "/chat/completions",
-        requestBody: JSON.stringify({
-          messages: [
-            {
-              role: "user",
-              content:
-                "<mode_changed_notice>\nPlan mode is no longer active.\n</mode_changed_notice>",
-            },
-          ],
-        }),
-        responseBody,
-      },
-    ]);
-    const noticeResult = await readYamlOutput(noticeOutputPath);
-    expect(noticeResult.conversations[0].messages).toEqual([
-      { role: "assistant", content: "Ready" },
-    ]);
-
-    const emptyOutputPath = await createProxy([
-      {
-        url: "/chat/completions",
-        requestBody: JSON.stringify({
-          messages: [{ role: "user", content: "" }],
-        }),
-        responseBody,
-      },
-    ]);
-    const emptyResult = await readYamlOutput(emptyOutputPath);
-    expect(emptyResult.conversations[0].messages).toEqual([
-      { role: "user" },
-      { role: "assistant", content: "Ready" },
-    ]);
-  });
+      const emptyOutputPath = await createProxy([
+        {
+          url: "/chat/completions",
+          requestBody: JSON.stringify({
+            messages: [{ role: "user", content: "" }],
+          }),
+          responseBody,
+        },
+      ]);
+      const emptyResult = await readYamlOutput(emptyOutputPath);
+      expect(emptyResult.conversations[0].messages).toEqual([
+        { role: "user" },
+        { role: "assistant", content: "Ready" },
+      ]);
+    },
+  );
 
   test("strips plan mode prefix from user messages", async () => {
     const requestBody = JSON.stringify({
@@ -1718,6 +1767,11 @@ Related files (use view tool to read):
                   content:
                     "<mode_changed_notice>\nPlan mode is no longer active.\n</mode_changed_notice>",
                 },
+                {
+                  role: "user",
+                  content:
+                    "<tools_changed_notice>\nTools no longer available: exit_plan_mode\n</tools_changed_notice>",
+                },
                 { role: "assistant", content: "Notice ready" },
               ],
             },
@@ -1776,15 +1830,18 @@ Related files (use view tool to read):
       };
 
       try {
-        const noticeRequest = request(
+        for (const notice of [
           "<mode_changed_notice>\nPlan mode is no longer active.\n</mode_changed_notice>",
-        );
-        const response = await makeRequest(proxyUrl, noticeRequest.endpoint, {
-          body: noticeRequest.body,
-        });
+          "<tools_changed_notice>\nNew tools available: exit_plan_mode\n</tools_changed_notice>",
+        ]) {
+          const noticeRequest = request(notice);
+          const response = await makeRequest(proxyUrl, noticeRequest.endpoint, {
+            body: noticeRequest.body,
+          });
 
-        expect(response.status).toBe(200);
-        expect(response.body).toContain("Notice ready");
+          expect(response.status).toBe(200);
+          expect(response.body).toContain("Notice ready");
+        }
 
         const emptyRequest = request("");
         const emptyResponse = await makeRequest(proxyUrl, emptyRequest.endpoint, {
@@ -1994,6 +2051,150 @@ Related files (use view tool to read):
         await proxy.stop();
       }
     });
+
+    test.each([
+      [1, 0],
+      [0, 1],
+      [2, 1],
+      [1, 2],
+      [0, 0],
+    ])(
+      "replays plan approval with %i stored and %i live catalog notices",
+      async (storedCount, liveCount) => {
+        const notice =
+          "<tools_changed_notice>\nTools no longer available: exit_plan_mode\n</tools_changed_notice>";
+        const notices = (count: number) =>
+          Array.from({ length: count }, () => ({
+            role: "user",
+            content: notice,
+          }));
+        const prefix = [
+          { role: "system", content: "${system}" },
+          { role: "user", content: "Create fleet-alpha.txt." },
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "toolcall_0",
+                type: "function",
+                function: { name: "exit_plan_mode", arguments: "{}" },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "toolcall_0",
+            content:
+              "Plan approved!\n<fleet_mode_instructions>Implement the plan.</fleet_mode_instructions>",
+          },
+        ];
+        const createMessage = {
+          role: "assistant",
+          tool_calls: [
+            {
+              id: "toolcall_1",
+              type: "function",
+              function: {
+                name: "create",
+                arguments: '{"file_text":"alpha","path":"fleet-alpha.txt"}',
+              },
+            },
+          ],
+        };
+        const created = [
+          createMessage,
+          {
+            role: "tool",
+            tool_call_id: "toolcall_1",
+            content: "Created fleet-alpha.txt.",
+          },
+        ];
+        const finished = { role: "assistant", content: "Created the file." };
+        const continuation = (count: number) => ({
+          role: "user",
+          content: `${count ? `${notice}\n\n` : ""}Finish the task.`,
+        });
+        const cachePath = path.join(tempDir, "plan-catalog-notices.yaml");
+        await writeFile(
+          cachePath,
+          yaml.stringify({
+            models: ["test-model"],
+            conversations: [
+              {
+                messages: [
+                  ...prefix,
+                  ...notices(storedCount),
+                  ...created,
+                  finished,
+                  continuation(storedCount),
+                  { role: "assistant", content: "Fleet complete." },
+                ],
+              },
+            ],
+          } satisfies NormalizedData),
+        );
+        const proxy = new ReplayingCapiProxy("http://localhost:9999");
+        await proxy.updateConfig({
+          filePath: cachePath,
+          workDir,
+          replayOnly: true,
+        });
+        const proxyUrl = await proxy.start();
+        try {
+          for (const [messages, expected] of [
+            [[...prefix, ...notices(liveCount)], createMessage],
+            [[...prefix, ...created], finished],
+            [
+              [...prefix, ...created, finished, continuation(liveCount)],
+              { role: "assistant", content: "Fleet complete." },
+            ],
+          ] as const) {
+            const response = await makeRequest(proxyUrl, "/chat/completions", {
+              body: { model: "test-model", messages },
+            });
+            expect(response.status).toBe(200);
+            expect(
+              (JSON.parse(response.body) as ChatCompletion).choices[0].message,
+            ).toMatchObject(expected);
+          }
+          for (const messages of [
+            [
+              ...prefix.slice(0, -1),
+              {
+                ...prefix.at(-1),
+                content: "Approval without fleet instructions.",
+              },
+            ],
+            [
+              ...prefix,
+              ...created,
+              finished,
+              { role: "user", content: "Do a different task." },
+            ],
+            ...[
+              "New tools available: read_file",
+              "Tools no longer available: bash",
+              "New tools available: exit_plan_mode, read_file",
+              "New tools available: read_file\n\nTools no longer available: exit_plan_mode",
+              "The model has been switched to another model.\n\nTools no longer available: exit_plan_mode",
+            ].map((body) => [
+              ...prefix,
+              {
+                role: "user",
+                content: `<tools_changed_notice>\n${body}\n</tools_changed_notice>`,
+              },
+            ]),
+          ]) {
+            const response = await makeRequest(proxyUrl, "/chat/completions", {
+              body: { model: "test-model", messages },
+            });
+            expect(response.status).toBe(500);
+          }
+        } finally {
+          await proxy.stop(true);
+        }
+      },
+    );
 
     test("replays a CAPI view-image capture for BYOK tool-result and image-turn continuations", async () => {
       const cachePath = path.join(tempDir, "view-image.yaml");

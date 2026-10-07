@@ -2377,6 +2377,24 @@ function emitServerInstanceMethod(
         }
     }
     lines.push(`${indent}}`);
+    if (
+        method.rpcMethod === "managedSettings.resolve" &&
+        paramEntries.some(([name]) => name === "workingDirectory")
+    ) {
+        lines.push("");
+        lines.push(
+            ...xmlDocComment(
+                "Compatibility overload preserving the positional CancellationToken parameter from before workingDirectory was added.",
+                indent
+            )
+        );
+        lines.push(
+            `${indent}${methodVisibility} ${taskType} ${methodName}Async(string? selectionId, string? gitHubToken, string? clientName, CancellationToken cancellationToken)`
+        );
+        lines.push(
+            `${indent}    => ${methodName}Async(selectionId, gitHubToken, clientName, workingDirectory: null, cancellationToken);`
+        );
+    }
     if (legacyEntries && requestClassName) {
         emitRequestObjectMethod(methodName, method, requestClassName, requestClassName, undefined, resultClassName, lines, indent, groupExperimental, groupDeprecated, requiredMemberNames);
     }

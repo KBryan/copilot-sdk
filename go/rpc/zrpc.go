@@ -6740,6 +6740,9 @@ type ManagedSettingMeta struct {
 	// Whether users and repositories may choose a different value. `false` means policy locks
 	// the value.
 	Overridable bool `json:"overridable"`
+	// Original managed value when the runtime adjusted it to a supported effective value.
+	// Omitted when no adjustment was needed.
+	Requested *string `json:"requested,omitempty"`
 	// Channel that supplied this scalar value, matching a `layers[].source`: `device`,
 	// `server`, or `policyHelper`. These scalar defaults select one winning channel, not a
 	// mixed source. Treat unknown values as additional channels; more may be added.
@@ -6829,6 +6832,10 @@ type ManagedSettingsLayer struct {
 type ManagedSettingsMeta struct {
 	// Lock state and provenance of `values.autoTier`.
 	AutoTier *ManagedSettingMeta `json:"autoTier,omitempty"`
+	// Lock state and provenance of `values.contextTier`.
+	ContextTier *ManagedSettingMeta `json:"contextTier,omitempty"`
+	// Lock state and provenance of `values.effortLevel`.
+	EffortLevel *ManagedSettingMeta `json:"effortLevel,omitempty"`
 	// Lock state and provenance of `values.model`.
 	Model *ManagedSettingMeta `json:"model,omitempty"`
 }
@@ -6901,6 +6908,9 @@ type ManagedSettingsResolveRequest struct {
 	// Opaque account identifier returned by `account.getAllUsers`. When omitted, the current
 	// account is used, or device policy only when no account is signed in.
 	SelectionID *string `json:"selectionId,omitempty"`
+	// Working directory used to run an organization policy helper. When omitted, sessionless
+	// resolution does not run the helper.
+	WorkingDirectory *string `json:"workingDirectory,omitempty"`
 }
 
 // Effective enterprise managed settings for an account, resolved without a session.
@@ -6978,8 +6988,14 @@ type ManagedSettingsValidateResult struct {
 type ManagedSettingsValues struct {
 	// Managed Auto routing preference, used when the selected model is `auto`.
 	AutoTier *AutoTier `json:"autoTier,omitempty"`
-	// Managed default model identifier, as configured. New sessions start with it; it can name
-	// a model the account cannot use, so hosts match it against the listed models.
+	// Managed context-tier default for the managed concrete model.
+	ContextTier *ContextTier `json:"contextTier,omitempty"`
+	// Managed reasoning-effort default for the managed concrete model. The runtime clamps it to
+	// an entitled effort when model availability is known.
+	EffortLevel *string `json:"effortLevel,omitempty"`
+	// Managed default model identifier. When model availability was resolved, aliases and
+	// family names are projected to a concrete available model ID; otherwise the configured
+	// value is returned.
 	Model *string `json:"model,omitempty"`
 }
 
@@ -16020,6 +16036,10 @@ type SessionManagedPermissions struct {
 	Ask []string `json:"ask,omitzero"`
 	// Permission rules that block matching operations. Deny has highest precedence.
 	Deny []string `json:"deny,omitzero"`
+	// When true, prevents Assisted Permissions from being activated. An actively Assisted
+	// session falls back to Manual Approval while the policy is in force. Omit the key or set
+	// it to false to impose no restriction.
+	DisableAssistedPermissionsMode *bool `json:"disableAssistedPermissionsMode,omitempty"`
 	// When set to `disable`, prevents bypass/allow-all permission modes. Advisory auto-approval
 	// remains available because normal prompt paths stay active. Any other value is accepted
 	// rather than failing the session, but is enforced as `disable`: the key is only present to
@@ -16362,6 +16382,10 @@ type SessionOpenOptions struct {
 	EnableSkills *bool `json:"enableSkills,omitempty"`
 	// Whether model responses stream as delta events.
 	EnableStreaming *bool `json:"enableStreaming,omitempty"`
+	// Opt in to enforcing non-overridable managed model controls on session model, Auto-tier,
+	// reasoning-effort, and context-tier changes. Managed defaults still apply when omitted;
+	// this option only turns conflicting changes into errors.
+	EnforceManagedModelDefaults *bool `json:"enforceManagedModelDefaults,omitempty"`
 	// How MCP server environment values are interpreted.
 	EnvValueMode *SessionOpenOptionsEnvValueMode `json:"envValueMode,omitempty"`
 	// Override directory for session event logs.
@@ -32002,7 +32026,9 @@ func (a *EventLogAPI) Tail(ctx context.Context) (*EventLogTailResult, error) {
 // Experimental: ExtensionsAPI contains experimental APIs that may change or be removed.
 type ExtensionsAPI sessionAPI
 
-// Disables an extension for the session.
+// Disables an extension for the session and persists the preference when the session has a
+// settings store. Hosts synchronizing effective membership should use extensions.reconcile
+// instead.
 //
 // RPC method: session.extensions.disable.
 //
@@ -32023,7 +32049,9 @@ func (a *ExtensionsAPI) Disable(ctx context.Context, params *ExtensionsDisableRe
 	return &result, nil
 }
 
-// Enables an extension for the session.
+// Enables an extension for the session and persists the preference when the session has a
+// settings store. Hosts synchronizing effective membership should use extensions.reconcile
+// instead.
 //
 // RPC method: session.extensions.enable.
 //
@@ -32052,6 +32080,38 @@ func (a *ExtensionsAPI) Enable(ctx context.Context, params *ExtensionsEnableRequ
 func (a *ExtensionsAPI) List(ctx context.Context) (*ExtensionList, error) {
 	req := map[string]any{"sessionId": a.sessionID}
 	raw, err := a.client.Request(ctx, "session.extensions.list", req)
+	if err != nil {
+		return nil, err
+	}
+	var result ExtensionList
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// Reconcile host-only reconciliation of authoritative session-effective extension
+// membership and enablement. Refreshes runtime-owned discovery and preferences without
+// persisting settings, installing plugins, or restarting unchanged activations. Returns
+// ExtensionList only after required starts and process/contribution cleanup settle. Takes
+// no caller inventory or overrides. Missing controllers, unready/incomplete discovery,
+// unavailable workspaces, superseded inputs, and lifecycle failures are errors, not empty
+// membership. Independently proven revocations may be applied before an error; retry
+// converges without restarting healthy activations. Error data contains
+// lifecycleChangesApplied and code: extension_reconciliation_host_required,
+// extension_reconciliation_unavailable, extension_reconciliation_not_ready,
+// extension_reconciliation_discovery_failed,
+// extension_reconciliation_workspace_unavailable, extension_reconciliation_superseded, or
+// extension_reconciliation_lifecycle_failed. Mark host reconciliation state applied only on
+// success. On older runtimes, method-not-found must not fall back to global discovery and
+// persistent extension disables.
+//
+// RPC method: session.extensions.reconcile.
+//
+// Returns: Extensions discovered for the session, with their current status.
+func (a *ExtensionsAPI) Reconcile(ctx context.Context) (*ExtensionList, error) {
+	req := map[string]any{"sessionId": a.sessionID}
+	raw, err := a.client.Request(ctx, "session.extensions.reconcile", req)
 	if err != nil {
 		return nil, err
 	}

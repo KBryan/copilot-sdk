@@ -16,6 +16,9 @@ public final class ManagedSettingsPermissions {
     @JsonProperty("disableBypassPermissionsMode")
     private String disableBypassPermissionsMode;
 
+    @JsonProperty("disableAssistedPermissionsMode")
+    private Boolean disableAssistedPermissionsMode;
+
     @JsonProperty("deny")
     private List<String> deny;
 
@@ -44,6 +47,25 @@ public final class ManagedSettingsPermissions {
      */
     public ManagedSettingsPermissions setDisableBypassPermissionsMode(String value) {
         this.disableBypassPermissionsMode = value;
+        return this;
+    }
+
+    /**
+     * @return whether Assisted Permissions are disabled, or {@code null} when unset
+     */
+    public Boolean getDisableAssistedPermissionsMode() {
+        return disableAssistedPermissionsMode;
+    }
+
+    /**
+     * Prevents Assisted Permissions from being activated when true.
+     *
+     * @param value
+     *            whether Assisted Permissions are disabled
+     * @return this policy
+     */
+    public ManagedSettingsPermissions setDisableAssistedPermissionsMode(Boolean value) {
+        this.disableAssistedPermissionsMode = value;
         return this;
     }
 

@@ -213,7 +213,7 @@ jobs:
             --env COPILOT_SDK_ROOT="/workspace/$SDK_HOME" \
             eclipse-temurin:25-jdk-alpine \
             sh -c 'set -eux
-              apk add --no-cache git java-cacerts maven nodejs npm
+              apk add --no-cache bash git java-cacerts maven nodejs npm
               git config --global --add safe.directory /workspace
               export JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts
               export GITHUB_ENV=/tmp/copilot-sdk-runtime.env

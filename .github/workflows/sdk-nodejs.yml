@@ -94,13 +94,13 @@ jobs:
         env:
           COPILOT_HMAC_KEY: ${{ secrets.COPILOT_DEVELOPER_CLI_INTEGRATION_HMAC_KEY }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "merge_group" ] || [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             npm test -- --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/sdk-nodejs-results.json"
           else
             npm test
           fi
-      - name: Upload merge-queue Node.js test results
-        if: always() && github.event_name == 'merge_group' && runner.os == 'Linux'
+      - name: Upload Flake Finder Node.js test results
+        if: always() && (github.event_name == 'merge_group' || github.event_name == 'pull_request') && runner.os == 'Linux'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:

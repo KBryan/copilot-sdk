@@ -133,7 +133,8 @@ function handleJsonRpcMessage(message, stats) {
         jsonrpc: "2.0",
         id: message.id,
         result: {
-          protocolVersion: message.params?.protocolVersion ?? PROTOCOL_VERSION,
+          // Session expiry and ping belong to legacy MCP, not modern stateless MCP.
+          protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: {} },
           serverInfo: { name: "session-expiry-test-server", version: "1.0.0" },
         },

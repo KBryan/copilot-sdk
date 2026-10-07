@@ -3708,6 +3708,9 @@ pub struct AssistantUsageData {
     /// Number of rejected speculative prediction tokens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejected_prediction_tokens: Option<i64>,
+    /// Serialized (uncompressed) byte length of the request body. A content-free size signal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_body_bytes: Option<i64>,
     /// Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rte: Option<bool>,
@@ -3736,6 +3739,12 @@ pub struct AssistantUsageData {
     /// Transport used for this model call (http or websocket)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transport: Option<AssistantUsageTransport>,
+    /// Milliseconds spent on the WebSocket attempt before falling back to HTTP
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub websocket_fallback_after_ms: Option<i64>,
+    /// Why the call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub websocket_fallback_reason: Option<ModelCallWebSocketFallbackReason>,
 }
 
 /// Session event "prompt_cache_break". A detected loss of a previously cached prompt prefix
@@ -3832,6 +3841,12 @@ pub struct PromptCacheBreakData {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCallFailureRequestFingerprint {
+    /// Summed byte length of opaque or encrypted reasoning payloads
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_content_bytes: Option<i64>,
+    /// Summed byte length of inline image payloads (data URLs and base64 sources)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_bytes: Option<i64>,
     /// Total number of image content parts
     pub image_part_count: i64,
     /// Image parts whose media type cannot be determined (rejected by strict providers)
@@ -3843,6 +3858,9 @@ pub struct ModelCallFailureRequestFingerprint {
     pub message_count: i64,
     /// Tool calls whose name is missing or empty (rejected by strict providers)
     pub nameless_tool_call_count: i64,
+    /// Number of messages carrying opaque or encrypted reasoning
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_item_count: Option<i64>,
     /// Total number of tool calls across assistant messages
     pub tool_call_count: i64,
     /// Number of "tool" result messages in the request
@@ -3933,6 +3951,9 @@ pub struct ModelCallFailureData {
     /// Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_fingerprint: Option<ModelCallFailureRequestFingerprint>,
+    /// Zero-based orchestrator retry index of the failed attempt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_attempt: Option<i64>,
     /// Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rte: Option<bool>,
@@ -3947,6 +3968,12 @@ pub struct ModelCallFailureData {
     /// Transport used for the failed model call (http or websocket)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transport: Option<ModelCallFailureTransport>,
+    /// Milliseconds spent on the WebSocket attempt before falling back to HTTP
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub websocket_fallback_after_ms: Option<i64>,
+    /// Why the failed call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub websocket_fallback_reason: Option<ModelCallWebSocketFallbackReason>,
 }
 
 /// Session event "model.call_final_result". Internal telemetry result for one logical model operation after all orchestrator-owned retries settle
@@ -9491,6 +9518,30 @@ pub enum AssistantUsageTransport {
     /// WebSocket transport.
     #[serde(rename = "websocket")]
     Websocket,
+    /// Unknown variant for forward compatibility.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+/// Why a WebSocket-capable model call was carried by the HTTP fallback
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelCallWebSocketFallbackReason {
+    /// The WebSocket connection could not be established.
+    #[serde(rename = "connect_failed")]
+    ConnectFailed,
+    /// No usable WebSocket connection was available for the request.
+    #[serde(rename = "connection_unavailable")]
+    ConnectionUnavailable,
+    /// Sending the request over the WebSocket failed.
+    #[serde(rename = "send_failed")]
+    SendFailed,
+    /// The WebSocket returned a retryable API error.
+    #[serde(rename = "api_error")]
+    ApiError,
+    /// The WebSocket transport failed before any output reached the consumer.
+    #[serde(rename = "transport_failed")]
+    TransportFailed,
     /// Unknown variant for forward compatibility.
     #[default]
     #[serde(other)]

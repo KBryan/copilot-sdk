@@ -858,6 +858,20 @@ export type AssistantUsageTransport =
   /** WebSocket transport. */
   | "websocket";
 /**
+ * Why a WebSocket-capable model call was carried by the HTTP fallback
+ */
+export type ModelCallWebSocketFallbackReason =
+  /** The WebSocket connection could not be established. */
+  | "connect_failed"
+  /** No usable WebSocket connection was available for the request. */
+  | "connection_unavailable"
+  /** Sending the request over the WebSocket failed. */
+  | "send_failed"
+  /** The WebSocket returned a retryable API error. */
+  | "api_error"
+  /** The WebSocket transport failed before any output reached the consumer. */
+  | "transport_failed";
+/**
  * For HTTP 400 failures only: whether the response carried a structured CAPI error envelope (structured_error, a deterministic validation failure) or no error body (bodyless, the transient gateway/proxy signature). Absent for non-400 failures.
  */
 export type ModelCallFailureBadRequestKind =
@@ -6470,6 +6484,10 @@ export interface AssistantUsageData {
    */
   rejectedPredictionTokens?: number;
   /**
+   * Serialized (uncompressed) byte length of the request body. A content-free size signal.
+   */
+  requestBodyBytes?: number;
+  /**
    * Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
    */
   rte?: boolean;
@@ -6508,6 +6526,11 @@ export interface AssistantUsageData {
    */
   toolTokenCount?: number;
   transport?: AssistantUsageTransport;
+  /**
+   * Milliseconds spent on the WebSocket attempt before falling back to HTTP
+   */
+  websocketFallbackAfterMs?: number;
+  websocketFallbackReason?: ModelCallWebSocketFallbackReason;
 }
 /**
  * Per-request cost and usage data from the CAPI copilot_usage response field
@@ -6750,6 +6773,10 @@ export interface ModelCallFailureData {
   requestBodyBytes?: number;
   requestFingerprint?: ModelCallFailureRequestFingerprint;
   /**
+   * Zero-based orchestrator retry index of the failed attempt
+   */
+  retryAttempt?: number;
+  /**
    * Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
    */
   rte?: boolean;
@@ -6763,11 +6790,24 @@ export interface ModelCallFailureData {
    */
   statusCode?: number;
   transport?: ModelCallFailureTransport;
+  /**
+   * Milliseconds spent on the WebSocket attempt before falling back to HTTP
+   */
+  websocketFallbackAfterMs?: number;
+  websocketFallbackReason?: ModelCallWebSocketFallbackReason;
 }
 /**
  * Content-free structural summary of the failing request for diagnosing malformed 4xx calls
  */
 export interface ModelCallFailureRequestFingerprint {
+  /**
+   * Summed byte length of opaque or encrypted reasoning payloads
+   */
+  encryptedContentBytes?: number;
+  /**
+   * Summed byte length of inline image payloads (data URLs and base64 sources)
+   */
+  imageBytes?: number;
   /**
    * Total number of image content parts
    */
@@ -6788,6 +6828,10 @@ export interface ModelCallFailureRequestFingerprint {
    * Tool calls whose name is missing or empty (rejected by strict providers)
    */
   namelessToolCallCount: number;
+  /**
+   * Number of messages carrying opaque or encrypted reasoning
+   */
+  reasoningItemCount?: number;
   /**
    * Total number of tool calls across assistant messages
    */

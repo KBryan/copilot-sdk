@@ -5098,6 +5098,11 @@ public sealed partial class AssistantUsageData
     [JsonPropertyName("rejectedPredictionTokens")]
     public long? RejectedPredictionTokens { get; set; }
 
+    /// <summary>Serialized (uncompressed) byte length of the request body. A content-free size signal.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("requestBodyBytes")]
+    public long? RequestBodyBytes { get; set; }
+
     /// <summary>Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("rte")]
@@ -5142,6 +5147,17 @@ public sealed partial class AssistantUsageData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("transport")]
     public AssistantUsageTransport? Transport { get; set; }
+
+    /// <summary>Milliseconds spent on the WebSocket attempt before falling back to HTTP.</summary>
+    [JsonConverter(typeof(MillisecondsTimeSpanConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("websocketFallbackAfterMs")]
+    public TimeSpan? WebsocketFallbackAfter { get; set; }
+
+    /// <summary>Why the call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("websocketFallbackReason")]
+    public ModelCallWebSocketFallbackReason? WebsocketFallbackReason { get; set; }
 }
 
 /// <summary>A detected loss of a previously cached prompt prefix.</summary>
@@ -5406,6 +5422,11 @@ public sealed partial class ModelCallFailureData
     [JsonPropertyName("requestFingerprint")]
     public ModelCallFailureRequestFingerprint? RequestFingerprint { get; set; }
 
+    /// <summary>Zero-based orchestrator retry index of the failed attempt.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("retryAttempt")]
+    public long? RetryAttempt { get; set; }
+
     /// <summary>Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("rte")]
@@ -5429,6 +5450,17 @@ public sealed partial class ModelCallFailureData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("transport")]
     public ModelCallFailureTransport? Transport { get; set; }
+
+    /// <summary>Milliseconds spent on the WebSocket attempt before falling back to HTTP.</summary>
+    [JsonConverter(typeof(MillisecondsTimeSpanConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("websocketFallbackAfterMs")]
+    public TimeSpan? WebsocketFallbackAfter { get; set; }
+
+    /// <summary>Why the failed call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("websocketFallbackReason")]
+    public ModelCallWebSocketFallbackReason? WebsocketFallbackReason { get; set; }
 }
 
 /// <summary>Internal telemetry result for one logical model operation after all orchestrator-owned retries settle.</summary>
@@ -9381,6 +9413,16 @@ internal sealed partial class AssistantUsageQuotaSnapshot
 /// <remarks>Nested data type for <c>ModelCallFailureRequestFingerprint</c>.</remarks>
 public sealed partial class ModelCallFailureRequestFingerprint
 {
+    /// <summary>Summed byte length of opaque or encrypted reasoning payloads.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("encryptedContentBytes")]
+    public long? EncryptedContentBytes { get; set; }
+
+    /// <summary>Summed byte length of inline image payloads (data URLs and base64 sources).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("imageBytes")]
+    public long? ImageBytes { get; set; }
+
     /// <summary>Total number of image content parts.</summary>
     [JsonPropertyName("imagePartCount")]
     public required long ImagePartCount { get; set; }
@@ -9401,6 +9443,11 @@ public sealed partial class ModelCallFailureRequestFingerprint
     /// <summary>Tool calls whose name is missing or empty (rejected by strict providers).</summary>
     [JsonPropertyName("namelessToolCallCount")]
     public required long NamelessToolCallCount { get; set; }
+
+    /// <summary>Number of messages carrying opaque or encrypted reasoning.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("reasoningItemCount")]
+    public long? ReasoningItemCount { get; set; }
 
     /// <summary>Total number of tool calls across assistant messages.</summary>
     [JsonPropertyName("toolCallCount")]
@@ -16918,6 +16965,76 @@ public readonly struct AssistantUsageTransport : IEquatable<AssistantUsageTransp
         public override void Write(Utf8JsonWriter writer, AssistantUsageTransport value, JsonSerializerOptions options)
         {
             GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(AssistantUsageTransport));
+        }
+    }
+}
+
+/// <summary>Why a WebSocket-capable model call was carried by the HTTP fallback.</summary>
+[JsonConverter(typeof(Converter))]
+[DebuggerDisplay("{Value,nq}")]
+public readonly struct ModelCallWebSocketFallbackReason : IEquatable<ModelCallWebSocketFallbackReason>
+{
+    private readonly string? _value;
+
+    /// <summary>Initializes a new instance of the <see cref="ModelCallWebSocketFallbackReason"/> struct.</summary>
+    /// <param name="value">The value to associate with this <see cref="ModelCallWebSocketFallbackReason"/>.</param>
+    [JsonConstructor]
+    public ModelCallWebSocketFallbackReason(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        _value = value;
+    }
+
+    /// <summary>Gets the value associated with this <see cref="ModelCallWebSocketFallbackReason"/>.</summary>
+    public string Value => _value ?? string.Empty;
+
+    /// <summary>The WebSocket connection could not be established.</summary>
+    public static ModelCallWebSocketFallbackReason ConnectFailed { get; } = new("connect_failed");
+
+    /// <summary>No usable WebSocket connection was available for the request.</summary>
+    public static ModelCallWebSocketFallbackReason ConnectionUnavailable { get; } = new("connection_unavailable");
+
+    /// <summary>Sending the request over the WebSocket failed.</summary>
+    public static ModelCallWebSocketFallbackReason SendFailed { get; } = new("send_failed");
+
+    /// <summary>The WebSocket returned a retryable API error.</summary>
+    public static ModelCallWebSocketFallbackReason ApiError { get; } = new("api_error");
+
+    /// <summary>The WebSocket transport failed before any output reached the consumer.</summary>
+    public static ModelCallWebSocketFallbackReason TransportFailed { get; } = new("transport_failed");
+
+    /// <summary>Returns a value indicating whether two <see cref="ModelCallWebSocketFallbackReason"/> instances are equivalent.</summary>
+    public static bool operator ==(ModelCallWebSocketFallbackReason left, ModelCallWebSocketFallbackReason right) => left.Equals(right);
+
+    /// <summary>Returns a value indicating whether two <see cref="ModelCallWebSocketFallbackReason"/> instances are not equivalent.</summary>
+    public static bool operator !=(ModelCallWebSocketFallbackReason left, ModelCallWebSocketFallbackReason right) => !(left == right);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is ModelCallWebSocketFallbackReason other && Equals(other);
+
+    /// <inheritdoc />
+    public bool Equals(ModelCallWebSocketFallbackReason other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+
+    /// <inheritdoc />
+    public override string ToString() => Value;
+
+    /// <summary>Provides a <see cref="JsonConverter{ModelCallWebSocketFallbackReason}"/> for serializing <see cref="ModelCallWebSocketFallbackReason"/> instances.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class Converter : JsonConverter<ModelCallWebSocketFallbackReason>
+    {
+        /// <inheritdoc />
+        public override ModelCallWebSocketFallbackReason Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return new(GeneratedStringEnumJson.ReadValue(ref reader, typeToConvert));
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, ModelCallWebSocketFallbackReason value, JsonSerializerOptions options)
+        {
+            GeneratedStringEnumJson.WriteValue(writer, value.Value, typeof(ModelCallWebSocketFallbackReason));
         }
     }
 }

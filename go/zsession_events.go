@@ -190,6 +190,7 @@ type (
 	ModelCallFinishedData                                          = rpc.ModelCallFinishedData
 	ModelCallFinishedOutcome                                       = rpc.ModelCallFinishedOutcome
 	ModelCallStartData                                             = rpc.ModelCallStartData
+	ModelCallWebSocketFallbackReason                               = rpc.ModelCallWebSocketFallbackReason
 	ModelChangeSource                                              = rpc.ModelChangeSource
 	ModelDeselectedReason                                          = rpc.ModelDeselectedReason
 	OmittedBinaryOmittedReason                                     = rpc.OmittedBinaryOmittedReason
@@ -704,6 +705,11 @@ const (
 	ModelCallFinishedOutcomeError                                        = rpc.ModelCallFinishedOutcomeError
 	ModelCallFinishedOutcomeRejected                                     = rpc.ModelCallFinishedOutcomeRejected
 	ModelCallFinishedOutcomeSuccess                                      = rpc.ModelCallFinishedOutcomeSuccess
+	ModelCallWebSocketFallbackReasonAPIError                             = rpc.ModelCallWebSocketFallbackReasonAPIError
+	ModelCallWebSocketFallbackReasonConnectFailed                        = rpc.ModelCallWebSocketFallbackReasonConnectFailed
+	ModelCallWebSocketFallbackReasonConnectionUnavailable                = rpc.ModelCallWebSocketFallbackReasonConnectionUnavailable
+	ModelCallWebSocketFallbackReasonSendFailed                           = rpc.ModelCallWebSocketFallbackReasonSendFailed
+	ModelCallWebSocketFallbackReasonTransportFailed                      = rpc.ModelCallWebSocketFallbackReasonTransportFailed
 	ModelChangeSourceAgent                                               = rpc.ModelChangeSourceAgent
 	ModelChangeSourceAutomatic                                           = rpc.ModelChangeSourceAutomatic
 	ModelChangeSourceAutoTierRecommendation                              = rpc.ModelChangeSourceAutoTierRecommendation

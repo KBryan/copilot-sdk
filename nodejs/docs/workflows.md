@@ -186,7 +186,7 @@ session.workflow.resume(
 
 Set `notifyOnComplete` to `true` for workflows that are likely to be invoked by an agent, so the originating session is notified when the workflow completes. Set it to `false` for workflows intended to be invoked programmatically, where the caller awaits the result directly. Set `logPhaseNames` to emit workflow phase names to the session transcript. Both options apply to new and resumed runs.
 
-Both resolve with the run envelope (`WorkflowRunResult`) for **every** outcome—`completed`, `error`, `halted`, `paused`, and `cancelled` alike. Inspect `status` and read `result` only when the run completed; a limit breach carries a typed `failure`. A `paused` envelope means that the current attempt settled, not that the durable run is permanently finished. Resume the same run ID to start another attempt with its journal and accounting intact. SDK-initiated `run` and `resume` do not request permission, so they have no declined outcome. An SDK-initiated run is refused only when the session already has its maximum number of active top-level runs. Pre-execution resume failures throw `WorkflowResumeError`, whose `code` is one of `not_found`, `non_resumable`, `workflow_run_not_resumable`, `already_active`, `workflow_already_running`, `workflow_limits_invalid`, `workflow_session_disposed`, `workflow_storage_unavailable`, or `workflow_storage_corrupt`.
+Both resolve with the run envelope (`WorkflowRunResult`) for **every** outcome—`completed`, `error`, `halted`, `paused`, and `cancelled` alike. Inspect `status` and read `result` only when the run completed; a limit breach carries a typed `failure`. A `paused` envelope means that the current attempt settled, not that the durable run is permanently finished. Resume the same run ID to start another attempt with its journal and accounting intact. SDK-initiated `run` and `resume` do not request permission, so they have no declined outcome. They still enforce execution eligibility, input validation, and active-run limits. Recognized pre-execution resume failures throw `WorkflowResumeError`, whose `code` is one of `not_found`, `non_resumable`, `workflow_run_not_resumable`, `already_active`, `workflow_already_running`, `workflow_limits_invalid`, `workflow_session_disposed`, `workflow_storage_unavailable`, or `workflow_storage_corrupt`.
 
 Pause a running attempt from outside its workflow body:
 
@@ -206,7 +206,13 @@ The first attempt pauses at `"review-ready"` and ends through cooperative cancel
 
 ## Observe a run
 
-The calling session can inspect its own workflow runs:
+The calling session can inspect its own workflow runs independently of its current execution eligibility. An empty registry enumerates successfully; losing eligibility does not hide already-admitted runs or terminal history. Observation still requires a valid, non-disposed session, and validation, missing-run, and storage errors still propagate.
+
+Workflow storage requires SQLite support from a custom session filesystem. A provider without that capability reports `workflow_storage_unavailable`, not an empty registry or a local-storage fallback.
+
+Compaction waits at most five seconds for its optional active-workflow summary. If storage fails or times out, compaction logs a warning and continues without that summary; aborting compaction cancels the wait. This does not change the results or error handling of explicit workflow observation calls.
+
+Observation does not restore execution eligibility. Starting, resuming, pausing, or cancelling runs, and workflow-owned agent, log, and journal/checkpoint operations still require eligible credentials (token-based billing or trusted HMAC authentication). Ineligible execution requests fail with JSON-RPC `-32601` and `data.code: "dynamic_workflows_unavailable"`.
 
 ```ts
 const runs = await session.workflow.listRuns();

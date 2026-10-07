@@ -3516,6 +3516,7 @@ class AssistantUsageData:
     reasoning_summary: ReasoningSummary | None = None
     reasoning_tokens: int | None = None
     rejected_prediction_tokens: int | None = None
+    request_body_bytes: int | None = None
     rte: bool | None = None
     service_request_id: str | None = None
     # Internal: this field is an internal SDK API and is not part of the public surface.
@@ -3528,6 +3529,8 @@ class AssistantUsageData:
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _tool_token_count: int | None = None
     transport: AssistantUsageTransport | None = None
+    websocket_fallback_after: timedelta | None = None
+    websocket_fallback_reason: ModelCallWebSocketFallbackReason | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "AssistantUsageData":
@@ -3569,6 +3572,7 @@ class AssistantUsageData:
         reasoning_summary = from_union([from_none, lambda x: parse_enum(ReasoningSummary, x)], obj.get("reasoningSummary"))
         reasoning_tokens = from_union([from_none, from_int], obj.get("reasoningTokens"))
         rejected_prediction_tokens = from_union([from_none, from_int], obj.get("rejectedPredictionTokens"))
+        request_body_bytes = from_union([from_none, from_int], obj.get("requestBodyBytes"))
         rte = from_union([from_none, from_bool], obj.get("rte"))
         service_request_id = from_union([from_none, from_str], obj.get("serviceRequestId"))
         _thinking_dropped_blocks = from_union([from_none, from_int], obj.get("thinkingDroppedBlocks"))
@@ -3577,6 +3581,8 @@ class AssistantUsageData:
         _tool_counts = from_union([from_none, lambda x: from_dict(from_int, x)], obj.get("toolCounts"))
         _tool_token_count = from_union([from_none, from_int], obj.get("toolTokenCount"))
         transport = from_union([from_none, lambda x: parse_enum(AssistantUsageTransport, x)], obj.get("transport"))
+        websocket_fallback_after = from_union([from_none, from_timedelta], obj.get("websocketFallbackAfterMs"))
+        websocket_fallback_reason = from_union([from_none, lambda x: parse_enum(ModelCallWebSocketFallbackReason, x)], obj.get("websocketFallbackReason"))
         return AssistantUsageData(
             model=model,
             accepted_prediction_tokens=accepted_prediction_tokens,
@@ -3615,6 +3621,7 @@ class AssistantUsageData:
             reasoning_summary=reasoning_summary,
             reasoning_tokens=reasoning_tokens,
             rejected_prediction_tokens=rejected_prediction_tokens,
+            request_body_bytes=request_body_bytes,
             rte=rte,
             service_request_id=service_request_id,
             _thinking_dropped_blocks=_thinking_dropped_blocks,
@@ -3623,6 +3630,8 @@ class AssistantUsageData:
             _tool_counts=_tool_counts,
             _tool_token_count=_tool_token_count,
             transport=transport,
+            websocket_fallback_after=websocket_fallback_after,
+            websocket_fallback_reason=websocket_fallback_reason,
         )
 
     def to_dict(self) -> dict:
@@ -3700,6 +3709,8 @@ class AssistantUsageData:
             result["reasoningTokens"] = from_union([from_none, to_int], self.reasoning_tokens)
         if self.rejected_prediction_tokens is not None:
             result["rejectedPredictionTokens"] = from_union([from_none, to_int], self.rejected_prediction_tokens)
+        if self.request_body_bytes is not None:
+            result["requestBodyBytes"] = from_union([from_none, to_int], self.request_body_bytes)
         if self.rte is not None:
             result["rte"] = from_union([from_none, from_bool], self.rte)
         if self.service_request_id is not None:
@@ -3716,6 +3727,10 @@ class AssistantUsageData:
             result["toolTokenCount"] = from_union([from_none, to_int], self._tool_token_count)
         if self.transport is not None:
             result["transport"] = from_union([from_none, lambda x: to_enum(AssistantUsageTransport, x)], self.transport)
+        if self.websocket_fallback_after is not None:
+            result["websocketFallbackAfterMs"] = from_union([from_none, to_timedelta_int], self.websocket_fallback_after)
+        if self.websocket_fallback_reason is not None:
+            result["websocketFallbackReason"] = from_union([from_none, lambda x: to_enum(ModelCallWebSocketFallbackReason, x)], self.websocket_fallback_reason)
         return result
 
 
@@ -6152,10 +6167,13 @@ class ModelCallFailureData:
     reasoning_effort: str | None = None
     request_body_bytes: int | None = None
     request_fingerprint: ModelCallFailureRequestFingerprint | None = None
+    retry_attempt: int | None = None
     rte: bool | None = None
     service_request_id: str | None = None
     status_code: int | None = None
     transport: ModelCallFailureTransport | None = None
+    websocket_fallback_after: timedelta | None = None
+    websocket_fallback_reason: ModelCallWebSocketFallbackReason | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "ModelCallFailureData":
@@ -6185,10 +6203,13 @@ class ModelCallFailureData:
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
         request_body_bytes = from_union([from_none, from_int], obj.get("requestBodyBytes"))
         request_fingerprint = from_union([from_none, ModelCallFailureRequestFingerprint.from_dict], obj.get("requestFingerprint"))
+        retry_attempt = from_union([from_none, from_int], obj.get("retryAttempt"))
         rte = from_union([from_none, from_bool], obj.get("rte"))
         service_request_id = from_union([from_none, from_str], obj.get("serviceRequestId"))
         status_code = from_union([from_none, from_int], obj.get("statusCode"))
         transport = from_union([from_none, lambda x: parse_enum(ModelCallFailureTransport, x)], obj.get("transport"))
+        websocket_fallback_after = from_union([from_none, from_timedelta], obj.get("websocketFallbackAfterMs"))
+        websocket_fallback_reason = from_union([from_none, lambda x: parse_enum(ModelCallWebSocketFallbackReason, x)], obj.get("websocketFallbackReason"))
         return ModelCallFailureData(
             source=source,
             api_call_id=api_call_id,
@@ -6215,10 +6236,13 @@ class ModelCallFailureData:
             reasoning_effort=reasoning_effort,
             request_body_bytes=request_body_bytes,
             request_fingerprint=request_fingerprint,
+            retry_attempt=retry_attempt,
             rte=rte,
             service_request_id=service_request_id,
             status_code=status_code,
             transport=transport,
+            websocket_fallback_after=websocket_fallback_after,
+            websocket_fallback_reason=websocket_fallback_reason,
         )
 
     def to_dict(self) -> dict:
@@ -6272,6 +6296,8 @@ class ModelCallFailureData:
             result["requestBodyBytes"] = from_union([from_none, to_int], self.request_body_bytes)
         if self.request_fingerprint is not None:
             result["requestFingerprint"] = from_union([from_none, lambda x: to_class(ModelCallFailureRequestFingerprint, x)], self.request_fingerprint)
+        if self.retry_attempt is not None:
+            result["retryAttempt"] = from_union([from_none, to_int], self.retry_attempt)
         if self.rte is not None:
             result["rte"] = from_union([from_none, from_bool], self.rte)
         if self.service_request_id is not None:
@@ -6280,6 +6306,10 @@ class ModelCallFailureData:
             result["statusCode"] = from_union([from_none, to_int], self.status_code)
         if self.transport is not None:
             result["transport"] = from_union([from_none, lambda x: to_enum(ModelCallFailureTransport, x)], self.transport)
+        if self.websocket_fallback_after is not None:
+            result["websocketFallbackAfterMs"] = from_union([from_none, to_timedelta_int], self.websocket_fallback_after)
+        if self.websocket_fallback_reason is not None:
+            result["websocketFallbackReason"] = from_union([from_none, lambda x: to_enum(ModelCallWebSocketFallbackReason, x)], self.websocket_fallback_reason)
         return result
 
 
@@ -6292,7 +6322,10 @@ class ModelCallFailureRequestFingerprint:
     nameless_tool_call_count: int
     tool_call_count: int
     tool_result_message_count: int
+    encrypted_content_bytes: int | None = None
+    image_bytes: int | None = None
     last_message_role: str | None = None
+    reasoning_item_count: int | None = None
 
     @staticmethod
     def from_dict(obj: Any) -> "ModelCallFailureRequestFingerprint":
@@ -6303,7 +6336,10 @@ class ModelCallFailureRequestFingerprint:
         nameless_tool_call_count = from_int(obj.get("namelessToolCallCount"))
         tool_call_count = from_int(obj.get("toolCallCount"))
         tool_result_message_count = from_int(obj.get("toolResultMessageCount"))
+        encrypted_content_bytes = from_union([from_none, from_int], obj.get("encryptedContentBytes"))
+        image_bytes = from_union([from_none, from_int], obj.get("imageBytes"))
         last_message_role = from_union([from_none, from_str], obj.get("lastMessageRole"))
+        reasoning_item_count = from_union([from_none, from_int], obj.get("reasoningItemCount"))
         return ModelCallFailureRequestFingerprint(
             image_part_count=image_part_count,
             image_parts_missing_media_type=image_parts_missing_media_type,
@@ -6311,7 +6347,10 @@ class ModelCallFailureRequestFingerprint:
             nameless_tool_call_count=nameless_tool_call_count,
             tool_call_count=tool_call_count,
             tool_result_message_count=tool_result_message_count,
+            encrypted_content_bytes=encrypted_content_bytes,
+            image_bytes=image_bytes,
             last_message_role=last_message_role,
+            reasoning_item_count=reasoning_item_count,
         )
 
     def to_dict(self) -> dict:
@@ -6322,8 +6361,14 @@ class ModelCallFailureRequestFingerprint:
         result["namelessToolCallCount"] = to_int(self.nameless_tool_call_count)
         result["toolCallCount"] = to_int(self.tool_call_count)
         result["toolResultMessageCount"] = to_int(self.tool_result_message_count)
+        if self.encrypted_content_bytes is not None:
+            result["encryptedContentBytes"] = from_union([from_none, to_int], self.encrypted_content_bytes)
+        if self.image_bytes is not None:
+            result["imageBytes"] = from_union([from_none, to_int], self.image_bytes)
         if self.last_message_role is not None:
             result["lastMessageRole"] = from_union([from_none, from_str], self.last_message_role)
+        if self.reasoning_item_count is not None:
+            result["reasoningItemCount"] = from_union([from_none, to_int], self.reasoning_item_count)
         return result
 
 
@@ -14405,6 +14450,20 @@ class ModelCallFinishedOutcome(Enum):
     REJECTED = "rejected"
 
 
+class ModelCallWebSocketFallbackReason(Enum):
+    "Why a WebSocket-capable model call was carried by the HTTP fallback"
+    # The WebSocket connection could not be established.
+    CONNECT_FAILED = "connect_failed"
+    # No usable WebSocket connection was available for the request.
+    CONNECTION_UNAVAILABLE = "connection_unavailable"
+    # Sending the request over the WebSocket failed.
+    SEND_FAILED = "send_failed"
+    # The WebSocket returned a retryable API error.
+    API_ERROR = "api_error"
+    # The WebSocket transport failed before any output reached the consumer.
+    TRANSPORT_FAILED = "transport_failed"
+
+
 class ModelChangeSource(Enum):
     "Origin of an effective session model change."
     # The user selected a model directly with `/model <id>`.
@@ -15606,6 +15665,7 @@ __all__ = [
     "ModelCallFinishedData",
     "ModelCallFinishedOutcome",
     "ModelCallStartData",
+    "ModelCallWebSocketFallbackReason",
     "ModelChangeSource",
     "ModelDeselectedReason",
     "OmittedBinaryOmittedReason",

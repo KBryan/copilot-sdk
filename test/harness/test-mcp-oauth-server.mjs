@@ -135,16 +135,21 @@ export async function startOAuthMcpServer({
         body,
       });
       const form = new URLSearchParams(body);
+      // "accepted-code-reauth" mints a different accepted token so tests can rotate credentials.
+      const issuedToken = {
+        "accepted-code": tokens.initial,
+        "accepted-code-reauth": tokens.reauth,
+      }[form.get("code") ?? ""];
       if (
         form.get("grant_type") !== "authorization_code" ||
-        form.get("code") !== "accepted-code" ||
+        !issuedToken ||
         !form.get("code_verifier")
       ) {
         respondJson(res, 400, { error: "invalid_grant" });
         return;
       }
       respondJson(res, 200, {
-        access_token: expectedToken,
+        access_token: issuedToken,
         token_type: "Bearer",
         expires_in: 3600,
       });

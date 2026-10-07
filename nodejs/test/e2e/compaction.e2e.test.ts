@@ -3,6 +3,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
     approveAll,
     CopilotRequestHandler,
@@ -279,7 +283,188 @@ function getNextSessionEvent<TEventType extends SessionEvent["type"]>(
 }
 
 describe("Compaction", async () => {
-    const { copilotClient: client, openAiEndpoint, createClient } = await createSdkTestContext();
+    const {
+        copilotClient: client,
+        openAiEndpoint,
+        createClient,
+        workDir,
+    } = await createSdkTestContext();
+
+    // Paused-clock Rust tests pin the cancellation/timeout budgets; this covers
+    // cancellation across the real SDK filesystem callback boundary.
+    it("should abort manual compaction while workflow storage is stalled", async () => {
+        let markEntered!: () => void;
+        const entered = new Promise<void>((resolve) => {
+            markEntered = resolve;
+        });
+        let releaseStorage!: () => void;
+        const release = new Promise<void>((resolve) => {
+            releaseStorage = resolve;
+        });
+        const database = new DatabaseSync(":memory:");
+        const handler = new BudgetReplayHandler();
+        const compactionClient = createClient({
+            requestHandler: handler,
+            sessionFs: {
+                initialCwd: workDir,
+                sessionStatePath: join(workDir, "compaction-state"),
+                conventions: process.platform === "win32" ? "windows" : "posix",
+                capabilities: { sqlite: true },
+            },
+        });
+        let stalled = false;
+        let storageRequest: Promise<void> | undefined;
+        try {
+            await using session = await compactionClient.createSession({
+                onPermissionRequest: approveAll,
+                model: "uncatalogued-budget-model",
+                provider: {
+                    type: "openai",
+                    wireApi: "completions",
+                    baseUrl: "https://budget-replay.invalid/v1",
+                    bearerToken: "fake-byok-credential-for-e2e-tests",
+                    modelId: "uncatalogued-budget-model",
+                    maxPromptTokens: 100_000,
+                },
+                infiniteSessions: { enabled: false },
+                createSessionFsProvider: () => ({
+                    readFile: (path) => fs.readFile(path, "utf8"),
+                    writeFile: (path, content) => fs.writeFile(path, content),
+                    appendFile: (path, content) => fs.appendFile(path, content),
+                    exists: async (path) => existsSync(path),
+                    stat: async (path) => {
+                        const info = await fs.stat(path);
+                        return {
+                            isFile: info.isFile(),
+                            isDirectory: info.isDirectory(),
+                            size: info.size,
+                            mtime: info.mtime.toISOString(),
+                            birthtime: info.birthtime.toISOString(),
+                        };
+                    },
+                    mkdir: async (path, recursive, mode) => {
+                        await fs.mkdir(path, { recursive, mode });
+                    },
+                    readdir: (path) => fs.readdir(path),
+                    readdirWithTypes: async (path) =>
+                        (await fs.readdir(path, { withFileTypes: true })).map((entry) => ({
+                            name: entry.name,
+                            type: entry.isDirectory() ? "directory" : "file",
+                        })),
+                    rm: (path, recursive, force) => fs.rm(path, { recursive, force }),
+                    rename: (from, to) => fs.rename(from, to),
+                    sqlite: {
+                        exists: async () => true,
+                        query: async (queryType, query, params) => {
+                            if (stalled && /\b(?:factory|workflow)_runs\b/.test(query)) {
+                                markEntered();
+                                storageRequest = release;
+                                await storageRequest;
+                                throw new Error("Controlled workflow storage failure");
+                            }
+                            if (queryType === "exec") {
+                                database.exec(query);
+                                return;
+                            }
+                            const statement = database.prepare(query);
+                            if (queryType === "query") {
+                                const rows = statement.all(params ?? {}).map((row) => {
+                                    const values: Record<string, string | number | null> = {};
+                                    for (const [key, value] of Object.entries(row)) {
+                                        if (
+                                            value !== null &&
+                                            typeof value !== "string" &&
+                                            typeof value !== "number"
+                                        ) {
+                                            throw new Error(`Unexpected SQLite value in ${key}`);
+                                        }
+                                        values[key] = value;
+                                    }
+                                    return values;
+                                });
+                                return {
+                                    rows,
+                                    columns: statement.columns().map((column) => column.name),
+                                    rowsAffected: 0,
+                                };
+                            }
+                            const result = statement.run(params ?? {});
+                            return {
+                                rows: [],
+                                columns: [],
+                                rowsAffected: Number(result.changes),
+                                lastInsertRowid: Number(result.lastInsertRowid),
+                            };
+                        },
+                    },
+                }),
+            });
+            expect(
+                (await session.sendAndWait({ prompt: "Initialize cancellable compaction." }))?.data
+                    .content
+            ).toBe("BUDGET_CONTROL_OK");
+            const conversation = (events: SessionEvent[]) =>
+                events.filter(
+                    (event) => event.type === "user.message" || event.type === "assistant.message"
+                );
+            const before = conversation(await session.getEvents());
+            const completed: Extract<SessionEvent, { type: "session.compaction_complete" }>[] = [];
+            session.on("session.compaction_complete", (event) => completed.push(event));
+            stalled = true;
+            const compaction = session.rpc.history.compact().then(
+                (result) => ({ result }),
+                (error: unknown) => ({ error })
+            );
+            await Promise.race([
+                entered,
+                compaction.then((outcome) => {
+                    throw new Error(
+                        `Compaction settled before workflow storage: ${JSON.stringify(outcome)}`
+                    );
+                }),
+            ]);
+
+            expect(await session.rpc.history.abortManualCompaction()).toEqual({ aborted: true });
+            const outcome = await compaction;
+            expect(outcome).toMatchObject({
+                error: expect.objectContaining({
+                    message: expect.stringContaining("Compaction Cancelled"),
+                }),
+            });
+            await expect
+                .poll(() => completed)
+                .toEqual([
+                    expect.objectContaining({
+                        data: expect.objectContaining({
+                            success: false,
+                            error: "Compaction Cancelled",
+                        }),
+                    }),
+                ]);
+            expect(conversation(await session.getEvents())).toEqual(before);
+            expect(await session.rpc.history.abortManualCompaction()).toEqual({ aborted: false });
+            expect(
+                (await session.sendAndWait({ prompt: "Continue after the cancelled compaction." }))
+                    ?.data.content
+            ).toBe("BUDGET_CONTROL_OK");
+            expect(handler.requests.at(-1)).toMatchObject({
+                messages: expect.arrayContaining([
+                    expect.objectContaining({
+                        role: "user",
+                        content: expect.stringContaining("Initialize cancellable compaction."),
+                    }),
+                ]),
+            });
+        } finally {
+            releaseStorage();
+            await storageRequest;
+            try {
+                await compactionClient.stop();
+            } finally {
+                database.close();
+            }
+        }
+    });
 
     it("should reject an oversized provider prompt before any inference request", async () => {
         const handler = new BudgetReplayHandler();

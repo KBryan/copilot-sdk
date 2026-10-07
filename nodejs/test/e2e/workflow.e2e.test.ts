@@ -1,9 +1,14 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *--------------------------------------------------------------------------------------------*/
+
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
+import type { CopilotSession } from "../../src/index.js";
 import {
     createSdkTestContext,
     DEFAULT_GITHUB_TOKEN,
@@ -45,6 +50,33 @@ const workflowTestContext = await createSdkTestContext({
     },
 });
 
+function workflowCopilotUser(tokenBasedBilling: boolean) {
+    return {
+        login: "workflow-e2e-user",
+        copilot_plan: "individual_pro",
+        token_based_billing: tokenBasedBilling,
+        is_mcp_enabled: true,
+        endpoints: {
+            api: workflowTestContext.openAiEndpoint.url,
+            telemetry: "https://localhost:1/telemetry",
+        },
+        analytics_tracking_id: "workflow-e2e-tracking-id",
+    };
+}
+
+async function setWorkflowEligibility(session: CopilotSession, eligible: boolean) {
+    const token = eligible ? "workflow-eligible-e2e-token" : "workflow-ineligible-e2e-token";
+    await workflowTestContext.openAiEndpoint.setCopilotUserByToken(
+        token,
+        workflowCopilotUser(eligible)
+    );
+    await expect(
+        session.rpc.gitHubAuth.setCredentials({
+            credentials: { type: "token", host: "https://github.com", token },
+        })
+    ).resolves.toMatchObject({ success: true, copilotUserResolved: true });
+}
+
 async function setupWorkflowExtension(workDir: string, onPermissionRequest = approveAll) {
     const { copilotClient, openAiEndpoint } = workflowTestContext;
     const extensionDir = join(workDir, ".github", "extensions", "workflow-smoke");
@@ -57,17 +89,7 @@ async function setupWorkflowExtension(workDir: string, onPermissionRequest = app
     );
     execFileSync("git", ["init", "--quiet"], { cwd: workDir });
 
-    await openAiEndpoint.setCopilotUserByToken(DEFAULT_GITHUB_TOKEN, {
-        login: "workflow-e2e-user",
-        copilot_plan: "individual_pro",
-        token_based_billing: true,
-        is_mcp_enabled: true,
-        endpoints: {
-            api: openAiEndpoint.url,
-            telemetry: "https://localhost:1/telemetry",
-        },
-        analytics_tracking_id: "workflow-e2e-tracking-id",
-    });
+    await openAiEndpoint.setCopilotUserByToken(DEFAULT_GITHUB_TOKEN, workflowCopilotUser(true));
 
     const session = await copilotClient.createSession({
         requestExtensions: true,
@@ -235,6 +257,135 @@ it("pages workflow runs and returns cursor metadata", async () => {
         omittedOlder: 0,
     });
 });
+
+it("observes an empty workflow registry without execution eligibility", async () => {
+    const { workDir } = workflowTestContext;
+    await using session = await setupWorkflowExtension(workDir);
+    await setWorkflowEligibility(session, false);
+
+    await expect(session.workflow.listRuns()).resolves.toEqual([]);
+    await expect(session.workflow.listRuns({ limit: 1 })).resolves.toEqual({
+        runs: [],
+        oldestSeq: null,
+        newestSeq: null,
+        hasMoreNewer: false,
+        omittedOlder: 0,
+    });
+    await expect(
+        session.workflow.getRun("00000000-0000-0000-0000-000000000000")
+    ).rejects.toMatchObject({
+        data: { code: "workflow_run_not_found" },
+    });
+    await expect(session.workflow.run("argument-echo")).rejects.toMatchObject({
+        code: -32601,
+        data: { code: "dynamic_workflows_unavailable" },
+    });
+});
+
+it("observes and settles an admitted workflow across eligibility loss and restoration", async () => {
+    const { workDir } = workflowTestContext;
+    const extensionDir = join(workDir, ".github", "extensions", "workflow-smoke");
+    await using session = await setupWorkflowExtension(workDir);
+    const completed = await session.workflow.run("phased", { notifyOnComplete: false });
+    expect(completed.status).toBe("completed");
+    const failed = await session.workflow.run("fails-once", { notifyOnComplete: false });
+    expect(failed.status).toBe("error");
+    const admitted = await session.rpc.workflow.run({
+        name: "parked",
+        args: {},
+        options: { notifyOnComplete: false },
+    });
+
+    try {
+        await retry(
+            "wait for the admitted workflow provider to park",
+            async () => {
+                expect(existsSync(join(extensionDir, "entered"))).toBe(true);
+            },
+            100,
+            100
+        );
+        await expect(session.workflow.getRun(admitted.runId)).resolves.toMatchObject({
+            status: "running",
+        });
+        await setWorkflowEligibility(session, false);
+
+        const page = await session.workflow.listRuns({ limit: 1 });
+        expect(page.runs).toHaveLength(2);
+        expect(page.runs).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ runId: admitted.runId, status: "running" }),
+                expect.objectContaining({ runId: failed.runId, status: "error" }),
+            ])
+        );
+        await expect(session.workflow.getRun(admitted.runId)).resolves.toMatchObject({
+            runId: admitted.runId,
+            status: "running",
+        });
+        await expect(session.workflow.getRunDetail(admitted.runId)).resolves.toMatchObject({
+            runId: admitted.runId,
+            status: "running",
+        });
+        await expect(session.workflow.getRunProgress(admitted.runId)).resolves.toMatchObject({
+            records: [],
+        });
+        await expect(session.workflow.getRun(completed.runId)).resolves.toMatchObject({
+            status: "completed",
+            result: "finished",
+        });
+        const history = await session.workflow.getRunDetail(completed.runId);
+        expect(history.progress.records).toEqual(
+            expect.arrayContaining([expect.objectContaining({ kind: "log", text: "Summarized" })])
+        );
+        const progress = await session.workflow.getRunProgress(completed.runId);
+        expect(progress.records).toEqual(history.progress.records);
+
+        const unavailable = { code: -32601, data: { code: "dynamic_workflows_unavailable" } };
+        await expect(session.workflow.run("argument-echo")).rejects.toMatchObject(unavailable);
+        await expect(session.workflow.resume(failed.runId)).rejects.toMatchObject(unavailable);
+        await expect(session.workflow.pause(admitted.runId)).rejects.toMatchObject(unavailable);
+        await expect(session.workflow.cancel(admitted.runId)).rejects.toMatchObject(unavailable);
+        await expect(session.workflow.getRun(admitted.runId)).resolves.toMatchObject({
+            status: "running",
+        });
+
+        const settlement = session.workflow.waitForRun(admitted.runId);
+        writeFileSync(join(extensionDir, "release"), "release");
+        await expect(settlement).resolves.toMatchObject({
+            runId: admitted.runId,
+            status: "completed",
+            result: "released",
+        });
+        await expect(session.workflow.getRun(admitted.runId)).resolves.toMatchObject({
+            status: "completed",
+            result: "released",
+        });
+
+        await setWorkflowEligibility(session, true);
+        await expect(
+            session.workflow.resume(failed.runId, { notifyOnComplete: false })
+        ).resolves.toMatchObject({
+            runId: failed.runId,
+            status: "completed",
+            result: "resumed",
+        });
+        await expect(
+            session.workflow.run("argument-echo", {
+                args: { afterRestoration: true },
+                notifyOnComplete: false,
+            })
+        ).resolves.toMatchObject({
+            status: "completed",
+            result: { afterRestoration: true },
+        });
+        await expect(session.workflow.getRunDetail(admitted.runId)).resolves.toMatchObject({
+            runId: admitted.runId,
+            status: "completed",
+        });
+    } finally {
+        writeFileSync(join(extensionDir, "release"), "release");
+    }
+}, 60_000);
 
 it("runs a workflow when its session denies every permission request", async () => {
     const { workDir } = workflowTestContext;

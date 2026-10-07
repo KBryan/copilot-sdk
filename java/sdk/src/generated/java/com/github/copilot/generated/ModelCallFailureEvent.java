@@ -62,6 +62,12 @@ public final class ModelCallFailureEvent extends SessionEvent {
         @JsonProperty("failureKind") ModelCallFailureKind failureKind,
         /** Serialized (uncompressed) byte length of the failed request body. A content-free size signal. */
         @JsonProperty("requestBodyBytes") Long requestBodyBytes,
+        /** Zero-based orchestrator retry index of the failed attempt */
+        @JsonProperty("retryAttempt") Long retryAttempt,
+        /** Why the failed call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred */
+        @JsonProperty("websocketFallbackReason") ModelCallWebSocketFallbackReason websocketFallbackReason,
+        /** Milliseconds spent on the WebSocket attempt before falling back to HTTP */
+        @JsonProperty("websocketFallbackAfterMs") Long websocketFallbackAfterMs,
         /** Effective maximum prompt-token limit for the failed call */
         @JsonProperty("maxPromptTokens") Long maxPromptTokens,
         /** Effective maximum output-token limit for the failed call */

@@ -89,6 +89,12 @@ public final class AssistantUsageEvent extends SessionEvent {
         @JsonProperty("rejectedPredictionTokens") Long rejectedPredictionTokens,
         /** Transport used for this model call (http or websocket) */
         @JsonProperty("transport") AssistantUsageTransport transport,
+        /** Serialized (uncompressed) byte length of the request body. A content-free size signal. */
+        @JsonProperty("requestBodyBytes") Long requestBodyBytes,
+        /** Why the call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred */
+        @JsonProperty("websocketFallbackReason") ModelCallWebSocketFallbackReason websocketFallbackReason,
+        /** Milliseconds spent on the WebSocket attempt before falling back to HTTP */
+        @JsonProperty("websocketFallbackAfterMs") Long websocketFallbackAfterMs,
         /** Completion ID from the model provider (e.g., chatcmpl-abc123) */
         @JsonProperty("apiCallId") String apiCallId,
         /** GitHub request tracing ID (x-github-request-id header) for server-side log correlation */

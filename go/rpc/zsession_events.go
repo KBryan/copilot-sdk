@@ -1434,6 +1434,8 @@ type ModelCallFailureData struct {
 	RequestBodyBytes *int64 `json:"requestBodyBytes,omitempty"`
 	// Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures.
 	RequestFingerprint *ModelCallFailureRequestFingerprint `json:"requestFingerprint,omitempty"`
+	// Zero-based orchestrator retry index of the failed attempt
+	RetryAttempt *int64 `json:"retryAttempt,omitempty"`
 	// Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
 	Rte *bool `json:"rte,omitempty"`
 	// Copilot service request ID (x-copilot-service-request-id header) for CAPI log correlation
@@ -1444,6 +1446,10 @@ type ModelCallFailureData struct {
 	StatusCode *int32 `json:"statusCode,omitempty"`
 	// Transport used for the failed model call (http or websocket)
 	Transport *ModelCallFailureTransport `json:"transport,omitempty"`
+	// Milliseconds spent on the WebSocket attempt before falling back to HTTP
+	WebsocketFallbackAfterMs *int64 `json:"websocketFallbackAfterMs,omitempty"`
+	// Why the failed call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred
+	WebsocketFallbackReason *ModelCallWebSocketFallbackReason `json:"websocketFallbackReason,omitempty"`
 }
 
 func (*ModelCallFailureData) sessionEventData()      {}
@@ -1799,6 +1805,8 @@ type AssistantUsageData struct {
 	ReasoningTokens *int64 `json:"reasoningTokens,omitempty"`
 	// Number of rejected speculative prediction tokens
 	RejectedPredictionTokens *int64 `json:"rejectedPredictionTokens,omitempty"`
+	// Serialized (uncompressed) byte length of the request body. A content-free size signal.
+	RequestBodyBytes *int64 `json:"requestBodyBytes,omitempty"`
 	// Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
 	Rte *bool `json:"rte,omitempty"`
 	// Copilot service request ID (x-copilot-service-request-id header) for CAPI log correlation
@@ -1819,6 +1827,10 @@ type AssistantUsageData struct {
 	ToolTokenCount *int64 `json:"toolTokenCount,omitempty"`
 	// Transport used for this model call (http or websocket)
 	Transport *AssistantUsageTransport `json:"transport,omitempty"`
+	// Milliseconds spent on the WebSocket attempt before falling back to HTTP
+	WebsocketFallbackAfterMs *int64 `json:"websocketFallbackAfterMs,omitempty"`
+	// Why the call was carried by the HTTP fallback of a WebSocket-capable dispatcher; absent when no fallback occurred
+	WebsocketFallbackReason *ModelCallWebSocketFallbackReason `json:"websocketFallbackReason,omitempty"`
 }
 
 func (*AssistantUsageData) sessionEventData()      {}
@@ -4106,6 +4118,10 @@ type MCPServersLoadedServer struct {
 
 // Content-free structural summary of the failing request for diagnosing malformed 4xx calls
 type ModelCallFailureRequestFingerprint struct {
+	// Summed byte length of opaque or encrypted reasoning payloads
+	EncryptedContentBytes *int64 `json:"encryptedContentBytes,omitempty"`
+	// Summed byte length of inline image payloads (data URLs and base64 sources)
+	ImageBytes *int64 `json:"imageBytes,omitempty"`
 	// Total number of image content parts
 	ImagePartCount int64 `json:"imagePartCount"`
 	// Image parts whose media type cannot be determined (rejected by strict providers)
@@ -4116,6 +4132,8 @@ type ModelCallFailureRequestFingerprint struct {
 	MessageCount int64 `json:"messageCount"`
 	// Tool calls whose name is missing or empty (rejected by strict providers)
 	NamelessToolCallCount int64 `json:"namelessToolCallCount"`
+	// Number of messages carrying opaque or encrypted reasoning
+	ReasoningItemCount *int64 `json:"reasoningItemCount,omitempty"`
 	// Total number of tool calls across assistant messages
 	ToolCallCount int64 `json:"toolCallCount"`
 	// Number of "tool" result messages in the request
@@ -6396,6 +6414,22 @@ const (
 	ModelCallFinishedOutcomeRejected ModelCallFinishedOutcome = "rejected"
 	// The provider response was accepted for continued agent processing.
 	ModelCallFinishedOutcomeSuccess ModelCallFinishedOutcome = "success"
+)
+
+// Why a WebSocket-capable model call was carried by the HTTP fallback
+type ModelCallWebSocketFallbackReason string
+
+const (
+	// The WebSocket returned a retryable API error.
+	ModelCallWebSocketFallbackReasonAPIError ModelCallWebSocketFallbackReason = "api_error"
+	// The WebSocket connection could not be established.
+	ModelCallWebSocketFallbackReasonConnectFailed ModelCallWebSocketFallbackReason = "connect_failed"
+	// No usable WebSocket connection was available for the request.
+	ModelCallWebSocketFallbackReasonConnectionUnavailable ModelCallWebSocketFallbackReason = "connection_unavailable"
+	// Sending the request over the WebSocket failed.
+	ModelCallWebSocketFallbackReasonSendFailed ModelCallWebSocketFallbackReason = "send_failed"
+	// The WebSocket transport failed before any output reached the consumer.
+	ModelCallWebSocketFallbackReasonTransportFailed ModelCallWebSocketFallbackReason = "transport_failed"
 )
 
 // Why the session no longer has an explicitly selected model.

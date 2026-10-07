@@ -154,7 +154,7 @@ export type SessionEvent =
   | ExtensionsAttachmentsPushedEvent
   | McpAppToolCallCompleteEvent;
 /**
- * Routing preference used when the session model is `auto`. `fast` is an integrator-only latency preset and is not a first-party GitHub Copilot product preference.
+ * Extensible routing preference for the virtual `auto` model. New identifiers must be advertised and enabled by the provider. `fast` is an integrator-only latency preset.
  */
 export type AutoTier =
   /** Optimize for efficiency. */
@@ -164,7 +164,8 @@ export type AutoTier =
   /** Optimize for intelligence. */
   | "intelligence"
   /** Integrator-only preset that optimizes for latency. */
-  | "fast";
+  | "fast"
+  | (string & {});
 /**
  * Hosting platform type of the repository (github or ado)
  */
@@ -455,7 +456,7 @@ export type ModelDeselectedReason =
   /** A host-managed provider snapshot no longer publishes the selected model. */
   "provider_withdrawn";
 /**
- * Auto preferences that Copilot API can recommend.
+ * Enabled Auto preferences that Copilot API can recommend.
  */
 export type RecommendedAutoTier =
   /** Optimize for efficiency. */
@@ -463,7 +464,8 @@ export type RecommendedAutoTier =
   /** Balance efficiency and intelligence. */
   | "balance"
   /** Optimize for intelligence. */
-  | "intelligence";
+  | "intelligence"
+  | (string & {});
 /**
  * Terminal reason an Auto preference activation failed.
  */
@@ -6706,6 +6708,10 @@ export interface ModelCallFailureData {
    * Reasoning effort level used for the failed model call, if applicable
    */
   reasoningEffort?: string;
+  /**
+   * Serialized (uncompressed) byte length of the failed request body. A content-free size signal.
+   */
+  requestBodyBytes?: number;
   requestFingerprint?: ModelCallFailureRequestFingerprint;
   /**
    * Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.

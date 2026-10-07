@@ -59,6 +59,7 @@ import {
     type SessionEventEnvelopeProperty,
 } from "./utils.js";
 import { isOmittableRequest, readLegacyParameters, validateLegacyDefinitions } from "./legacy-parameters.js";
+import { extensibleEnumValues, normalizeExtensibleEnums } from "./extensible-enums.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -659,7 +660,8 @@ function getOrCreateEnum(
     enumValueDescriptions?: EnumValueDescriptions,
     explicitName?: string,
     deprecated?: boolean,
-    experimental?: boolean
+    experimental?: boolean,
+    caseSensitive = false
 ): string {
     const enumName = explicitName ?? `${parentClassName}${propName}`;
     const existing = generatedEnums.get(enumName);
@@ -698,9 +700,10 @@ function getOrCreateEnum(
     lines.push(`    /// <inheritdoc />`);
     lines.push(`    public override bool Equals(object? obj) => obj is ${enumName} other && Equals(other);`, "");
     lines.push(`    /// <inheritdoc />`);
-    lines.push(`    public bool Equals(${enumName} other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);`, "");
+    const comparison = caseSensitive ? "Ordinal" : "OrdinalIgnoreCase";
+    lines.push(`    public bool Equals(${enumName} other) => string.Equals(Value, other.Value, StringComparison.${comparison});`, "");
     lines.push(`    /// <inheritdoc />`);
-    lines.push(`    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);`, "");
+    lines.push(`    public override int GetHashCode() => StringComparer.${comparison}.GetHashCode(Value);`, "");
     lines.push(`    /// <inheritdoc />`);
     lines.push(`    public override string ToString() => Value;`, "");
     lines.push(`    /// <summary>Provides a <see cref="JsonConverter{${enumName}}"/> for serializing <see cref="${enumName}"/> instances.</summary>`);
@@ -1310,7 +1313,7 @@ function resolveSessionPropertyType(
         }
 
         if (refSchema.enum && Array.isArray(refSchema.enum)) {
-            const enumName = getOrCreateEnum(className, "", refSchema.enum as string[], enumOutput, refSchema.description, getEnumValueDescriptions(refSchema), undefined, isSchemaDeprecated(refSchema), isSchemaExperimental(refSchema));
+            const enumName = getOrCreateEnum(className, "", refSchema.enum as string[], enumOutput, refSchema.description, getEnumValueDescriptions(refSchema), undefined, isSchemaDeprecated(refSchema), isSchemaExperimental(refSchema), extensibleEnumValues(refSchema) !== undefined);
             return isRequired ? enumName : `${enumName}?`;
         }
 
@@ -1359,7 +1362,7 @@ function resolveSessionPropertyType(
         failUnmappable(`oneOf without discriminator (${parentClassName}.${propName})`, propSchema);
     }
     if (propSchema.enum && Array.isArray(propSchema.enum)) {
-        const enumName = getOrCreateEnum(parentClassName, propName, propSchema.enum as string[], enumOutput, propSchema.description, getEnumValueDescriptions(propSchema), propSchema.title as string | undefined, isSchemaDeprecated(propSchema), isSchemaExperimental(propSchema));
+        const enumName = getOrCreateEnum(parentClassName, propName, propSchema.enum as string[], enumOutput, propSchema.description, getEnumValueDescriptions(propSchema), propSchema.title as string | undefined, isSchemaDeprecated(propSchema), isSchemaExperimental(propSchema), extensibleEnumValues(propSchema) !== undefined);
         return isRequired ? enumName : `${enumName}?`;
     }
     if (propSchema.type === "object" && propSchema.properties) {
@@ -1904,7 +1907,7 @@ function resolveRpcType(schema: JSONSchema7, isRequired: boolean, parentClassNam
         }
 
         if (refSchema.enum && Array.isArray(refSchema.enum)) {
-            const enumName = getOrCreateEnum(typeName, "", refSchema.enum as string[], rpcEnumOutput, refSchema.description, getEnumValueDescriptions(refSchema), undefined, isSchemaDeprecated(refSchema), isSchemaExperimental(refSchema) || experimentalRpcTypes.has(typeName));
+            const enumName = getOrCreateEnum(typeName, "", refSchema.enum as string[], rpcEnumOutput, refSchema.description, getEnumValueDescriptions(refSchema), undefined, isSchemaDeprecated(refSchema), isSchemaExperimental(refSchema) || experimentalRpcTypes.has(typeName), extensibleEnumValues(refSchema) !== undefined);
             return isRequired ? enumName : `${enumName}?`;
         }
 
@@ -1991,6 +1994,7 @@ function resolveRpcType(schema: JSONSchema7, isRequired: boolean, parentClassNam
             explicitName,
             isSchemaDeprecated(schema),
             isSchemaExperimental(schema) || experimentalRpcTypes.has(generatedEnumName),
+            extensibleEnumValues(schema) !== undefined,
         );
         return isRequired ? enumName : `${enumName}?`;
     }
@@ -2914,7 +2918,7 @@ export function generateRpcCode(
     externalJsonSerializableRefs: Map<string, Set<string>> = new Map(),
     externalValueTypes: Set<string> = new Set()
 ): string {
-    schema = cloneSchemaForCodegen(schema);
+    schema = normalizeExtensibleEnums(cloneSchemaForCodegen(schema));
     omitUnrepresentableInternalProperties(schema);
     emittedRpcClassSchemas.clear();
     publicReachableRpcClasses.clear();

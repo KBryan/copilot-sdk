@@ -6150,6 +6150,7 @@ class ModelCallFailureData:
     # Internal: this field is an internal SDK API and is not part of the public surface.
     _quota_snapshots: dict[str, _AssistantUsageQuotaSnapshot] | None = None
     reasoning_effort: str | None = None
+    request_body_bytes: int | None = None
     request_fingerprint: ModelCallFailureRequestFingerprint | None = None
     rte: bool | None = None
     service_request_id: str | None = None
@@ -6182,6 +6183,7 @@ class ModelCallFailureData:
         provider_call_id = from_union([from_none, from_str], obj.get("providerCallId"))
         _quota_snapshots = from_union([from_none, lambda x: from_dict(_AssistantUsageQuotaSnapshot.from_dict, x)], obj.get("quotaSnapshots"))
         reasoning_effort = from_union([from_none, from_str], obj.get("reasoningEffort"))
+        request_body_bytes = from_union([from_none, from_int], obj.get("requestBodyBytes"))
         request_fingerprint = from_union([from_none, ModelCallFailureRequestFingerprint.from_dict], obj.get("requestFingerprint"))
         rte = from_union([from_none, from_bool], obj.get("rte"))
         service_request_id = from_union([from_none, from_str], obj.get("serviceRequestId"))
@@ -6211,6 +6213,7 @@ class ModelCallFailureData:
             provider_call_id=provider_call_id,
             _quota_snapshots=_quota_snapshots,
             reasoning_effort=reasoning_effort,
+            request_body_bytes=request_body_bytes,
             request_fingerprint=request_fingerprint,
             rte=rte,
             service_request_id=service_request_id,
@@ -6265,6 +6268,8 @@ class ModelCallFailureData:
             result["quotaSnapshots"] = from_union([from_none, lambda x: from_dict(lambda x: to_class(_AssistantUsageQuotaSnapshot, x), x)], self._quota_snapshots)
         if self.reasoning_effort is not None:
             result["reasoningEffort"] = from_union([from_none, from_str], self.reasoning_effort)
+        if self.request_body_bytes is not None:
+            result["requestBodyBytes"] = from_union([from_none, to_int], self.request_body_bytes)
         if self.request_fingerprint is not None:
             result["requestFingerprint"] = from_union([from_none, lambda x: to_class(ModelCallFailureRequestFingerprint, x)], self.request_fingerprint)
         if self.rte is not None:
@@ -13898,7 +13903,7 @@ class AutoModeSwitchResponse(Enum):
 
 
 class AutoTier(Enum):
-    "Routing preference used when the session model is `auto`. `fast` is an integrator-only latency preset and is not a first-party GitHub Copilot product preference."
+    "Extensible routing preference for the virtual `auto` model. New identifiers must be advertised and enabled by the provider. `fast` is an integrator-only latency preset."
     # Optimize for efficiency.
     EFFICIENCY = "efficiency"
     # Balance efficiency and intelligence.
@@ -13907,6 +13912,15 @@ class AutoTier(Enum):
     INTELLIGENCE = "intelligence"
     # Integrator-only preset that optimizes for latency.
     FAST = "fast"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        if not isinstance(value, str):
+            return None
+        member = object.__new__(cls)
+        member._name_ = None
+        member._value_ = value
+        return cls._value2member_map_.setdefault(value, member)
 
 
 class AutoTierSwitchFailureReason(Enum):
@@ -14669,13 +14683,22 @@ class ReasoningSummary(Enum):
 
 
 class RecommendedAutoTier(Enum):
-    "Auto preferences that Copilot API can recommend."
+    "Enabled Auto preferences that Copilot API can recommend."
     # Optimize for efficiency.
     EFFICIENCY = "efficiency"
     # Balance efficiency and intelligence.
     BALANCE = "balance"
     # Optimize for intelligence.
     INTELLIGENCE = "intelligence"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        if not isinstance(value, str):
+            return None
+        member = object.__new__(cls)
+        member._name_ = None
+        member._value_ = value
+        return cls._value2member_map_.setdefault(value, member)
 
 
 class RemediationAction(Enum):

@@ -60,6 +60,7 @@ import {
     type SessionEventEnvelopeProperty,
 } from "./utils.js";
 import { validateLegacyRequests, validateLegacyDefinitions } from "./legacy-parameters.js";
+import { normalizeExtensibleEnums } from "./extensible-enums.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -3924,7 +3925,7 @@ async function generateRpc(schemaPath?: string): Promise<void> {
     console.log("Go: generating RPC types...");
 
     const resolvedPath = schemaPath ?? (await getApiSchemaPath());
-    const schema = propagateInternalVisibility(fixNullableRequiredRefsInApiSchema(cloneSchemaForCodegen((await loadSchemaJson(resolvedPath)) as ApiSchema)) as JSONSchema7) as unknown as ApiSchema;
+    const schema = propagateInternalVisibility(normalizeExtensibleEnums(fixNullableRequiredRefsInApiSchema(cloneSchemaForCodegen((await loadSchemaJson(resolvedPath)) as ApiSchema))) as JSONSchema7) as unknown as ApiSchema;
 
     const allMethods = [
         ...collectRpcMethods(schema.server || {}),

@@ -16,6 +16,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { promisify } from "util";
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
+import { extensibleEnumValues } from "./extensible-enums.js";
 import {
 	isCodegenEntrypoint,
 	addManagedApprovalRequiredToPermissionRequests,
@@ -1266,6 +1267,7 @@ function emitRustStringEnum(
 	if (!claimRustStringEnum(enumName, values, false, ctx)) return;
 
 	const preserveUnknownValue = enumName === "ToolExecutionCompleteFileEditKind";
+	const open = extensibleEnumValues(resolveRef(`#/$defs/${enumName}`, ctx.definitions) ?? {}) !== undefined;
 	const lines: string[] = [];
 	const preserveUnknown = preserveUnknownValue || preservesUnknownStringValue(enumName);
 	if (description) {
@@ -1277,6 +1279,8 @@ function emitRustStringEnum(
 	lines.push(
 		preserveUnknown
 			? "#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]"
+			: open
+			? "#[derive(Debug, Clone, Default, PartialEq, Eq)]"
 			: "#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]",
 	);
 	if (preserveUnknown) {
@@ -1285,8 +1289,8 @@ function emitRustStringEnum(
 	lines.push(`pub enum ${enumName} {`);
 
 	const usedVariantNames = new Set<string>();
-	const reservedVariantNames = new Set(["Unknown"]);
-	const variants: { value: string; name: string }[] = [];
+	const reservedVariantNames = new Set(["Unknown", ...(open ? ["Custom"] : [])]);
+	const variants: Array<{ name: string; value: string }> = [];
 	for (const value of values) {
 		// Keep the protocol's explicit "unknown" distinct from the serde fallback,
 		// including anonymous enums whose names depend on their containing type.
@@ -1299,7 +1303,7 @@ function emitRustStringEnum(
 		);
 		variants.push({ value, name: variantName });
 		pushRustDoc(lines, enumValueDescriptions?.[value], "    ");
-		if (!preserveUnknown && variantName !== value) {
+		if (!open && !preserveUnknown && variantName !== value) {
 			lines.push(`    #[serde(rename = "${value}")]`);
 		}
 		lines.push(`    ${variantName},`);
@@ -1315,8 +1319,12 @@ function emitRustStringEnum(
 	} else {
 		// For wire-protocol enums an unknown/sentinel value is the only safe default.
 		lines.push("    #[default]");
-		lines.push("    #[serde(other)]");
+		if (!open) lines.push("    #[serde(other)]");
 		lines.push("    Unknown,");
+	}
+	if (open) {
+		lines.push("    /// Provider-advertised identifier, retained verbatim.");
+		lines.push("    Custom(String),");
 	}
 
 	lines.push("}");
@@ -1345,6 +1353,31 @@ function emitRustStringEnum(
 		}
 		lines.push(`            ${enumName}::Unknown(value) => value,`);
 		lines.push("        }");
+		lines.push("    }");
+		lines.push("}");
+	} else if (open) {
+		lines.push(`impl ${enumName} {`);
+		lines.push("    /// Returns the routing identifier without losing unknown values.");
+		lines.push("    pub fn as_str(&self) -> &str {");
+		lines.push("        match self {");
+		for (const variant of variants) lines.push(`            Self::${variant.name} => ${JSON.stringify(variant.value)},`);
+		lines.push('            Self::Unknown => "Unknown",');
+		lines.push("            Self::Custom(value) => value,");
+		lines.push("        }");
+		lines.push("    }");
+		lines.push("}");
+		lines.push(`impl Serialize for ${enumName} {`);
+		lines.push("    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {");
+		lines.push("        serializer.serialize_str(self.as_str())");
+		lines.push("    }");
+		lines.push("}");
+		lines.push(`impl<'de> Deserialize<'de> for ${enumName} {`);
+		lines.push("    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {");
+		lines.push("        let value = String::deserialize(deserializer)?;");
+		lines.push("        Ok(match value.as_str() {");
+		for (const variant of variants) lines.push(`            ${JSON.stringify(variant.value)} => Self::${variant.name},`);
+		lines.push("            _ => Self::Custom(value),");
+		lines.push("        })");
 		lines.push("    }");
 		lines.push("}");
 	}

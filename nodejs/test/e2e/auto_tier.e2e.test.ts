@@ -17,6 +17,21 @@ import { isByokBackend } from "./harness/testBackend";
 describe("Auto tier switching", async () => {
     const { copilotClient: client, createClient } = await createSdkTestContext();
 
+    it("rejects new tier activation while dynamic discovery is disabled", async () => {
+        const session = await client.createSession({
+            onPermissionRequest: approveAll,
+            model: "auto",
+            capi: { autoTier: "balance" },
+        });
+        await expect(session.setAutoTier("premium-v2")).rejects.toThrow(
+            "requires dynamic Auto tiers"
+        );
+        const current = await session.rpc.model.getCurrent();
+        expect(current.autoTier).toBe("balance");
+        expect(current.pendingAutoTier).toBeUndefined();
+        await session.disconnect();
+    });
+
     it("should stage and reset auto tier preference", async () => {
         const session = await client.createSession({
             onPermissionRequest: approveAll,

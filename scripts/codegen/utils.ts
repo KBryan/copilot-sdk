@@ -16,6 +16,7 @@ import { promisify } from "util";
 import { COPILOT_CLI_VERSION } from "../../nodejs/src/cliVersion.js";
 import { ensureCopilotPackage } from "../../nodejs/scripts/releaseArtifacts.js";
 import { findRuntimeRoot } from "../runtime-layout.mjs";
+import { extensibleEnumValues } from "./extensible-enums.js";
 
 export const execFileAsync = promisify(execFile);
 
@@ -245,6 +246,11 @@ export function postProcessSchema(schema: JSONSchema7): JSONSchema7 {
     if (typeof schema !== "object" || schema === null) return schema;
 
     const processed = { ...schema } as JSONSchema7WithDefs;
+    const knownValues = extensibleEnumValues(processed);
+    if (knownValues) {
+        // Enum emitters retain the familiar constants; open-value emitters must also retain unknown strings.
+        processed.enum = knownValues;
+    }
 
     if (processed.title === "ProviderModelConfig" && processed.properties) {
         const tokenFields = new Set([
@@ -1718,8 +1724,13 @@ function normalizeDefinitionForComparison(definition: JSONSchema7Definition): un
     }
 
     const result: Record<string, unknown> = {};
+    const knownValues = extensibleEnumValues(definition);
     for (const [key, value] of Object.entries(definition as Record<string, unknown>)) {
-        if (key === "description" || key === "markdownDescription" || key === "x-enumDescriptions") {
+        if (key === "enum" && knownValues && Array.isArray(value) &&
+            value.length === knownValues.length && value.every((item) => knownValues.includes(item))) {
+            // The processed event schema adds known values for codegen, not a wire restriction.
+            continue;
+        } else if (key === "description" || key === "markdownDescription" || key === "x-enumDescriptions") {
             continue;
         } else if (key === "$ref" && typeof value === "string") {
             const localRef = parseLocalDefinitionRef(value);

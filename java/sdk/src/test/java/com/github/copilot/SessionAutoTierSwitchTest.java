@@ -34,6 +34,18 @@ import org.junit.jupiter.api.Test;
 class SessionAutoTierSwitchTest {
 
     @Test
+    void customTierRoundTripsAcrossConvenienceAndGeneratedApis() throws Exception {
+        ObjectMapper mapper = JsonRpcClient.getObjectMapper();
+        AutoTier tier = AutoTier.fromValue("premium-v2");
+        assertEquals("\"premium-v2\"", mapper.writeValueAsString(tier));
+        assertEquals(tier, mapper.readValue("\"premium-v2\"", AutoTier.class));
+        var generated = mapper.readValue("\"premium-v2\"", com.github.copilot.generated.rpc.AutoTier.class);
+        assertEquals("premium-v2", generated.getValue());
+        assertEquals("\"premium-v2\"", mapper.writeValueAsString(generated));
+        assertEquals(AutoTier.BALANCE, AutoTier.fromValue("balance"));
+    }
+
+    @Test
     void setModel_omits_autoTier_when_no_preference_is_requested() throws Exception {
         try (var sockets = new SocketPair()) {
             var session = new CopilotSession("sess-1", sockets.client());

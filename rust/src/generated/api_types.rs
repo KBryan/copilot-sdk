@@ -3630,6 +3630,70 @@ pub struct AutopilotObjectiveGetStateResult {
     pub state: Option<AutopilotObjectiveState>,
 }
 
+/// Availability of a server-advertised routing preference.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTierStatus {
+    /// Whether the provider permits selecting this preference.
+    pub enabled: bool,
+    /// Human-readable explanation of availability.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Extensible machine-readable unavailability reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// A server-advertised routing preference. Identifiers and execution types are extensible.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTierDescriptor {
+    /// Description displayed beside the preference.
+    pub description: String,
+    /// Human-readable label, not a routing identifier.
+    pub display_name: String,
+    /// Opaque routing identifier transmitted unchanged to the provider.
+    pub id: String,
+    /// Current account-specific availability.
+    pub status: AutoTierStatus,
+    /// Execution kind; this client supports `auto` preferences on the Auto model.
+    pub r#type: String,
+}
+
+/// Account-bound discovery metadata for the virtual `auto` model.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoTierMetadata {
+    /// Provider-default preference, used only when no explicit preference exists.
+    pub default_tier: String,
+    /// Provider that supplied this metadata, when the catalog is provider-attributed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    /// Routing preferences in the server's presentation order.
+    pub tiers: Vec<AutoTierDescriptor>,
+}
+
 /// A well-known model in the runtime's built-in catalog.
 ///
 /// <div class="warning">
@@ -20738,7 +20802,7 @@ pub struct SandboxGrantPathForRequestResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SandboxHostCapability {
-    /// The policy feature, as an extensible string: ignore names you do not recognize. Known values: `network` (sandboxed commands can reach the network; on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns), `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support, and a policy that uses it must also set `network.allowLocalNetwork`), `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on Windows this needs Process Security Environment 1.1 filesystem enumeration support, and without it sandboxed PowerShell still runs but cannot resolve its current location; other platforms always report it).
+    /// The policy feature, as an extensible string: ignore names you do not recognize. Known values: `network` (sandboxed commands can reach the network; on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns), `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support or MXC's PSEC 1.0-only proxy-loopback compatibility capability, and a policy that uses it must also set `network.allowLocalNetwork`; compatibility applies only to an explicit identity-less runtime proxy, not general host-loopback access, and other policy restrictions still apply), `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on Windows this needs Process Security Environment 1.1 filesystem enumeration support, and without it sandboxed PowerShell still runs but cannot resolve its current location; other platforms always report it).
     pub name: String,
     /// Human-readable reason and remedy when the feature is unsupported, such as a package to install or an OS update. Present only when `supported` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22646,6 +22710,9 @@ pub struct SessionModelPriceCategory {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionModelList {
+    /// Ordered Auto routing preferences discovered for this session's account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto: Option<AutoTierMetadata>,
     /// Available models, ordered with the most preferred default first. Includes both Copilot (CAPI) models and any registry BYOK models; a BYOK model appears under its provider-qualified selection id (`provider/id`).
     pub list: Vec<serde_json::Value>,
     /// Cost categories for the full CAPI catalog, including picker-disabled models that Auto may select. Metadata only; entries absent from `list` are not manually selectable.
@@ -22858,6 +22925,10 @@ pub struct SessionOpenOptions {
     /// Initial authentication info for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_info: Option<AuthInfo>,
+    /// Whether a CLI host explicitly requested the initial Auto preference. False preserves a settings-derived preference without validating availability during creation; execution still validates it. Defaults to true and is ignored for non-CLI callers.
+    #[doc(hidden)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auto_tier_is_explicit: Option<bool>,
     /// Allowlist of available tool names.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub available_tools: Option<Vec<String>>,
@@ -31884,6 +31955,9 @@ pub struct SessionModelSetReasoningEffortResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionModelListResult {
+    /// Ordered Auto routing preferences discovered for this session's account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto: Option<AutoTierMetadata>,
     /// Available models, ordered with the most preferred default first. Includes both Copilot (CAPI) models and any registry BYOK models; a BYOK model appears under its provider-qualified selection id (`provider/id`).
     pub list: Vec<serde_json::Value>,
     /// Cost categories for the full CAPI catalog, including picker-disabled models that Auto may select. Metadata only; entries absent from `list` are not manually selectable.
@@ -37179,7 +37253,7 @@ pub type McpExecuteSamplingResult = HashMap<String, serde_json::Value>;
 /// </div>
 pub type McpPlanSecretReference = String;
 
-/// Extensible identifier of a sandbox policy feature whose availability varies between hosts. A plain string, so an older client decodes a name added by a newer runtime; ignore names you do not recognize. Known values: `network` — sandboxed commands can reach the network (`network.allowOutbound`, on by default); on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns. `network_filtering` — host rules and the sandbox proxy (`network.allowedHosts`, `network.blockedHosts`, `network.proxy`); on Linux this needs the same tooling as `network`; on Windows it needs a version with Process Security Environment 1.1 host-loopback support, and a policy that uses it must also set `network.allowLocalNetwork`, because Windows reaches the local proxy only together with private-network access. `denied_paths` — native enforcement of `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem grants, which PowerShell's drive roots use on Windows; this needs a version with Process Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and relative paths may resolve against the drive root; the session also receives a `session.warning` with `warningType` `sandbox`. Other platforms always report it.
+/// Extensible identifier of a sandbox policy feature whose availability varies between hosts. A plain string, so an older client decodes a name added by a newer runtime; ignore names you do not recognize. Known values: `network` — sandboxed commands can reach the network (`network.allowOutbound`, on by default); on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns. `network_filtering` — host rules and the sandbox proxy (`network.allowedHosts`, `network.blockedHosts`, `network.proxy`); on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support or MXC's PSEC 1.0-only proxy-loopback compatibility capability, and a policy that uses it must also set `network.allowLocalNetwork`, because Windows reaches the local proxy only together with private-network access. Compatibility applies only to an explicit identity-less runtime proxy, not general host-loopback access, and other policy restrictions still apply. `denied_paths` — native enforcement of `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem grants, which PowerShell's drive roots use on Windows; this needs a version with Process Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and relative paths may resolve against the drive root; the session also receives a `session.warning` with `warningType` `sandbox`. Other platforms always report it.
 ///
 /// <div class="warning">
 ///

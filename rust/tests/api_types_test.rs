@@ -20,10 +20,24 @@ use github_copilot_sdk::rpc::{
     UnsupportedEnqueueCommandResult,
 };
 use github_copilot_sdk::session_events::{
-    McpServerStatus, PermissionRequest, PermissionRequestedData, SessionEventData,
-    TypedSessionEvent,
+    McpServerStatus, PermissionRequest, PermissionRequestedData, RecommendedAutoTier,
+    SessionEventData, TypedSessionEvent,
 };
 use github_copilot_sdk::{AutoTier, AutoTierPreference, SetModelOptions};
+
+#[test]
+fn extensible_tier_unknown_literal_retains_its_provider_identity() {
+    let wire = serde_json::json!("Unknown");
+    let tier: AutoTier = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(tier, AutoTier::Custom("Unknown".to_owned()));
+    assert_eq!(serde_json::to_value(tier).unwrap(), wire);
+    let recommendation: RecommendedAutoTier = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(
+        recommendation,
+        RecommendedAutoTier::Custom("Unknown".to_owned())
+    );
+    assert_eq!(serde_json::to_value(recommendation).unwrap(), wire);
+}
 
 #[test]
 fn configured_mcp_servers_preserve_enablement_without_live_state() {
@@ -297,6 +311,10 @@ fn session_events_deserialize_auto_tier() {
             (Some(AutoTier::Balance), Some("balance")),
             (Some(AutoTier::Intelligence), Some("intelligence")),
             (Some(AutoTier::Fast), Some("fast")),
+            (
+                Some(AutoTier::Custom("premium-v2".to_owned())),
+                Some("premium-v2"),
+            ),
             (None, None),
         ] {
             let mut wire = serde_json::json!({
@@ -315,6 +333,12 @@ fn session_events_deserialize_auto_tier() {
                 wire["data"]["autoTier"] = serde_json::json!(wire_tier);
             }
             let event: TypedSessionEvent = serde_json::from_value(wire).unwrap();
+            if let Some(wire_tier) = wire_tier {
+                assert_eq!(
+                    serde_json::to_value(&event).unwrap()["data"]["autoTier"],
+                    serde_json::json!(wire_tier),
+                );
+            }
             let actual: Option<AutoTier> = match event.payload {
                 SessionEventData::SessionStart(data) if event_type == "session.start" => {
                     data.auto_tier
@@ -771,6 +795,7 @@ fn switch_auto_tier_request_serializes_each_tier() {
         (AutoTier::Balance, "balance"),
         (AutoTier::Intelligence, "intelligence"),
         (AutoTier::Fast, "fast"),
+        (AutoTier::Custom("premium-v2".to_owned()), "premium-v2"),
     ] {
         let request = ModelSwitchAutoTierRequest {
             auto_tier: Some(tier),

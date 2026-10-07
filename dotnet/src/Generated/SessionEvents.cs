@@ -5351,6 +5351,11 @@ public sealed partial class ModelCallFailureData
     [JsonPropertyName("reasoningEffort")]
     public string? ReasoningEffort { get; set; }
 
+    /// <summary>Serialized (uncompressed) byte length of the failed request body. A content-free size signal.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("requestBodyBytes")]
+    public long? RequestBodyBytes { get; set; }
+
     /// <summary>Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("requestFingerprint")]
@@ -13261,7 +13266,7 @@ public sealed partial class McpAppToolCallCompleteToolMeta
     public McpAppToolCallCompleteToolMetaUI? Ui { get; set; }
 }
 
-/// <summary>Routing preference used when the session model is `auto`. `fast` is an integrator-only latency preset and is not a first-party GitHub Copilot product preference.</summary>
+/// <summary>Extensible routing preference for the virtual `auto` model. New identifiers must be advertised and enabled by the provider. `fast` is an integrator-only latency preset.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
 public readonly struct AutoTier : IEquatable<AutoTier>
@@ -13302,10 +13307,10 @@ public readonly struct AutoTier : IEquatable<AutoTier>
     public override bool Equals(object? obj) => obj is AutoTier other && Equals(other);
 
     /// <inheritdoc />
-    public bool Equals(AutoTier other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+    public bool Equals(AutoTier other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Value);
 
     /// <inheritdoc />
     public override string ToString() => Value;
@@ -14406,7 +14411,7 @@ public readonly struct ModelDeselectedReason : IEquatable<ModelDeselectedReason>
     }
 }
 
-/// <summary>Auto preferences that Copilot API can recommend.</summary>
+/// <summary>Enabled Auto preferences that Copilot API can recommend.</summary>
 [JsonConverter(typeof(Converter))]
 [DebuggerDisplay("{Value,nq}")]
 public readonly struct RecommendedAutoTier : IEquatable<RecommendedAutoTier>
@@ -14444,10 +14449,10 @@ public readonly struct RecommendedAutoTier : IEquatable<RecommendedAutoTier>
     public override bool Equals(object? obj) => obj is RecommendedAutoTier other && Equals(other);
 
     /// <inheritdoc />
-    public bool Equals(RecommendedAutoTier other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);
+    public bool Equals(RecommendedAutoTier other) => string.Equals(Value, other.Value, StringComparison.Ordinal);
 
     /// <inheritdoc />
-    public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Value);
+    public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Value);
 
     /// <inheritdoc />
     public override string ToString() => Value;

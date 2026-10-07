@@ -1702,6 +1702,45 @@ type AutopilotObjectiveState struct {
 	TurnCount int64 `json:"turnCount"`
 }
 
+// A server-advertised routing preference. Identifiers and execution types are extensible.
+// Experimental: AutoTierDescriptor is part of an experimental API and may change or be
+// removed.
+type AutoTierDescriptor struct {
+	// Description displayed beside the preference.
+	Description string `json:"description"`
+	// Human-readable label, not a routing identifier.
+	DisplayName string `json:"displayName"`
+	// Opaque routing identifier transmitted unchanged to the provider.
+	ID string `json:"id"`
+	// Current account-specific availability.
+	Status AutoTierStatus `json:"status"`
+	// Execution kind; this client supports `auto` preferences on the Auto model.
+	Type string `json:"type"`
+}
+
+// Account-bound discovery metadata for the virtual `auto` model.
+// Experimental: AutoTierMetadata is part of an experimental API and may change or be
+// removed.
+type AutoTierMetadata struct {
+	// Provider-default preference, used only when no explicit preference exists.
+	DefaultTier string `json:"defaultTier"`
+	// Provider that supplied this metadata, when the catalog is provider-attributed.
+	ProviderID *string `json:"providerId,omitempty"`
+	// Routing preferences in the server's presentation order.
+	Tiers []AutoTierDescriptor `json:"tiers"`
+}
+
+// Availability of a server-advertised routing preference.
+// Experimental: AutoTierStatus is part of an experimental API and may change or be removed.
+type AutoTierStatus struct {
+	// Whether the provider permits selecting this preference.
+	Enabled bool `json:"enabled"`
+	// Human-readable explanation of availability.
+	Message *string `json:"message,omitempty"`
+	// Extensible machine-readable unavailability reason.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // A shipped agent, named and described.
 // Experimental: BuiltinAgentSummary is part of an experimental API and may change or be
 // removed.
@@ -14454,12 +14493,15 @@ type SandboxHostCapability struct {
 	// tooling for Bubblewrap's private network namespace, such as slirp4netns),
 	// `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same
 	// tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback
-	// support, and a policy that uses it must also set `network.allowLocalNetwork`),
-	// `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands
-	// inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on
-	// Windows this needs Process Security Environment 1.1 filesystem enumeration support, and
-	// without it sandboxed PowerShell still runs but cannot resolve its current location; other
-	// platforms always report it).
+	// support or MXC's PSEC 1.0-only proxy-loopback compatibility capability, and a policy that
+	// uses it must also set `network.allowLocalNetwork`; compatibility applies only to an
+	// explicit identity-less runtime proxy, not general host-loopback access, and other policy
+	// restrictions still apply), `denied_paths` (native enforcement of
+	// `filesystem.deniedPaths`), `shell` (shell commands inside the sandbox), and
+	// `filesystem_enumeration` (enumerate-only filesystem grants; on Windows this needs Process
+	// Security Environment 1.1 filesystem enumeration support, and without it sandboxed
+	// PowerShell still runs but cannot resolve its current location; other platforms always
+	// report it).
 	Name string `json:"name"`
 	// Human-readable reason and remedy when the feature is unsupported, such as a package to
 	// install or an OS update. Present only when `supported` is false.
@@ -14475,17 +14517,20 @@ type SandboxHostCapability struct {
 // Bubblewrap's private network namespace, such as slirp4netns. `network_filtering` — host
 // rules and the sandbox proxy (`network.allowedHosts`, `network.blockedHosts`,
 // `network.proxy`); on Linux this needs the same tooling as `network`; on Windows it needs
-// a version with Process Security Environment 1.1 host-loopback support, and a policy that
-// uses it must also set `network.allowLocalNetwork`, because Windows reaches the local
-// proxy only together with private-network access. `denied_paths` — native enforcement of
-// `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports
-// denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and
-// Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem
-// grants, which PowerShell's drive roots use on Windows; this needs a version with Process
-// Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell
-// still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and
-// relative paths may resolve against the drive root; the session also receives a
-// `session.warning` with `warningType` `sandbox`. Other platforms always report it.
+// Process Security Environment 1.1 host-loopback support or MXC's PSEC 1.0-only
+// proxy-loopback compatibility capability, and a policy that uses it must also set
+// `network.allowLocalNetwork`, because Windows reaches the local proxy only together with
+// private-network access. Compatibility applies only to an explicit identity-less runtime
+// proxy, not general host-loopback access, and other policy restrictions still apply.
+// `denied_paths` — native enforcement of `filesystem.deniedPaths`; on Windows this needs a
+// version whose sandbox contract reports denied-path support. `shell` — shell commands
+// inside the sandbox: bash on macOS and Linux, PowerShell on Windows.
+// `filesystem_enumeration` — enumerate-only filesystem grants, which PowerShell's drive
+// roots use on Windows; this needs a version with Process Security Environment 1.1
+// filesystem enumeration support. Without it, sandboxed PowerShell still runs, but
+// `Get-Location` may report the drive root, `Set-Location` may fail, and relative paths may
+// resolve against the drive root; the session also receives a `session.warning` with
+// `warningType` `sandbox`. Other platforms always report it.
 // Experimental: SandboxHostCapabilityName is part of an experimental API and may change or
 // be removed.
 type SandboxHostCapabilityName string
@@ -16172,6 +16217,8 @@ type SessionMetadataSnapshot struct {
 // Experimental: SessionModelList is part of an experimental API and may change or be
 // removed.
 type SessionModelList struct {
+	// Ordered Auto routing preferences discovered for this session's account.
+	Auto *AutoTierMetadata `json:"auto,omitempty"`
 	// Available models, ordered with the most preferred default first. Includes both Copilot
 	// (CAPI) models and any registry BYOK models; a BYOK model appears under its
 	// provider-qualified selection id (`provider/id`).
@@ -16242,6 +16289,12 @@ type SessionOpenOptions struct {
 	AuthClientIDMetadataURL *string `json:"authClientIdMetadataUrl,omitempty"`
 	// Initial authentication info for the session.
 	AuthInfo AuthInfo `json:"authInfo,omitempty"`
+	// Whether a CLI host explicitly requested the initial Auto preference. False preserves a
+	// settings-derived preference without validating availability during creation; execution
+	// still validates it. Defaults to true and is ignored for non-CLI callers.
+	// Internal: AutoTierIsExplicit is part of the SDK's internal API surface and is not
+	// intended for external use.
+	AutoTierIsExplicit *bool `json:"autoTierIsExplicit,omitempty"`
 	// Allowlist of available tool names.
 	AvailableTools []string `json:"availableTools,omitzero"`
 	// Options scoped to the built-in CAPI (Copilot API) provider.
@@ -22454,8 +22507,8 @@ const (
 	AutopilotObjectiveStatusPaused AutopilotObjectiveStatus = "paused"
 )
 
-// Routing preference used when the session model is `auto`. `fast` is an integrator-only
-// latency preset and is not a first-party GitHub Copilot product preference.
+// Extensible routing preference for the virtual `auto` model. New identifiers must be
+// advertised and enabled by the provider. `fast` is an integrator-only latency preset.
 // Experimental: AutoTier is part of an experimental API and may change or be removed.
 type AutoTier string
 

@@ -126,6 +126,13 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
   private memoryApiStub: MemoryApiStub | undefined;
   private entraLogin: { subjectToken: string; githubToken: string } | undefined;
   private startPromise: Promise<string> | null = null;
+  private metaResponse: { body: unknown; statusCode: number } | undefined;
+  private metaResponseGate:
+    | {
+        reached: PromiseWithResolvers<void>;
+        release: PromiseWithResolvers<void>;
+      }
+    | undefined;
   private defaultToolResultNormalizers: ToolResultNormalizer[] = [
     { toolName: "*", normalizer: normalizeLargeOutputFilepaths },
     { toolName: "*", normalizer: normalizeInterruptedToolResult },
@@ -185,6 +192,7 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
     if (!config.filePath || !config.workDir) {
       throw new Error("filePath and workDir must be provided in config");
     }
+    this.metaResponse = undefined;
 
     // Since we're about to switch to a new file, write out any captured exchanges
     // Note that the final call to stop() will also write out any remaining exchanges.
@@ -238,6 +246,8 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
   }
 
   async stop(skipWritingCache?: boolean): Promise<void> {
+    this.metaResponseGate?.release.resolve();
+    this.metaResponseGate = undefined;
     await super.stop();
 
     // CAPI is the authoritative capture path. BYOK modes only verify that the
@@ -280,6 +290,52 @@ export class ReplayingCapiProxy extends CapturingHttpProxy {
       };
 
       try {
+        if (options.requestOptions.path === "/meta-response-gate") {
+          if (options.requestOptions.method === "POST") {
+            const { hold } = JSON.parse(options.body!) as { hold: boolean };
+            this.metaResponseGate?.release.resolve();
+            this.metaResponseGate = hold
+              ? {
+                  reached: Promise.withResolvers<void>(),
+                  release: Promise.withResolvers<void>(),
+                }
+              : undefined;
+          } else if (this.metaResponseGate) {
+            await this.metaResponseGate.reached.promise;
+          } else {
+            throw new Error("No metadata response gate is installed");
+          }
+          options.onResponseStart(200, {});
+          options.onResponseEnd();
+          return;
+        }
+        if (
+          options.requestOptions.path === "/meta-response-config" &&
+          options.requestOptions.method === "POST"
+        ) {
+          this.metaResponse = JSON.parse(options.body!) as { body: unknown; statusCode: number };
+          options.onResponseStart(200, {});
+          options.onResponseEnd();
+          return;
+        }
+        if (options.requestOptions.path === "/meta") {
+          const gate = this.metaResponseGate;
+          if (gate) {
+            gate.reached.resolve();
+            await gate.release.promise;
+          }
+          const fixture = this.metaResponse ?? {
+            statusCode: 501,
+            body: { message: "No explicit /meta fixture configured" },
+          };
+          options.onResponseStart(fixture.statusCode, {
+            "content-type": "application/json",
+            ...commonResponseHeaders,
+          });
+          options.onData(Buffer.from(JSON.stringify(fixture.body)));
+          options.onResponseEnd();
+          return;
+        }
         // Handle /copilot-user-config endpoint for configuring per-token user responses
         if (
           options.requestOptions.path === "/copilot-user-config" &&
@@ -2441,7 +2497,7 @@ function convertToStreamingResponseChunks(
   return chunks;
 }
 
-function createGetModelsResponse(
+export function createGetModelsResponse(
   modelIds: string[],
   modelNames?: Record<string, string>,
 ) {

@@ -14,6 +14,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { RPC_VARIANT_OWNERS } from "./rpc-variant-owners.js";
 import { hasLegacyParameters, isOmittableRequest, LEGACY_PARAMETERS_KEY, readLegacyParameters, type LegacyParameters } from "../../../scripts/codegen/legacy-parameters.js";
+import { extensibleEnumValues } from "../../../scripts/codegen/extensible-enums.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +89,8 @@ function normalizeBrandCasingNode(node: unknown): void {
     }
     if (node === null || typeof node !== "object") return;
     const obj = node as Record<string, unknown>;
+    const knownValues = extensibleEnumValues(obj);
+    if (knownValues) obj.enum = knownValues;
 
     if (obj.title === "ProviderModelConfig" && obj.properties && typeof obj.properties === "object") {
         const tokenFields = new Set([
@@ -1409,6 +1412,7 @@ export function schemaTypeToJava(
                 name: enumName,
                 values: schema.enum as string[],
                 description: schema.description,
+                schema,
             });
             return { javaType: enumName, imports };
         }
@@ -1750,16 +1754,19 @@ function renderNestedType(nested: JavaClassDef, indentLevel: number, nestedTypes
             lines.push(...renderOpenEnumClass(nested.name, nested.values || [], ind, true));
             return lines;
         }
-        lines.push(`${ind}public enum ${nested.name} {`);
+        const open = extensibleEnumValues(nested.schema ?? {}) !== undefined;
+        lines.push(open ? `${ind}public static final class ${nested.name} {` : `${ind}public enum ${nested.name} {`);
         for (let i = 0; i < (nested.values || []).length; i++) {
             const v = nested.values![i];
             const comma = i < nested.values!.length - 1 ? "," : ";";
             lines.push(`${ind}    /** The {@code ${v}} variant. */`);
-            lines.push(`${ind}    ${toEnumConstant(v)}("${v}")${comma}`);
+            lines.push(open
+                ? `${ind}    public static final ${nested.name} ${toEnumConstant(v)} = new ${nested.name}("${v}");`
+                : `${ind}    ${toEnumConstant(v)}("${v}")${comma}`);
         }
         lines.push("");
         lines.push(`${ind}    private final String value;`);
-        lines.push(`${ind}    ${nested.name}(String value) { this.value = value; }`);
+        lines.push(`${ind}    ${open ? "private " : ""}${nested.name}(String value) { this.value = value; }`);
         lines.push(`${ind}    @com.fasterxml.jackson.annotation.JsonValue`);
         lines.push(`${ind}    public String getValue() { return value; }`);
         lines.push(`${ind}    @com.fasterxml.jackson.annotation.JsonCreator`);
@@ -1767,8 +1774,16 @@ function renderNestedType(nested: JavaClassDef, indentLevel: number, nestedTypes
         lines.push(`${ind}        for (${nested.name} v : values()) {`);
         lines.push(`${ind}            if (v.value.equals(value)) return v;`);
         lines.push(`${ind}        }`);
-        lines.push(`${ind}        throw new IllegalArgumentException("Unknown ${nested.name} value: " + value);`);
+        lines.push(open
+            ? `${ind}        return new ${nested.name}(java.util.Objects.requireNonNull(value));`
+            : `${ind}        throw new IllegalArgumentException("Unknown ${nested.name} value: " + value);`);
         lines.push(`${ind}    }`);
+        if (open) {
+            lines.push(`${ind}    /** Returns the known values. @return known values */`);
+            lines.push(`${ind}    public static ${nested.name}[] values() { return new ${nested.name}[] { ${(nested.values ?? []).map(toEnumConstant).join(", ")} }; }`);
+            lines.push(`${ind}    @Override public boolean equals(Object other) { return other instanceof ${nested.name} v && value.equals(v.value); }`);
+            lines.push(`${ind}    @Override public int hashCode() { return value.hashCode(); }`);
+        }
         lines.push(`${ind}}`);
     } else if (nested.kind === "class" && nested.schema?.properties) {
         const localNestedTypes = new Map<string, JavaClassDef>();
@@ -2155,28 +2170,47 @@ async function generateStandaloneEnum(
     }
     if (allowUnknown) {
         lines.push(...renderOpenEnumClass(name, values, "", false, visibility));
-    } else {
-        lines.push(`${visModifier}enum ${name} {`);
-        for (let i = 0; i < values.length; i++) {
-            const v = values[i];
-            const comma = i < values.length - 1 ? "," : ";";
-            lines.push(`    /** The {@code ${v}} variant. */`);
-            lines.push(`    ${toEnumConstant(v)}("${v}")${comma}`);
-        }
         lines.push("");
-        lines.push(`    private final String value;`);
-        lines.push(`    ${name}(String value) { this.value = value; }`);
-        lines.push(`    @com.fasterxml.jackson.annotation.JsonValue`);
-        lines.push(`    public String getValue() { return value; }`);
-        lines.push(`    @com.fasterxml.jackson.annotation.JsonCreator`);
-        lines.push(`    public static ${name} fromValue(String value) {`);
-        lines.push(`        for (${name} v : values()) {`);
-        lines.push(`            if (v.value.equals(value)) return v;`);
-        lines.push(`        }`);
-        lines.push(`        throw new IllegalArgumentException("Unknown ${name} value: " + value);`);
-        lines.push(`    }`);
-        lines.push(`}`);
+        await writeGeneratedFile(`${packageDir}/${name}.java`, lines.join("\n"));
+        return;
     }
+    const open = extensibleEnumValues(schema) !== undefined;
+    lines.push(open ? `${visModifier}final class ${name} {` : `${visModifier}enum ${name} {`);
+    for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        const comma = i < values.length - 1 ? "," : ";";
+        lines.push(`    /** The {@code ${v}} variant. */`);
+        lines.push(open
+            ? `    public static final ${name} ${toEnumConstant(v)} = new ${name}("${v}");`
+            : `    ${toEnumConstant(v)}("${v}")${comma}`);
+    }
+    lines.push("");
+    lines.push(`    private final String value;`);
+    lines.push(`    ${open ? "private " : ""}${name}(String value) { this.value = value; }`);
+    lines.push(`    @com.fasterxml.jackson.annotation.JsonValue`);
+    lines.push(`    public String getValue() { return value; }`);
+    lines.push(`    @com.fasterxml.jackson.annotation.JsonCreator`);
+    lines.push(`    public static ${name} fromValue(String value) {`);
+    if (open) {
+        lines.push(`        if (value == null) return null;`);
+        lines.push(`        if (value.isEmpty() || value.codePoints().anyMatch(c -> Character.isWhitespace(c) || Character.isISOControl(c)))`);
+        lines.push(`            throw new IllegalArgumentException("${name} requires a routing identifier");`);
+    }
+    lines.push(`        for (${name} v : values()) {`);
+    lines.push(`            if (v.value.equals(value)) return v;`);
+    lines.push(`        }`);
+    lines.push(open
+        ? `        return new ${name}(value);`
+        : `        throw new IllegalArgumentException("Unknown ${name} value: " + value);`);
+    lines.push(`    }`);
+    if (open) {
+        lines.push(`    /** Returns the known routing preferences. @return known values */`);
+        lines.push(`    public static ${name}[] values() { return new ${name}[] { ${values.map(toEnumConstant).join(", ")} }; }`);
+        lines.push(`    @Override public boolean equals(Object other) { return other instanceof ${name} v && value.equals(v.value); }`);
+        lines.push(`    @Override public int hashCode() { return value.hashCode(); }`);
+        lines.push(`    @Override public String toString() { return value; }`);
+    }
+    lines.push(`}`);
     lines.push("");
 
     await writeGeneratedFile(`${packageDir}/${name}.java`, lines.join("\n"));

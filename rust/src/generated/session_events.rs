@@ -3900,6 +3900,9 @@ pub struct ModelCallFailureData {
     /// Reasoning effort level used for the failed model call, if applicable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// Serialized (uncompressed) byte length of the failed request body. A content-free size signal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_body_bytes: Option<i64>,
     /// Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_fingerprint: Option<ModelCallFailureRequestFingerprint>,
@@ -8265,25 +8268,52 @@ pub struct McpAppToolCallCompleteData {
 /// Session event "session.indexed_search". Transient indexed-search status and diagnostics from the live runtime service. Never persisted or used to infer activation from session history.
 pub type SessionIndexedSearchData = IndexedSearchData;
 
-/// Routing preference used when the session model is `auto`. `fast` is an integrator-only latency preset and is not a first-party GitHub Copilot product preference.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Extensible routing preference for the virtual `auto` model. New identifiers must be advertised and enabled by the provider. `fast` is an integrator-only latency preset.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum AutoTier {
     /// Optimize for efficiency.
-    #[serde(rename = "efficiency")]
     Efficiency,
     /// Balance efficiency and intelligence.
-    #[serde(rename = "balance")]
     Balance,
     /// Optimize for intelligence.
-    #[serde(rename = "intelligence")]
     Intelligence,
     /// Integrator-only preset that optimizes for latency.
-    #[serde(rename = "fast")]
     Fast,
     /// Unknown variant for forward compatibility.
     #[default]
-    #[serde(other)]
     Unknown,
+    /// Provider-advertised identifier, retained verbatim.
+    Custom(String),
+}
+impl AutoTier {
+    /// Returns the routing identifier without losing unknown values.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Efficiency => "efficiency",
+            Self::Balance => "balance",
+            Self::Intelligence => "intelligence",
+            Self::Fast => "fast",
+            Self::Unknown => "Unknown",
+            Self::Custom(value) => value,
+        }
+    }
+}
+impl Serialize for AutoTier {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+impl<'de> Deserialize<'de> for AutoTier {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "efficiency" => Self::Efficiency,
+            "balance" => Self::Balance,
+            "intelligence" => Self::Intelligence,
+            "fast" => Self::Fast,
+            _ => Self::Custom(value),
+        })
+    }
 }
 
 /// Hosting platform type of the repository (github or ado)
@@ -8670,22 +8700,48 @@ pub enum ModelDeselectedReason {
     Unknown,
 }
 
-/// Auto preferences that Copilot API can recommend.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Enabled Auto preferences that Copilot API can recommend.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum RecommendedAutoTier {
     /// Optimize for efficiency.
-    #[serde(rename = "efficiency")]
     Efficiency,
     /// Balance efficiency and intelligence.
-    #[serde(rename = "balance")]
     Balance,
     /// Optimize for intelligence.
-    #[serde(rename = "intelligence")]
     Intelligence,
     /// Unknown variant for forward compatibility.
     #[default]
-    #[serde(other)]
     Unknown,
+    /// Provider-advertised identifier, retained verbatim.
+    Custom(String),
+}
+impl RecommendedAutoTier {
+    /// Returns the routing identifier without losing unknown values.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Efficiency => "efficiency",
+            Self::Balance => "balance",
+            Self::Intelligence => "intelligence",
+            Self::Unknown => "Unknown",
+            Self::Custom(value) => value,
+        }
+    }
+}
+impl Serialize for RecommendedAutoTier {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+impl<'de> Deserialize<'de> for RecommendedAutoTier {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "efficiency" => Self::Efficiency,
+            "balance" => Self::Balance,
+            "intelligence" => Self::Intelligence,
+            _ => Self::Custom(value),
+        })
+    }
 }
 
 /// Terminal reason an Auto preference activation failed.

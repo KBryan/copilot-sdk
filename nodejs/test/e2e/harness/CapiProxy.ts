@@ -243,6 +243,41 @@ export class CapiProxy {
         });
         expect(response.ok).toBe(true);
     }
+
+    async setMetaResponse(body: unknown, statusCode = 200): Promise<void> {
+        const response = await fetch(`${this.proxyUrl}/meta-response-config`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ body, statusCode }),
+        });
+        expect(response.ok).toBe(true);
+    }
+
+    async gateMetaResponse(): Promise<{
+        reached: () => Promise<void>;
+        release: () => Promise<void>;
+    }> {
+        const response = await fetch(`${this.proxyUrl}/meta-response-gate`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ hold: true }),
+        });
+        expect(response.ok).toBe(true);
+        return {
+            reached: async () => {
+                const response = await fetch(`${this.proxyUrl}/meta-response-gate`);
+                expect(response.ok).toBe(true);
+            },
+            release: async () => {
+                const response = await fetch(`${this.proxyUrl}/meta-response-gate`, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ hold: false }),
+                });
+                expect(response.ok).toBe(true);
+            },
+        };
+    }
 }
 
 function tryParseStartupInfo(line: string): ProxyStartupInfo | undefined {

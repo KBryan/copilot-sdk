@@ -1430,6 +1430,8 @@ type ModelCallFailureData struct {
 	QuotaSnapshots map[string]AssistantUsageQuotaSnapshot `json:"quotaSnapshots,omitzero"`
 	// Reasoning effort level used for the failed model call, if applicable
 	ReasoningEffort *string `json:"reasoningEffort,omitempty"`
+	// Serialized (uncompressed) byte length of the failed request body. A content-free size signal.
+	RequestBodyBytes *int64 `json:"requestBodyBytes,omitempty"`
 	// Content-free structural summary of the failing request. Contains only counts and shape flags (no prompt content), so it is safe for unrestricted telemetry. Populated only for client-error (4xx) failures.
 	RequestFingerprint *ModelCallFailureRequestFingerprint `json:"requestFingerprint,omitempty"`
 	// Per-request treatment/eligibility signal returned by the Copilot API in the `X-GitHub-Copilot-Request-TE` response header for the associated model call; `false` when the header was absent or unparseable.
@@ -6658,7 +6660,7 @@ const (
 	PlanChangedOperationUpdate PlanChangedOperation = "update"
 )
 
-// Auto preferences that Copilot API can recommend.
+// Enabled Auto preferences that Copilot API can recommend.
 type RecommendedAutoTier string
 
 const (

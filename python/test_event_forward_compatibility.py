@@ -261,7 +261,9 @@ class TestEventForwardCompatibility:
         assert session_event_to_dict(event) == wire
 
     @pytest.mark.parametrize("event_type", ["session.start", "session.resume"])
-    @pytest.mark.parametrize("tier", ["efficiency", "balance", "intelligence", "fast", None])
+    @pytest.mark.parametrize(
+        "tier", ["efficiency", "balance", "intelligence", "fast", "premium-v2", None]
+    )
     def test_auto_tier_lifecycle_events_round_trip(self, event_type, tier):
         timestamp = "2026-08-28T00:00:00Z"
         data = (

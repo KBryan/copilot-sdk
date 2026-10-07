@@ -17,6 +17,26 @@ import {
 import { legacyRequestSchema } from "./legacy-parameters-fixture.ts";
 
 describe("Rust API type codegen", () => {
+    it("keeps every noncanonical open identifier distinct from the default sentinel", () => {
+        const code = generateApiTypesCode(
+            postProcessSchema({
+                definitions: {
+                    AutoTier: {
+                        type: "string",
+                        "x-extensible-enum": ["balance", "fast"],
+                    },
+                    RecommendedAutoTier: {
+                        type: "string",
+                        "x-extensible-enum": ["balance"],
+                    },
+                },
+            } as JSONSchema7) as ApiSchema
+        );
+        expect(code).toContain("Custom(String),");
+        expect(code).toContain("_ => Self::Custom(value),");
+        expect(code).not.toContain('"Unknown" => Self::Unknown,');
+    });
+
     it("does not emit MCP list request types for a parameterless endpoint", () => {
         const code = generateApiTypesCode({
             session: {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { generateRpcCode, generateSessionEventsCode } from "../../scripts/codegen/csharp.ts";
 import type { ApiSchema, RpcMethod } from "../../scripts/codegen/utils.ts";
+import { postProcessSchema } from "../../scripts/codegen/utils.ts";
 import { legacyRequestSchema } from "./legacy-parameters-fixture.ts";
 
 function legacySignatureFixture(scope: "server" | "session", legacy: unknown) {
@@ -319,6 +320,97 @@ describe("C# RPC codegen", () => {
         expect(code).toContain('"session.mcp.list"');
     });
 
+    it("uses ordinal identity for open tiers without changing closed string enums", () => {
+        const tier = {
+            type: "string",
+            title: "AutoTier",
+            "x-extensible-enum": ["efficiency", "balance", "intelligence", "fast"],
+        };
+        const code = generateRpcCode({
+            definitions: {
+                AutoTier: tier,
+                ClosedMode: { type: "string", enum: ["on", "off"] },
+            },
+            server: {
+                sample: {
+                    rpcMethod: "sample",
+                    params: {
+                        type: "object",
+                        properties: {
+                            tier: { $ref: "#/definitions/AutoTier" },
+                            mode: { $ref: "#/definitions/ClosedMode" },
+                        },
+                    },
+                    result: null,
+                },
+            },
+        } as ApiSchema);
+        expect(code).toContain(
+            "Equals(AutoTier other) => string.Equals(Value, other.Value, StringComparison.Ordinal);"
+        );
+        expect(code).toContain(
+            "Equals(ClosedMode other) => string.Equals(Value, other.Value, StringComparison.OrdinalIgnoreCase);"
+        );
+        const tierBody = code.match(
+            /public readonly struct AutoTier[\s\S]*?public override string ToString/
+        );
+        expect(tierBody?.[0]).toContain("StringComparer.Ordinal.GetHashCode(Value)");
+        expect(tierBody?.[0]).not.toContain("OrdinalIgnoreCase");
+
+        const events = generateSessionEventsCode(
+            postProcessSchema({
+                definitions: {
+                    AutoTier: tier,
+                    SessionEvent: {
+                        anyOf: [
+                            {
+                                title: "SampleEvent",
+                                type: "object",
+                                properties: {
+                                    type: { const: "sample" },
+                                    data: {
+                                        type: "object",
+                                        properties: {
+                                            autoTier: { $ref: "#/definitions/AutoTier" },
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            } as JSONSchema7)
+        );
+        expect(events).toContain(
+            "Equals(AutoTier other) => string.Equals(Value, other.Value, StringComparison.Ordinal);"
+        );
+        expect(events).toContain("StringComparer.Ordinal.GetHashCode(Value)");
+    });
+
+    it("retains named extensible tier values and the existing request type", () => {
+        const code = generateRpcCode({
+            definitions: {
+                AutoTier: {
+                    type: "string",
+                    "x-extensible-enum": ["efficiency", "balance", "intelligence", "fast"],
+                },
+            },
+            server: {
+                setAutoTier: {
+                    rpcMethod: "session.model.setAutoTier",
+                    params: {
+                        type: "object",
+                        properties: { autoTier: { $ref: "#/definitions/AutoTier" } },
+                    },
+                    result: { type: "null" },
+                },
+            },
+        } as ApiSchema);
+        expect(code).toContain("AutoTier? AutoTier");
+        expect(code).toContain('public static AutoTier Balance { get; } = new("balance");');
+        expect(code).toContain("public AutoTier(string value)");
+    });
+
     it("preserves arbitrary JSON handoff settings instead of emitting an empty DTO", () => {
         const code = generateRpcCode({
             server: {
@@ -361,6 +453,32 @@ describe("C# RPC codegen", () => {
             },
         } as ApiSchema);
         expect(code).toContain("bool? RequireConnectionToken");
+    });
+
+    it("keeps inline and referenced boolean literals as boolean RPC fields", () => {
+        const code = generateRpcCode({
+            definitions: {
+                Enabled: { type: "boolean", const: true },
+            },
+            server: {
+                sample: {
+                    status: {
+                        rpcMethod: "sample.status",
+                        result: {
+                            type: "object",
+                            properties: {
+                                enabled: { $ref: "#/definitions/Enabled" },
+                                disabled: { type: "boolean", const: false },
+                            },
+                            required: ["enabled", "disabled"],
+                        },
+                    },
+                },
+            },
+        } as ApiSchema);
+        expect(code).toContain("public bool Enabled { get; set; }");
+        expect(code).toContain("public bool Disabled { get; set; }");
+        expect(code).not.toContain("readonly record struct Enabled");
     });
 
     it.each(["uninstall", "update"])(

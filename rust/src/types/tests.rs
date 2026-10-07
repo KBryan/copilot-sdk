@@ -1446,7 +1446,12 @@ fn capi_auto_tier_accepts_unknown_values_for_forward_compatibility() {
     for value in ["balanced", "Balance", "unknown"] {
         assert_eq!(
             serde_json::from_value::<AutoTier>(json!(value)).unwrap(),
-            AutoTier::Unknown
+            AutoTier::Custom(value.to_owned())
+        );
+        assert_eq!(
+            serde_json::to_value(serde_json::from_value::<AutoTier>(json!(value)).unwrap())
+                .unwrap(),
+            json!(value)
         );
     }
     let capi: CapiSessionOptions = serde_json::from_value(json!({})).unwrap();

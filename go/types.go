@@ -2490,6 +2490,8 @@ const (
 	AutoTierBalance = rpc.AutoTierBalance
 	// AutoTierIntelligence selects the intelligence routing tier.
 	AutoTierIntelligence = rpc.AutoTierIntelligence
+	// AutoTierFast selects the integrator-only latency preset.
+	AutoTierFast = rpc.AutoTierFast
 )
 
 // CapiSessionOptions configures provider-scoped Copilot API (CAPI) session behavior.

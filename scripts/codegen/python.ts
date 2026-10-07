@@ -9,6 +9,7 @@
 import fs from "fs/promises";
 import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 import { fileURLToPath } from "url";
+import { extensibleEnumValues } from "./extensible-enums.js";
 import {
     addManagedApprovalRequiredToPermissionRequests,
     cloneSchemaForCodegen,
@@ -299,6 +300,7 @@ function preservePythonSessionEventConstructorOrder(schema: JSONSchema7): void {
  */
 const PY_RPC_APPEND_LAST_FIELDS: ReadonlyArray<readonly [string, string]> = [
     ["ConnectorReconcileRequest", "forceConnectorName"],
+    ["SessionModelList", "auto"],
 ];
 
 /**
@@ -2294,7 +2296,7 @@ const COLLAPSE_UNKNOWN_PYTHON_ENUMS = new Set(["PermissionApprovalEvaluationReas
 function getOrCreatePyEnum(
     enumName: string,
     values: string[],
-    ctx: Pick<PyCodegenCtx, "enumsByName" | "enums">,
+    ctx: Pick<PyCodegenCtx, "enumsByName" | "enums" | "definitions">,
     description?: string,
     enumValueDescriptions?: EnumValueDescriptions,
     deprecated?: boolean,
@@ -2327,6 +2329,7 @@ function getOrCreatePyEnum(
         }
         lines.push(`    ${toEnumMemberName(value)} = ${JSON.stringify(value)}`);
     }
+    const open = extensibleEnumValues(resolveSchema({ $ref: `#/$defs/${enumName}` }, ctx.definitions) ?? {}) !== undefined;
     if (enumName === "ToolExecutionCompleteFileEditKind") {
         lines.push(``);
         lines.push(`    @classmethod`);
@@ -2343,6 +2346,16 @@ function getOrCreatePyEnum(
         lines.push(`    @classmethod`);
         lines.push(`    def _missing_(cls, value: object) -> "${enumName} | None":`);
         lines.push(`        return cls.UNKNOWN if isinstance(value, str) else None`);
+    } else if (open) {
+        lines.push("");
+        lines.push("    @classmethod");
+        lines.push("    def _missing_(cls, value: object):");
+        lines.push("        if not isinstance(value, str):");
+        lines.push("            return None");
+        lines.push("        member = object.__new__(cls)");
+        lines.push("        member._name_ = None");
+        lines.push("        member._value_ = value");
+        lines.push("        return cls._value2member_map_.setdefault(value, member)");
     }
     ctx.enumsByName.set(enumName, enumName);
     ctx.enums.push(lines.join("\n"));

@@ -4521,7 +4521,7 @@ export type SandboxConfigSource =
   /** A repository policy selected the sandbox state. */
   | "repository_policy";
 /**
- * Extensible identifier of a sandbox policy feature whose availability varies between hosts. A plain string, so an older client decodes a name added by a newer runtime; ignore names you do not recognize. Known values: `network` — sandboxed commands can reach the network (`network.allowOutbound`, on by default); on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns. `network_filtering` — host rules and the sandbox proxy (`network.allowedHosts`, `network.blockedHosts`, `network.proxy`); on Linux this needs the same tooling as `network`; on Windows it needs a version with Process Security Environment 1.1 host-loopback support, and a policy that uses it must also set `network.allowLocalNetwork`, because Windows reaches the local proxy only together with private-network access. `denied_paths` — native enforcement of `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem grants, which PowerShell's drive roots use on Windows; this needs a version with Process Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and relative paths may resolve against the drive root; the session also receives a `session.warning` with `warningType` `sandbox`. Other platforms always report it.
+ * Extensible identifier of a sandbox policy feature whose availability varies between hosts. A plain string, so an older client decodes a name added by a newer runtime; ignore names you do not recognize. Known values: `network` — sandboxed commands can reach the network (`network.allowOutbound`, on by default); on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns. `network_filtering` — host rules and the sandbox proxy (`network.allowedHosts`, `network.blockedHosts`, `network.proxy`); on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support or MXC's PSEC 1.0-only proxy-loopback compatibility capability, and a policy that uses it must also set `network.allowLocalNetwork`, because Windows reaches the local proxy only together with private-network access. Compatibility applies only to an explicit identity-less runtime proxy, not general host-loopback access, and other policy restrictions still apply. `denied_paths` — native enforcement of `filesystem.deniedPaths`; on Windows this needs a version whose sandbox contract reports denied-path support. `shell` — shell commands inside the sandbox: bash on macOS and Linux, PowerShell on Windows. `filesystem_enumeration` — enumerate-only filesystem grants, which PowerShell's drive roots use on Windows; this needs a version with Process Security Environment 1.1 filesystem enumeration support. Without it, sandboxed PowerShell still runs, but `Get-Location` may report the drive root, `Set-Location` may fail, and relative paths may resolve against the drive root; the session also receives a `session.warning` with `warningType` `sandbox`. Other platforms always report it.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
  * via the `definition` "SandboxHostCapabilityName".
@@ -7943,6 +7943,74 @@ export interface AutopilotObjectiveState {
    */
   creditCountNanoAiu: string;
   creditLimit?: AutopilotObjectiveCreditLimit;
+}
+/**
+ * A server-advertised routing preference. Identifiers and execution types are extensible.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AutoTierDescriptor".
+ */
+/** @experimental */
+export interface AutoTierDescriptor {
+  /**
+   * Opaque routing identifier transmitted unchanged to the provider.
+   */
+  id: string;
+  /**
+   * Human-readable label, not a routing identifier.
+   */
+  displayName: string;
+  /**
+   * Description displayed beside the preference.
+   */
+  description: string;
+  /**
+   * Execution kind; this client supports `auto` preferences on the Auto model.
+   */
+  type: string;
+  status: AutoTierStatus;
+}
+/**
+ * Availability of a server-advertised routing preference.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AutoTierStatus".
+ */
+/** @experimental */
+export interface AutoTierStatus {
+  /**
+   * Whether the provider permits selecting this preference.
+   */
+  enabled: boolean;
+  /**
+   * Extensible machine-readable unavailability reason.
+   */
+  reason?: string;
+  /**
+   * Human-readable explanation of availability.
+   */
+  message?: string;
+}
+/**
+ * Account-bound discovery metadata for the virtual `auto` model.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "AutoTierMetadata".
+ */
+/** @experimental */
+export interface AutoTierMetadata {
+  /**
+   * Provider-default preference, used only when no explicit preference exists.
+   */
+  defaultTier: string;
+  /**
+   * Routing preferences in the server's presentation order.
+   */
+  tiers: AutoTierDescriptor[];
+  /**
+   * Provider that supplied this metadata, when the catalog is provider-attributed.
+   */
+  providerId?: string;
 }
 /**
  * The running runtime's complete catalog of well-known built-in model IDs, including supported models and additional IDs with built-in metadata.
@@ -24581,6 +24649,7 @@ export interface SessionModelList {
   quotaSnapshots?: {
     [k: string]: JsonValue | undefined;
   };
+  auto?: AutoTierMetadata;
 }
 /**
  * Cost-category metadata for a CAPI model.
@@ -24670,6 +24739,12 @@ export interface SessionOpenOptions {
   authInfo?: AuthInfo;
   provider?: ProviderConfig;
   capi?: CapiSessionOptions;
+  /**
+   * Whether a CLI host explicitly requested the initial Auto preference. False preserves a settings-derived preference without validating availability during creation; execution still validates it. Defaults to true and is ignored for non-CLI callers.
+   *
+   * @internal
+   */
+  autoTierIsExplicit?: boolean;
   /**
    * Named BYOK provider connections, additive to CAPI auth. Combining with `provider` is rejected.
    *

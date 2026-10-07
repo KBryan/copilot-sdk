@@ -49,6 +49,8 @@ IMPORTANT: You MUST include the exact text "${SKILL_MARKER}" somewhere in EVERY 
             const session = await client.createSession({
                 onPermissionRequest: approveAll,
                 enableConfigDiscovery: false,
+                // Reload must introduce the first skill, including its tool.
+                includedBuiltinSkills: [],
                 skillDirectories: [lateSkillsDir],
                 hooks: {
                     onPostToolUse: (input) => {
@@ -66,6 +68,7 @@ IMPORTANT: You MUST include the exact text "${SKILL_MARKER}" somewhere in EVERY 
             });
 
             try {
+                expect((await session.rpc.skills.list()).skills).toEqual([]);
                 const first = await session.sendAndWait({ prompt: "Reply with READY." });
                 expect(first?.data.content).toContain("READY");
                 expect(skillResults).toEqual([]);

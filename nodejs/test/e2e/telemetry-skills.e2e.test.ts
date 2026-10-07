@@ -221,7 +221,12 @@ for (const captureContent of [false, true]) {
                     enableConfigDiscovery: false,
                     skillDirectories: [join(workDir, "skills")],
                     onPermissionRequest: approveAll,
+                    // The unknown-skill capture lists only this fixture's custom skill.
+                    includedBuiltinSkills: [],
                 });
+                expect((await session.rpc.skills.list()).skills.map((skill) => skill.name)).toEqual(
+                    ["review"]
+                );
                 const exits = new Map<string, number>();
                 session.on("tool.execution_complete", (event) => {
                     const exit = event.data.shellExecution?.exitCode;

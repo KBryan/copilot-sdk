@@ -262,6 +262,20 @@ describe("Python append-last RPC fields", () => {
 describe("Python append-last fields for a selected schema", () => {
     const fields = [["Request", "addedField"]] as const;
 
+    it("appends Auto metadata without shifting model-list positional arguments", () => {
+        expect(
+            pythonAppendLastFieldsPresentIn({
+                SessionModelList: {
+                    type: "object",
+                    properties: {
+                        list: { type: "array", items: {} },
+                        auto: { type: "object" },
+                    },
+                },
+            })
+        ).toEqual([["SessionModelList", "auto"]]);
+    });
+
     it("keeps an entry whose property the schema declares", () => {
         expect(
             pythonAppendLastFieldsPresentIn(

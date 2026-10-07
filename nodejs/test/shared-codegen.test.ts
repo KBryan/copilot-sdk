@@ -18,6 +18,7 @@ import {
     rewriteSharedDefinitionReferences,
     resolveCopilotSchemaPaths,
 } from "../../scripts/codegen/utils.ts";
+import { postProcessSchema } from "../../scripts/codegen/utils.ts";
 
 describe("codegen entrypoints", () => {
     it("recognizes Windows entrypoint paths case-insensitively", () => {
@@ -52,6 +53,25 @@ describe("codegen entrypoints", () => {
 });
 
 describe("shared schema definition codegen utilities", () => {
+    it("shares open tier definitions across raw RPC and processed event schemas", () => {
+        const tier = {
+            type: "string",
+            minLength: 1,
+            pattern: "^[^\\s]+$",
+            "x-extensible-enum": ["balance", "fast"],
+        };
+        const api = { definitions: { AutoTier: tier } };
+        const events = postProcessSchema(structuredClone(api) as JSONSchema7);
+        expect([...findSharedSchemaDefinitions(api, events as Record<string, unknown>)]).toEqual([
+            "AutoTier",
+        ]);
+        expect(api.definitions.AutoTier).not.toHaveProperty("enum");
+        const different = { definitions: { AutoTier: { ...tier, pattern: "^[a-z]+$" } } };
+        expect(findSharedSchemaDefinitions(different, events as Record<string, unknown>).size).toBe(
+            0
+        );
+    });
+
     it.each(["typescript", "python", "go", "csharp"])(
         "runs the %s generator through a linked entrypoint",
         async (language) => {

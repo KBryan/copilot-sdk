@@ -60,6 +60,8 @@ public final class ModelCallFailureEvent extends SessionEvent {
         @JsonProperty("transport") ModelCallFailureTransport transport,
         /** Whether the failure originated from an API response or the request transport */
         @JsonProperty("failureKind") ModelCallFailureKind failureKind,
+        /** Serialized (uncompressed) byte length of the failed request body. A content-free size signal. */
+        @JsonProperty("requestBodyBytes") Long requestBodyBytes,
         /** Effective maximum prompt-token limit for the failed call */
         @JsonProperty("maxPromptTokens") Long maxPromptTokens,
         /** Effective maximum output-token limit for the failed call */

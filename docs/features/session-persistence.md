@@ -283,7 +283,17 @@ When resuming a session, you can optionally reconfigure many settings. This is u
 
 With `model: "auto"`, the optional `capi.autoTier` setting selects an Auto routing preference: `efficiency`, `balance`, `intelligence`, or `fast`. In Python, use `capi={"auto_tier": "balance"}`. This setting applies to V2 Auto routing; V1 Auto requests are unchanged.
 
-`fast` is an integrator-only latency preset, not a first-party GitHub Copilot product preference. The SDK does not decide Fast eligibility, inspect client identity, choose it as a default, or fall back to another tier when a runtime does not support it—an older runtime returns its native error unchanged.
+When the runtime's default-off `DYNAMIC_AUTO_TIERS` feature is enabled, the session's `model.list` RPC also returns optional `auto` metadata from the provider's `/meta` endpoint. Use the enabled descriptors with `type: "auto"` to discover additional supported tier identifiers, their display names, descriptions, and ordering. The existing selection methods and JSON fields accept these identifiers. A discovery failure does not fall back to `/models`, and a successful response without `auto` metadata provides no selectable Auto tiers.
+
+Treat tier identifiers as extensible values, not a closed enumeration. Existing named values remain available; for additional identifiers, use strings in Node.js and Python, `AutoTier("premium-v2")` in Go, `new AutoTier("premium-v2")` in .NET, `AutoTier::Custom` in Rust, or `AutoTier.fromValue` in Java. The provider's `defaultTier` describes its default routing without creating a committed SDK preference.
+
+If a persisted tier is removed or disabled, resume preserves the explicit preference rather than replacing it with the provider's default. Select an available replacement before activating Auto routing.
+
+The CLI also preserves settings-derived preferences during startup, even when a tier is unavailable or dynamic discovery is disabled. You can then select a replacement in the model picker. Explicit SDK create and resume preferences are still validated before the operation succeeds, and Auto activation always validates availability against the resolved discovery mode.
+
+When a create or resume request includes `expAssignments`, the runtime installs those assignments before validating an explicit Auto preference. Validation, discovery, and activation use the same resolved feature decision.
+
+`fast` is an integrator-only latency preset, not a first-party GitHub Copilot product preference. Fast is not validated against the `/meta` tier catalog when configuring a session. The SDK does not decide Fast eligibility, inspect client identity, choose it as a default, or fall back to another tier when a runtime does not support it—an older runtime returns its native error unchanged.
 
 The runtime persists the selected tier, so applications do not need to resend it on every resume:
 
@@ -308,6 +318,8 @@ if (result.status === "pending") {
 ```
 
 The runtime does not apply the preference immediately. It records the request and commits it only when a later user turn using the `auto` model successfully obtains a usable model from the provider. A `pending` status therefore confirms that the request was accepted, not that it took effect. Only the most recent request survives: a new request replaces any earlier one that no turn has claimed yet.
+
+If an older request is still validating when a newer preference request or reset arrives, the older call fails with a superseded-request error instead of replacing the newer intent.
 
 Watch for the outcome through these events:
 

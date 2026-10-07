@@ -936,7 +936,7 @@ public sealed class BuiltInModelCatalog
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SandboxHostCapability
 {
-    /// <summary>The policy feature, as an extensible string: ignore names you do not recognize. Known values: `network` (sandboxed commands can reach the network; on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns), `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support, and a policy that uses it must also set `network.allowLocalNetwork`), `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on Windows this needs Process Security Environment 1.1 filesystem enumeration support, and without it sandboxed PowerShell still runs but cannot resolve its current location; other platforms always report it).</summary>
+    /// <summary>The policy feature, as an extensible string: ignore names you do not recognize. Known values: `network` (sandboxed commands can reach the network; on Linux this needs the tooling for Bubblewrap's private network namespace, such as slirp4netns), `network_filtering` (host rules and the sandbox proxy; on Linux this needs the same tooling as `network`; on Windows it needs Process Security Environment 1.1 host-loopback support or MXC's PSEC 1.0-only proxy-loopback compatibility capability, and a policy that uses it must also set `network.allowLocalNetwork`; compatibility applies only to an explicit identity-less runtime proxy, not general host-loopback access, and other policy restrictions still apply), `denied_paths` (native enforcement of `filesystem.deniedPaths`), `shell` (shell commands inside the sandbox), and `filesystem_enumeration` (enumerate-only filesystem grants; on Windows this needs Process Security Environment 1.1 filesystem enumeration support, and without it sandboxed PowerShell still runs but cannot resolve its current location; other platforms always report it).</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
@@ -13835,6 +13835,65 @@ internal sealed class ModelSetReasoningEffortRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
+/// <summary>Availability of a server-advertised routing preference.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class AutoTierStatus
+{
+    /// <summary>Whether the provider permits selecting this preference.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
+    /// <summary>Human-readable explanation of availability.</summary>
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    /// <summary>Extensible machine-readable unavailability reason.</summary>
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+}
+
+/// <summary>A server-advertised routing preference. Identifiers and execution types are extensible.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class AutoTierDescriptor
+{
+    /// <summary>Description displayed beside the preference.</summary>
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>Human-readable label, not a routing identifier.</summary>
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>Opaque routing identifier transmitted unchanged to the provider.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Current account-specific availability.</summary>
+    [JsonPropertyName("status")]
+    public AutoTierStatus Status { get => field ??= new(); set; }
+
+    /// <summary>Execution kind; this client supports `auto` preferences on the Auto model.</summary>
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+}
+
+/// <summary>Account-bound discovery metadata for the virtual `auto` model.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class AutoTierMetadata
+{
+    /// <summary>Provider-default preference, used only when no explicit preference exists.</summary>
+    [JsonPropertyName("defaultTier")]
+    public string DefaultTier { get; set; } = string.Empty;
+
+    /// <summary>Provider that supplied this metadata, when the catalog is provider-attributed.</summary>
+    [JsonPropertyName("providerId")]
+    public string? ProviderId { get; set; }
+
+    /// <summary>Routing preferences in the server's presentation order.</summary>
+    [JsonPropertyName("tiers")]
+    public IList<AutoTierDescriptor> Tiers { get => field ??= []; set; }
+}
+
 /// <summary>Cost-category metadata for a CAPI model.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SessionModelPriceCategory
@@ -13873,6 +13932,10 @@ public sealed class ModelProviderDescriptor
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class SessionModelList
 {
+    /// <summary>Ordered Auto routing preferences discovered for this session's account.</summary>
+    [JsonPropertyName("auto")]
+    public AutoTierMetadata? Auto { get; set; }
+
     /// <summary>Available models, ordered with the most preferred default first. Includes both Copilot (CAPI) models and any registry BYOK models; a BYOK model appears under its provider-qualified selection id (`provider/id`).</summary>
     [JsonPropertyName("list")]
     public IList<JsonElement> List { get => field ??= []; set; }
@@ -51836,6 +51899,9 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(AuthValidationError))]
 [JsonSerializable(typeof(AuthWrite))]
 [JsonSerializable(typeof(AuthWriteResult))]
+[JsonSerializable(typeof(AutoTierDescriptor))]
+[JsonSerializable(typeof(AutoTierMetadata))]
+[JsonSerializable(typeof(AutoTierStatus))]
 [JsonSerializable(typeof(AutopilotObjectiveCreditLimit))]
 [JsonSerializable(typeof(AutopilotObjectiveGetStateResult))]
 [JsonSerializable(typeof(AutopilotObjectiveState))]

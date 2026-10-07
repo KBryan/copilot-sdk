@@ -63,6 +63,8 @@ public record SessionOpenOptions(
     @JsonProperty("provider") ProviderConfig provider,
     /** Options scoped to the built-in CAPI (Copilot API) provider. */
     @JsonProperty("capi") CapiSessionOptions capi,
+    /** Whether a CLI host explicitly requested the initial Auto preference. False preserves a settings-derived preference without validating availability during creation; execution still validates it. Defaults to true and is ignored for non-CLI callers. */
+    @JsonProperty("autoTierIsExplicit") Boolean autoTierIsExplicit,
     /** Named BYOK provider connections, additive to CAPI auth. Combining with `provider` is rejected. */
     @JsonProperty("providers") List<NamedProviderConfig> providers,
     /** BYOK model definitions added to the selectable model list, each referencing a provider name. */

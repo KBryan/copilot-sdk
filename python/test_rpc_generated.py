@@ -32,6 +32,7 @@ from copilot.rpc import (
     SandboxConfig,
     ServerRpc,
     SessionList,
+    SessionModelList,
     SlashCommandTextResult,
     TaskAgentInfo,
     UIElicitationSchemaType,
@@ -127,6 +128,58 @@ def test_auth_read_value_preserves_existing_positional_parameters():
     assert result.auth_info.login == "octocat"
     assert result.status is None
     assert result.errors is None
+    assert result.to_dict() == payload
+
+
+def test_model_list_preserves_existing_positional_parameters():
+    models = [{"id": "fixture-model"}]
+    prices = []
+    providers = []
+    quotas = {"premium": {"remaining": 42}}
+
+    result = SessionModelList(models, prices, providers, quotas)
+
+    assert result.list is models
+    assert result.auto is None
+    assert result.model_price_categories is prices
+    assert result.providers is providers
+    assert result.quota_snapshots is quotas
+    assert result.to_dict() == {
+        "list": models,
+        "modelPriceCategories": prices,
+        "providers": providers,
+        "quotaSnapshots": quotas,
+    }
+
+
+def test_model_list_round_trips_metadata_without_remapping_existing_fields():
+    payload = {
+        "list": [{"id": "fixture-model"}],
+        "modelPriceCategories": [],
+        "providers": [],
+        "quotaSnapshots": {"premium": {"remaining": 42}},
+        "auto": {
+            "defaultTier": "premium-v2",
+            "tiers": [
+                {
+                    "id": "premium-v2",
+                    "displayName": "Premium",
+                    "description": "Provider tier",
+                    "type": "auto",
+                    "status": {"enabled": True},
+                }
+            ],
+        },
+    }
+
+    result = SessionModelList.from_dict(payload)
+
+    assert result.auto is not None
+    assert result.auto.default_tier == "premium-v2"
+    assert result.auto.tiers[0].id == "premium-v2"
+    assert result.model_price_categories == []
+    assert result.providers == []
+    assert result.quota_snapshots == payload["quotaSnapshots"]
     assert result.to_dict() == payload
 
 

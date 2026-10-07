@@ -145,14 +145,7 @@ class BudgetReplayHandler extends CopilotRequestHandler {
 }
 
 describe("Refusal fallback output budget", async () => {
-    const { createClient } = await createSdkTestContext({
-        copilotClientOptions: {
-            env: {
-                ANTHROPIC_REFUSAL_FALLBACK: "true",
-                COPILOT_EXP_COPILOT_CLI_ANTHROPIC_REFUSAL_FALLBACK: "true",
-            },
-        },
-    });
+    const { createClient } = await createSdkTestContext();
 
     it("should clamp fallback output before admission and retain its effective budget", async () => {
         const handler = new RefusalBudgetReplayHandler();

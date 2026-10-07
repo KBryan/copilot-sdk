@@ -358,14 +358,18 @@ describe("matched SDK release planning", () => {
             "java",
         ]);
         expect(selectedSdks("unstable", "public")).toEqual(selectedSdks("latest", "public"));
-        expect(publicationSdks("unstable", "public", "internal")).toEqual(["nodejs"]);
-        expect(publicationSdks("latest", "public", "internal")).toEqual(["nodejs", "dotnet"]);
-        expect(publicationSdks("unstable", "public", "public")).toEqual([
-            "nodejs",
-            "dotnet",
-            "rust",
-            "java",
-        ]);
+        for (const channel of ["latest", "prerelease", "unstable"]) {
+            expect(publicationSdks(channel, "public", "internal")).toEqual(
+                channel === "unstable" ? ["nodejs"] : ["nodejs", "python", "dotnet"]
+            );
+            expect(publicationSdks(channel, "public", "public")).toEqual([
+                "nodejs",
+                "dotnet",
+                "rust",
+                "java",
+            ]);
+        }
+        expect(publicationSdks("unstable", "internal", "internal")).toEqual(["nodejs"]);
         expect(packagedSdks("unstable", "public")).toContain("python");
         expect(selectedSdks("unstable", "internal")).toEqual(["nodejs"]);
         expect(() => selectedSdks("latest", "internal")).toThrow("must be unstable");

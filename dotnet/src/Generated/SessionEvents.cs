@@ -11305,6 +11305,34 @@ public sealed partial class PermissionRequestShell : PermissionRequest
     public string? Warning { get; set; }
 }
 
+/// <summary>A named, complete UTF-8 text snapshot for a pending file operation.</summary>
+/// <remarks>Nested data type for <c>PermissionWriteFileContent</c>.</remarks>
+public sealed partial class PermissionWriteFileContent
+{
+    /// <summary>Complete file contents, including an empty string for an empty file.</summary>
+    [JsonPropertyName("content")]
+    public required string Content { get; set; }
+
+    /// <summary>Absolute path in the session filesystem namespace.</summary>
+    [JsonPropertyName("path")]
+    public required string Path { get; set; }
+}
+
+/// <summary>Complete text snapshots for one proposed file change. At least one side is present. Different before and after paths describe a move.</summary>
+/// <remarks>Nested data type for <c>PermissionWriteFileEdit</c>.</remarks>
+public sealed partial class PermissionWriteFileEdit
+{
+    /// <summary>Complete file content the operation plans to write. Absent only when the file is being deleted.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("after")]
+    public PermissionWriteFileContent? After { get; set; }
+
+    /// <summary>File content read while planning the operation. Absent only when the file is being created.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("before")]
+    public PermissionWriteFileContent? Before { get; set; }
+}
+
 /// <summary>File write permission request.</summary>
 /// <remarks>The <c>write</c> variant of <see cref="PermissionRequest"/>.</remarks>
 public sealed partial class PermissionRequestWrite : PermissionRequest
@@ -11320,6 +11348,11 @@ public sealed partial class PermissionRequestWrite : PermissionRequest
     /// <summary>Unified diff showing the proposed changes.</summary>
     [JsonPropertyName("diff")]
     public required string Diff { get; set; }
+
+    /// <summary>Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("fileEdits")]
+    public PermissionWriteFileEdit[]? FileEdits { get; set; }
 
     /// <summary>Path of the file being written to.</summary>
     [JsonPropertyName("fileName")]
@@ -11968,6 +12001,11 @@ public sealed partial class PermissionPromptRequestWrite : PermissionPromptReque
     /// <summary>Unified diff showing the proposed changes.</summary>
     [JsonPropertyName("diff")]
     public required string Diff { get; set; }
+
+    /// <summary>Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("fileEdits")]
+    public PermissionWriteFileEdit[]? FileEdits { get; set; }
 
     /// <summary>Path of the file being written to.</summary>
     [JsonPropertyName("fileName")]
@@ -22085,6 +22123,8 @@ public readonly struct ExtensionsLoadedExtensionStatus : IEquatable<ExtensionsLo
 [JsonSerializable(typeof(PermissionResultDeniedNoApprovalRuleAndCouldNotRequestFromUser))]
 [JsonSerializable(typeof(PermissionRule))]
 [JsonSerializable(typeof(PermissionSandboxPathGrant))]
+[JsonSerializable(typeof(PermissionWriteFileContent))]
+[JsonSerializable(typeof(PermissionWriteFileEdit))]
 [JsonSerializable(typeof(PersistedBinaryImage))]
 [JsonSerializable(typeof(PersistedBinaryResult))]
 [JsonSerializable(typeof(PromptCacheBreakData))]

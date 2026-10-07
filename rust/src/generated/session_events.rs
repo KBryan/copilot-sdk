@@ -5639,6 +5639,28 @@ pub struct PermissionRequestShell {
     pub warning: Option<String>,
 }
 
+/// A named, complete UTF-8 text snapshot for a pending file operation.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionWriteFileContent {
+    /// Complete file contents, including an empty string for an empty file.
+    pub content: String,
+    /// Absolute path in the session filesystem namespace.
+    pub path: String,
+}
+
+/// Complete text snapshots for one proposed file change. At least one side is present. Different before and after paths describe a move.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionWriteFileEdit {
+    /// Complete file content the operation plans to write. Absent only when the file is being deleted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<PermissionWriteFileContent>,
+    /// File content read while planning the operation. Absent only when the file is being created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<PermissionWriteFileContent>,
+}
+
 /// File write permission request
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -5647,6 +5669,9 @@ pub struct PermissionRequestWrite {
     pub can_offer_session_approval: bool,
     /// Unified diff showing the proposed changes
     pub diff: String,
+    /// Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_edits: Option<Vec<PermissionWriteFileEdit>>,
     /// Path of the file being written to
     pub file_name: String,
     /// Human-readable description of the intended file change
@@ -6119,6 +6144,9 @@ pub struct PermissionPromptRequestWrite {
     pub can_offer_session_approval: bool,
     /// Unified diff showing the proposed changes
     pub diff: String,
+    /// Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_edits: Option<Vec<PermissionWriteFileEdit>>,
     /// Path of the file being written to
     pub file_name: String,
     /// Human-readable description of the intended file change

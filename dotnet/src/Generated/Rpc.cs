@@ -51716,6 +51716,8 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(GitHub.Copilot.PermissionRule), TypeInfoPropertyName = "SessionEventsPermissionRule")]
 [JsonSerializable(typeof(GitHub.Copilot.PermissionSandboxPathGrant), TypeInfoPropertyName = "SessionEventsPermissionSandboxPathGrant")]
 [JsonSerializable(typeof(GitHub.Copilot.PermissionSandboxPathGrantAccess), TypeInfoPropertyName = "SessionEventsPermissionSandboxPathGrantAccess")]
+[JsonSerializable(typeof(GitHub.Copilot.PermissionWriteFileContent), TypeInfoPropertyName = "SessionEventsPermissionWriteFileContent")]
+[JsonSerializable(typeof(GitHub.Copilot.PermissionWriteFileEdit), TypeInfoPropertyName = "SessionEventsPermissionWriteFileEdit")]
 [JsonSerializable(typeof(GitHub.Copilot.PersistedBinaryImage), TypeInfoPropertyName = "SessionEventsPersistedBinaryImage")]
 [JsonSerializable(typeof(GitHub.Copilot.PersistedBinaryImageType), TypeInfoPropertyName = "SessionEventsPersistedBinaryImageType")]
 [JsonSerializable(typeof(GitHub.Copilot.PersistedBinaryResult), TypeInfoPropertyName = "SessionEventsPersistedBinaryResult")]

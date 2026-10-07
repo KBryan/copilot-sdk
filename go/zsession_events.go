@@ -273,6 +273,8 @@ type (
 	PermissionRule                                                 = rpc.PermissionRule
 	PermissionSandboxPathGrant                                     = rpc.PermissionSandboxPathGrant
 	PermissionSandboxPathGrantAccess                               = rpc.PermissionSandboxPathGrantAccess
+	PermissionWriteFileContent                                     = rpc.PermissionWriteFileContent
+	PermissionWriteFileEdit                                        = rpc.PermissionWriteFileEdit
 	PersistedBinaryImage                                           = rpc.PersistedBinaryImage
 	PersistedBinaryImageType                                       = rpc.PersistedBinaryImageType
 	PersistedBinaryResult                                          = rpc.PersistedBinaryResult

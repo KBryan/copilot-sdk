@@ -4488,6 +4488,8 @@ type PermissionPromptRequestWrite struct {
 	CanOfferSessionApproval bool `json:"canOfferSessionApproval"`
 	// Unified diff showing the proposed changes
 	Diff string `json:"diff"`
+	// Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+	FileEdits []PermissionWriteFileEdit `json:"fileEdits,omitzero"`
 	// Path of the file being written to
 	FileName string `json:"fileName"`
 	// Human-readable description of the intended file change
@@ -4817,6 +4819,8 @@ type PermissionRequestWrite struct {
 	CanOfferSessionApproval bool `json:"canOfferSessionApproval"`
 	// Unified diff showing the proposed changes
 	Diff string `json:"diff"`
+	// Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+	FileEdits []PermissionWriteFileEdit `json:"fileEdits,omitzero"`
 	// Path of the file being written to
 	FileName string `json:"fileName"`
 	// Human-readable description of the intended file change
@@ -5013,6 +5017,22 @@ type PermissionSandboxPathGrant struct {
 	Path string `json:"path"`
 	// readonlyPaths entries the grant removes, exactly as written in the policy, because a read-only entry for the same location would otherwise keep the path read-only. A host that persists the path must remove these entries from its stored readonlyPaths too.
 	RemovedReadonlyPaths []string `json:"removedReadonlyPaths,omitzero"`
+}
+
+// A named, complete UTF-8 text snapshot for a pending file operation.
+type PermissionWriteFileContent struct {
+	// Complete file contents, including an empty string for an empty file.
+	Content string `json:"content"`
+	// Absolute path in the session filesystem namespace.
+	Path string `json:"path"`
+}
+
+// Complete text snapshots for one proposed file change. At least one side is present. Different before and after paths describe a move.
+type PermissionWriteFileEdit struct {
+	// Complete file content the operation plans to write. Absent only when the file is being deleted.
+	After *PermissionWriteFileContent `json:"after,omitempty"`
+	// File content read while planning the operation. Absent only when the file is being created.
+	Before *PermissionWriteFileContent `json:"before,omitempty"`
 }
 
 // A model-facing binary result as persisted: full inline data, a size-omitted marker, or a deduplicated asset reference

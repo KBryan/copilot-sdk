@@ -734,7 +734,7 @@ The `permissionRequest` is a discriminated union on `kind`:
 | `kind` | Key Fields | Description |
 |--------|------------|-------------|
 | `"shell"` | `fullCommandText`, `intention`, `commands[]`, `possiblePaths[]` | Execute a shell command |
-| `"write"` | `fileName`, `diff`, `intention`, `newFileContents?` | Write/modify a file |
+| `"write"` | `fileName`, `diff`, `intention`, `newFileContents?`, `fileEdits?` | Write/modify a file |
 | `"read"` | `path`, `intention` | Read a file or directory |
 | `"mcp"` | `serverName`, `toolName`, `toolTitle`, `args?`, `readOnly` | Call an MCP tool |
 | `"url"` | `url`, `intention` | Fetch a URL |
@@ -742,6 +742,10 @@ The `permissionRequest` is a discriminated union on `kind`:
 | `"custom-tool"` | `toolName`, `toolDescription`, `args?` | Call a custom tool |
 
 All `kind` variants also include an optional `toolCallId` linking back to the tool call that triggered the request.
+
+Write requests can also include `fileEdits` in both `permissionRequest` and `promptRequest`. Each entry contains an optional `before` and `after` snapshot, each with an absolute `path` in the session filesystem namespace and complete UTF-8 `content`. A missing `before` means creation; a missing `after` means deletion. An empty `content` string represents an empty file, not an unavailable preview. A move can have different paths on its two sides. When a move overwrites an existing destination, separate entries describe the source deletion and destination replacement.
+
+These snapshots describe the planned operation, not a later read of the live filesystem. The runtime omits `fileEdits` when it cannot provide a complete text preview, including requests made before reading a sandbox-protected file, non-UTF-8 contents, or an unreadable or non-regular move destination, such as a named pipe. Do not infer a deletion from an empty legacy `newFileContents` value. The existing fields and approval choices remain available to consumers that do not use previews.
 
 ### `permission.completed`
 

@@ -9162,6 +9162,12 @@ export interface PermissionRequestWrite {
    */
   diff: string;
   /**
+   * Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+   *
+   * @minItems 1
+   */
+  fileEdits?: [PermissionWriteFileEdit, ...PermissionWriteFileEdit[]];
+  /**
    * Path of the file being written to
    */
   fileName: string;
@@ -9205,6 +9211,26 @@ export interface PermissionRequestWrite {
    * Tool call ID that triggered this permission request
    */
   toolCallId?: string;
+}
+/**
+ * Complete text snapshots for one proposed file change. At least one side is present. Different before and after paths describe a move.
+ */
+export interface PermissionWriteFileEdit {
+  after?: PermissionWriteFileContent;
+  before?: PermissionWriteFileContent;
+}
+/**
+ * A named, complete UTF-8 text snapshot for a pending file operation.
+ */
+export interface PermissionWriteFileContent {
+  /**
+   * Complete file contents, including an empty string for an empty file.
+   */
+  content: string;
+  /**
+   * Absolute path in the session filesystem namespace.
+   */
+  path: string;
 }
 /**
  * File or directory read permission request
@@ -9773,6 +9799,12 @@ export interface PermissionPromptRequestWrite {
    * Unified diff showing the proposed changes
    */
   diff: string;
+  /**
+   * Complete before/after text previews captured while planning this request. Omitted when a complete preview is unavailable, including pre-read sandbox requests and non-UTF-8 files. Missing sides mean creation or deletion, not unavailable content.
+   *
+   * @minItems 1
+   */
+  fileEdits?: [PermissionWriteFileEdit, ...PermissionWriteFileEdit[]];
   /**
    * Path of the file being written to
    */

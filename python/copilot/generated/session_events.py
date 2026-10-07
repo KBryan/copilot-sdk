@@ -7440,6 +7440,7 @@ class PermissionPromptRequestWrite:
     kind: ClassVar[str] = "write"
     # Experimental: this field is part of an experimental API and may change or be removed.
     assisted_approval: PermissionAssistedApproval | None = None
+    file_edits: list[PermissionWriteFileEdit] | None = None
     managed_approval_required: bool | None = None
     new_file_contents: str | None = None
     # Experimental: this field is part of an experimental API and may change or be removed.
@@ -7454,6 +7455,7 @@ class PermissionPromptRequestWrite:
         file_name = from_str(obj.get("fileName"))
         intention = from_str(obj.get("intention"))
         assisted_approval = from_union([from_none, PermissionAssistedApproval.from_dict], obj.get("assistedApproval"))
+        file_edits = from_union([from_none, lambda x: from_list(PermissionWriteFileEdit.from_dict, x)], obj.get("fileEdits"))
         managed_approval_required = from_union([from_none, from_bool], obj.get("managedApprovalRequired"))
         new_file_contents = from_union([from_none, from_str], obj.get("newFileContents"))
         resolved_path = from_union([from_none, from_str], obj.get("resolvedPath"))
@@ -7464,6 +7466,7 @@ class PermissionPromptRequestWrite:
             file_name=file_name,
             intention=intention,
             assisted_approval=assisted_approval,
+            file_edits=file_edits,
             managed_approval_required=managed_approval_required,
             new_file_contents=new_file_contents,
             resolved_path=resolved_path,
@@ -7479,6 +7482,8 @@ class PermissionPromptRequestWrite:
         result["kind"] = self.kind
         if self.assisted_approval is not None:
             result["assistedApproval"] = from_union([from_none, lambda x: to_class(PermissionAssistedApproval, x)], self.assisted_approval)
+        if self.file_edits is not None:
+            result["fileEdits"] = from_union([from_none, lambda x: from_list(lambda x: to_class(PermissionWriteFileEdit, x), x)], self.file_edits)
         if self.managed_approval_required is not None:
             result["managedApprovalRequired"] = from_union([from_none, from_bool], self.managed_approval_required)
         if self.new_file_contents is not None:
@@ -8263,6 +8268,7 @@ class PermissionRequestWrite:
     file_name: str
     intention: str
     kind: ClassVar[str] = "write"
+    file_edits: list[PermissionWriteFileEdit] | None = None
     managed_approval_required: bool | None = None
     new_file_contents: str | None = None
     request_sandbox_bypass: bool | None = None
@@ -8280,6 +8286,7 @@ class PermissionRequestWrite:
         diff = from_str(obj.get("diff"))
         file_name = from_str(obj.get("fileName"))
         intention = from_str(obj.get("intention"))
+        file_edits = from_union([from_none, lambda x: from_list(PermissionWriteFileEdit.from_dict, x)], obj.get("fileEdits"))
         managed_approval_required = from_union([from_none, from_bool], obj.get("managedApprovalRequired"))
         new_file_contents = from_union([from_none, from_str], obj.get("newFileContents"))
         request_sandbox_bypass = from_union([from_none, from_bool], obj.get("requestSandboxBypass"))
@@ -8292,6 +8299,7 @@ class PermissionRequestWrite:
             diff=diff,
             file_name=file_name,
             intention=intention,
+            file_edits=file_edits,
             managed_approval_required=managed_approval_required,
             new_file_contents=new_file_contents,
             request_sandbox_bypass=request_sandbox_bypass,
@@ -8308,6 +8316,8 @@ class PermissionRequestWrite:
         result["fileName"] = from_str(self.file_name)
         result["intention"] = from_str(self.intention)
         result["kind"] = self.kind
+        if self.file_edits is not None:
+            result["fileEdits"] = from_union([from_none, lambda x: from_list(lambda x: to_class(PermissionWriteFileEdit, x), x)], self.file_edits)
         if self.managed_approval_required is not None:
             result["managedApprovalRequired"] = from_union([from_none, from_bool], self.managed_approval_required)
         if self.new_file_contents is not None:
@@ -8398,6 +8408,54 @@ class PermissionRule:
         result: dict = {}
         result["argument"] = from_union([from_none, from_str], self.argument)
         result["kind"] = from_str(self.kind)
+        return result
+
+
+@dataclass
+class PermissionWriteFileContent:
+    "A named, complete UTF-8 text snapshot for a pending file operation."
+    content: str
+    path: str
+
+    @staticmethod
+    def from_dict(obj: Any) -> "PermissionWriteFileContent":
+        assert isinstance(obj, dict)
+        content = from_str(obj.get("content"))
+        path = from_str(obj.get("path"))
+        return PermissionWriteFileContent(
+            content=content,
+            path=path,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        result["content"] = from_str(self.content)
+        result["path"] = from_str(self.path)
+        return result
+
+
+@dataclass
+class PermissionWriteFileEdit:
+    "Complete text snapshots for one proposed file change. At least one side is present. Different before and after paths describe a move."
+    after: PermissionWriteFileContent | None = None
+    before: PermissionWriteFileContent | None = None
+
+    @staticmethod
+    def from_dict(obj: Any) -> "PermissionWriteFileEdit":
+        assert isinstance(obj, dict)
+        after = from_union([from_none, PermissionWriteFileContent.from_dict], obj.get("after"))
+        before = from_union([from_none, PermissionWriteFileContent.from_dict], obj.get("before"))
+        return PermissionWriteFileEdit(
+            after=after,
+            before=before,
+        )
+
+    def to_dict(self) -> dict:
+        result: dict = {}
+        if self.after is not None:
+            result["after"] = from_union([from_none, lambda x: to_class(PermissionWriteFileContent, x)], self.after)
+        if self.before is not None:
+            result["before"] = from_union([from_none, lambda x: to_class(PermissionWriteFileContent, x)], self.before)
         return result
 
 
@@ -15745,6 +15803,8 @@ __all__ = [
     "PermissionRule",
     "PermissionSandboxPathGrant",
     "PermissionSandboxPathGrantAccess",
+    "PermissionWriteFileContent",
+    "PermissionWriteFileEdit",
     "PersistedBinaryImage",
     "PersistedBinaryImageType",
     "PersistedBinaryResult",

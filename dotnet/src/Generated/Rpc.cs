@@ -14788,6 +14788,19 @@ internal sealed class WorkspacesSaveLargePasteRequest
     public string SessionId { get; set; } = string.Empty;
 }
 
+/// <summary>Complete text used to generate one session diff. These are display contents, with the same text decoding as the patch, not a file-restore contract.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+public sealed class WorkspaceDiffContents
+{
+    /// <summary>Complete current text read when computing the diff. Omitted for a deleted file; an empty string represents an existing empty file.</summary>
+    [JsonPropertyName("after")]
+    public string? After { get; set; }
+
+    /// <summary>Complete text before the session first changed the file. Omitted when the file did not exist; an empty string represents an existing empty file.</summary>
+    [JsonPropertyName("before")]
+    public string? Before { get; set; }
+}
+
 /// <summary>A single changed file and its unified diff.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
 public sealed class WorkspaceDiffFileChange
@@ -14795,6 +14808,10 @@ public sealed class WorkspaceDiffFileChange
     /// <summary>Type of change represented by this file diff.</summary>
     [JsonPropertyName("changeType")]
     public WorkspaceDiffFileChangeType ChangeType { get; set; }
+
+    /// <summary>Full text used for this patch, only when includeContents was requested for session mode. Omitted for binary, oversized or unavailable contents, and for fallback results. Read isFallback and isTruncated before treating an absent value as a missing file.</summary>
+    [JsonPropertyName("contents")]
+    public WorkspaceDiffContents? Contents { get; set; }
 
     /// <summary>Unified diff content for the file. Empty when the diff was truncated.</summary>
     [JsonPropertyName("diff")]
@@ -14844,11 +14861,32 @@ public sealed class WorkspaceDiffResult
 
 /// <summary>Parameters for computing a workspace diff.</summary>
 [Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
-internal sealed class WorkspacesDiffRequest
+public sealed class WorkspacesDiffRequest
 {
     /// <summary>When true, ignore whitespace-only changes (git `--ignore-all-space`). Defaults to false.</summary>
     [JsonPropertyName("ignoreWhitespace")]
     public bool? IgnoreWhitespace { get; set; }
+
+    /// <summary>Include the full before/after text used to compute each session diff. Defaults to false; true is accepted only for session mode. Existing capture/read limits still apply, and binary or unavailable contents are not returned. This can substantially increase response size.</summary>
+    [JsonPropertyName("includeContents")]
+    public bool? IncludeContents { get; set; }
+
+    /// <summary>Diff mode requested by the client.</summary>
+    [JsonPropertyName("mode")]
+    public required WorkspaceDiffMode Mode { get; set; }
+}
+
+/// <summary>Parameters for computing a workspace diff.</summary>
+[Experimental(global::GitHub.Copilot.Diagnostics.Experimental)]
+internal sealed class WorkspacesDiffRequestWithSession
+{
+    /// <summary>When true, ignore whitespace-only changes (git `--ignore-all-space`). Defaults to false.</summary>
+    [JsonPropertyName("ignoreWhitespace")]
+    public bool? IgnoreWhitespace { get; set; }
+
+    /// <summary>Include the full before/after text used to compute each session diff. Defaults to false; true is accepted only for session mode. Existing capture/read limits still apply, and binary or unavailable contents are not returned. This can substantially increase response size.</summary>
+    [JsonPropertyName("includeContents")]
+    public bool? IncludeContents { get; set; }
 
     /// <summary>Diff mode requested by the client.</summary>
     [JsonPropertyName("mode")]
@@ -47241,8 +47279,20 @@ public sealed class WorkspacesApi
     {
         _session.ThrowIfDisposed();
 
-        var request = new WorkspacesDiffRequest { SessionId = _session.SessionId, Mode = mode, IgnoreWhitespace = ignoreWhitespace };
+        var request = new WorkspacesDiffRequestWithSession { SessionId = _session.SessionId, Mode = mode, IgnoreWhitespace = ignoreWhitespace };
         return await CopilotClient.InvokeRpcAsync<WorkspaceDiffResult>(_session.Rpc, "session.workspaces.diff", [request], cancellationToken);
+    }
+
+    /// <summary>Computes a diff for the session workspace. Never rejects for a busy session: a `session`-mode diff that cannot read the session's file-change captures falls back to an unstaged git diff with `isFallback: true` and reports why in `unavailableReason`.</summary>
+    /// <param name="request">Parameters for computing a workspace diff.</param>
+    /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>Workspace diff result for the requested mode.</returns>
+    public async Task<WorkspaceDiffResult> DiffAsync(WorkspacesDiffRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _session.ThrowIfDisposed();
+        var wireRequest = new WorkspacesDiffRequestWithSession { SessionId = _session.SessionId, Mode = request.Mode, IgnoreWhitespace = request.IgnoreWhitespace, IncludeContents = request.IncludeContents };
+        return await CopilotClient.InvokeRpcAsync<WorkspaceDiffResult>(_session.Rpc, "session.workspaces.diff", [wireRequest], cancellationToken);
     }
 }
 
@@ -53062,6 +53112,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(WorkflowToolResumeRequest))]
 [JsonSerializable(typeof(WorkflowToolRunOptions))]
 [JsonSerializable(typeof(WorkflowToolRunRequest))]
+[JsonSerializable(typeof(WorkspaceDiffContents))]
 [JsonSerializable(typeof(WorkspaceDiffFileChange))]
 [JsonSerializable(typeof(WorkspaceDiffResult))]
 [JsonSerializable(typeof(WorkspacesAddSummaryRequest))]
@@ -53074,6 +53125,7 @@ internal static class ClientGlobalApiRegistration
 [JsonSerializable(typeof(WorkspacesCreateFileRequest))]
 [JsonSerializable(typeof(WorkspacesDeleteAutopilotObjectiveResult))]
 [JsonSerializable(typeof(WorkspacesDiffRequest))]
+[JsonSerializable(typeof(WorkspacesDiffRequestWithSession))]
 [JsonSerializable(typeof(WorkspacesEnsureRequest))]
 [JsonSerializable(typeof(WorkspacesGetWorkspaceResult))]
 [JsonSerializable(typeof(WorkspacesGetWorkspaceResultWorkspace))]

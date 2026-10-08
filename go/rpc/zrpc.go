@@ -21782,12 +21782,29 @@ type WorkflowToolRunRequest struct {
 	ToolCallID *string `json:"toolCallId,omitempty"`
 }
 
+// Complete text used to generate one session diff. These are display contents, with the
+// same text decoding as the patch, not a file-restore contract.
+// Experimental: WorkspaceDiffContents is part of an experimental API and may change or be
+// removed.
+type WorkspaceDiffContents struct {
+	// Complete current text read when computing the diff. Omitted for a deleted file; an empty
+	// string represents an existing empty file.
+	After *string `json:"after,omitempty"`
+	// Complete text before the session first changed the file. Omitted when the file did not
+	// exist; an empty string represents an existing empty file.
+	Before *string `json:"before,omitempty"`
+}
+
 // A single changed file and its unified diff.
 // Experimental: WorkspaceDiffFileChange is part of an experimental API and may change or be
 // removed.
 type WorkspaceDiffFileChange struct {
 	// Type of change represented by this file diff.
 	ChangeType WorkspaceDiffFileChangeType `json:"changeType"`
+	// Full text used for this patch, only when includeContents was requested for session mode.
+	// Omitted for binary, oversized or unavailable contents, and for fallback results. Read
+	// isFallback and isTruncated before treating an absent value as a missing file.
+	Contents *WorkspaceDiffContents `json:"contents,omitempty"`
 	// Unified diff content for the file. Empty when the diff was truncated.
 	Diff string `json:"diff"`
 	// Whether the diff content was omitted because it exceeded the per-file size limit.
@@ -21900,6 +21917,11 @@ type WorkspacesDeleteAutopilotObjectiveResult struct {
 type WorkspacesDiffRequest struct {
 	// When true, ignore whitespace-only changes (git `--ignore-all-space`). Defaults to false.
 	IgnoreWhitespace *bool `json:"ignoreWhitespace,omitempty"`
+	// Include the full before/after text used to compute each session diff. Defaults to false;
+	// true is accepted only for session mode. Existing capture/read limits still apply, and
+	// binary or unavailable contents are not returned. This can substantially increase response
+	// size.
+	IncludeContents *bool `json:"includeContents,omitempty"`
 	// Diff mode requested by the client.
 	Mode WorkspaceDiffMode `json:"mode"`
 }
@@ -37818,6 +37840,9 @@ func (a *WorkspacesAPI) Diff(ctx context.Context, params *WorkspacesDiffRequest)
 	if params != nil {
 		if params.IgnoreWhitespace != nil {
 			req["ignoreWhitespace"] = *params.IgnoreWhitespace
+		}
+		if params.IncludeContents != nil {
+			req["includeContents"] = *params.IncludeContents
 		}
 		req["mode"] = params.Mode
 	}

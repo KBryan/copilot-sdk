@@ -29164,6 +29164,25 @@ pub(crate) struct WorkflowToolRunRequest {
     pub tool_call_id: Option<String>,
 }
 
+/// Complete text used to generate one session diff. These are display contents, with the same text decoding as the patch, not a file-restore contract.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDiffContents {
+    /// Complete current text read when computing the diff. Omitted for a deleted file; an empty string represents an existing empty file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    /// Complete text before the session first changed the file. Omitted when the file did not exist; an empty string represents an existing empty file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
+}
+
 /// A single changed file and its unified diff.
 ///
 /// <div class="warning">
@@ -29177,6 +29196,9 @@ pub(crate) struct WorkflowToolRunRequest {
 pub struct WorkspaceDiffFileChange {
     /// Type of change represented by this file diff.
     pub change_type: WorkspaceDiffFileChangeType,
+    /// Full text used for this patch, only when includeContents was requested for session mode. Omitted for binary, oversized or unavailable contents, and for fallback results. Read isFallback and isTruncated before treating an absent value as a missing file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contents: Option<WorkspaceDiffContents>,
     /// Unified diff content for the file. Empty when the diff was truncated.
     pub diff: String,
     /// Whether the diff content was omitted because it exceeded the per-file size limit.
@@ -29352,6 +29374,51 @@ pub struct WorkspacesDiffRequest {
     pub ignore_whitespace: Option<bool>,
     /// Diff mode requested by the client.
     pub mode: WorkspaceDiffMode,
+}
+
+/// Extensible [`WorkspacesDiffRequest`], including inputs added after it was published.
+///
+/// Required inputs are [`WorkspacesDiffOptions::new`] arguments; optional inputs have fluent setters.
+/// Input-only: it serialises to the flat wire request and is not deserialisable.
+///
+/// <div class="warning">
+///
+/// **Experimental.** This type is part of an experimental wire-protocol surface
+/// and may change or be removed in future SDK or CLI releases.
+///
+/// </div>
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspacesDiffOptions {
+    #[serde(flatten)]
+    legacy: WorkspacesDiffRequest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include_contents: Option<bool>,
+}
+
+impl WorkspacesDiffOptions {
+    /// Creates options with the required inputs.
+    pub fn new(mode: WorkspaceDiffMode) -> Self {
+        Self {
+            legacy: WorkspacesDiffRequest {
+                mode,
+                ignore_whitespace: None,
+            },
+            include_contents: None,
+        }
+    }
+
+    /// When true, ignore whitespace-only changes (git `--ignore-all-space`). Defaults to false.
+    pub fn ignore_whitespace(mut self, value: bool) -> Self {
+        self.legacy.ignore_whitespace = Some(value);
+        self
+    }
+
+    /// Include the full before/after text used to compute each session diff. Defaults to false; true is accepted only for session mode. Existing capture/read limits still apply, and binary or unavailable contents are not returned. This can substantially increase response size.
+    pub fn include_contents(mut self, value: bool) -> Self {
+        self.include_contents = Some(value);
+        self
+    }
 }
 
 /// Optional session context used when creating a local workspace.

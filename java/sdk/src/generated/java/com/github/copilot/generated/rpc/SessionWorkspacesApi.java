@@ -8,6 +8,7 @@
 package com.github.copilot.generated.rpc;
 
 import com.github.copilot.CopilotExperimental;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import javax.annotation.processing.Generated;
 
@@ -316,6 +317,21 @@ public final class SessionWorkspacesApi {
     @CopilotExperimental
     public CompletableFuture<SessionWorkspacesDiffResult> diff(SessionWorkspacesDiffParams params) {
         com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(params);
+        _p.put("sessionId", this.sessionId);
+        return caller.invoke("session.workspaces.diff", _p, SessionWorkspacesDiffResult.class);
+    }
+
+    /**
+     * Computes a diff for the session workspace. Never rejects for a busy session: a `session`-mode diff that cannot read the session's file-change captures falls back to an unstaged git diff with `isFallback: true` and reports why in `unavailableReason`.
+     * <p>
+     * Accepts the extensible request, including inputs added after the params record.
+     *
+     * @apiNote This method is experimental and may change in a future version.
+     * @since 1.0.0
+     */
+    @CopilotExperimental
+    public CompletableFuture<SessionWorkspacesDiffResult> diff(SessionWorkspacesDiffRequest request) {
+        com.fasterxml.jackson.databind.node.ObjectNode _p = MAPPER.valueToTree(Objects.requireNonNull(request, "request"));
         _p.put("sessionId", this.sessionId);
         return caller.invoke("session.workspaces.diff", _p, SessionWorkspacesDiffResult.class);
     }

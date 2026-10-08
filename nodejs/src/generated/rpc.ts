@@ -30575,6 +30575,23 @@ export interface WorkflowToolRunRequest {
   toolCallId?: string;
 }
 /**
+ * Complete text used to generate one session diff. These are display contents, with the same text decoding as the patch, not a file-restore contract.
+ *
+ * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
+ * via the `definition` "WorkspaceDiffContents".
+ */
+/** @experimental */
+export interface WorkspaceDiffContents {
+  /**
+   * Complete text before the session first changed the file. Omitted when the file did not exist; an empty string represents an existing empty file.
+   */
+  before?: string;
+  /**
+   * Complete current text read when computing the diff. Omitted for a deleted file; an empty string represents an existing empty file.
+   */
+  after?: string;
+}
+/**
  * A single changed file and its unified diff.
  *
  * This interface was referenced by `_RpcSchemaRoot`'s JSON-Schema
@@ -30599,6 +30616,7 @@ export interface WorkspaceDiffFileChange {
    * Whether the diff content was omitted because it exceeded the per-file size limit.
    */
   isTruncated?: boolean;
+  contents?: WorkspaceDiffContents;
 }
 /**
  * Workspace diff result for the requested mode.
@@ -30753,6 +30771,10 @@ export interface WorkspacesDiffRequest {
    * When true, ignore whitespace-only changes (git `--ignore-all-space`). Defaults to false.
    */
   ignoreWhitespace?: boolean;
+  /**
+   * Include the full before/after text used to compute each session diff. Defaults to false; true is accepted only for session mode. Existing capture/read limits still apply, and binary or unavailable contents are not returned. This can substantially increase response size.
+   */
+  includeContents?: boolean;
 }
 /**
  * Optional session context used when creating a local workspace.

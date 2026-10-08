@@ -138,7 +138,7 @@ describe("Scenario server control generated RPC", async () => {
         }
     );
 
-    it("should observe page and cancel factory run", async () => {
+    it("should observe page and cancel workflow run", async () => {
         await withFakeCli(async (client, requests) => {
             const session = await client.createSession({});
             const runs = await session.rpc.workflow.listRuns({

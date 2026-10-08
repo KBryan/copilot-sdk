@@ -198,13 +198,13 @@ function isOpenCanvasInstance(value: unknown): value is OpenCanvasInstance {
     );
 }
 
-const FACTORY_LOG_FLUSH_DELAY_MS = 10;
-const MAX_FACTORY_FANOUT_ITEMS = 4096;
+const WORKFLOW_LOG_FLUSH_DELAY_MS = 10;
+const MAX_WORKFLOW_FANOUT_ITEMS = 4096;
 
 function assertWorkflowFanoutSize(kind: "parallel" | "pipeline", size: number): void {
-    if (size > MAX_FACTORY_FANOUT_ITEMS) {
+    if (size > MAX_WORKFLOW_FANOUT_ITEMS) {
         throw new Error(
-            `${kind}() accepts at most ${MAX_FACTORY_FANOUT_ITEMS} items; got ${size}.`
+            `${kind}() accepts at most ${MAX_WORKFLOW_FANOUT_ITEMS} items; got ${size}.`
         );
     }
 }
@@ -337,7 +337,7 @@ class WorkflowProgressBuffer {
         this.flushTimer = setTimeout(() => {
             this.flushTimer = undefined;
             void this.flush().catch(() => {});
-        }, FACTORY_LOG_FLUSH_DELAY_MS);
+        }, WORKFLOW_LOG_FLUSH_DELAY_MS);
         this.flushTimer.unref?.();
     }
 
